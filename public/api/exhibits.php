@@ -1,33 +1,10 @@
 <?php
 header('Content-Type: application/json');
 
-/**
- * SECURITY: CORS (Cross-Origin Resource Sharing)
- *
- * Previously set to '*' (any origin), which allows any website or app
- * to make requests to this API. This is a security risk because it enables
- * Cross-Site Request Forgery (CSRF) from malicious websites.
- *
- * We now restrict to the specific origins that are allowed to call this API.
- * For a mobile app using a local dev server or ngrok, we allow those origins.
- * In production, this should be locked to the exact app domain/scheme.
- */
-$allowedOrigins = [
-    'http://localhost',
-    'http://127.0.0.1',
-    'capacitor://localhost',
-    'ionic://localhost',
-];
-$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-if (in_array($origin, $allowedOrigins, true)) {
-    header("Access-Control-Allow-Origin: $origin");
-} else {
-    header('Access-Control-Allow-Origin: *');
-}
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, ngrok-skip-browser-warning');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+// SECURITY: allow-listed origins only (see _cors.php), and preflight ends here.
+// This used to fall through to '*' for any unrecognised origin.
+require_once '_cors.php';
+apiCors('GET, POST, OPTIONS');
 
 // SECURITY: Rate limiting — max 60 requests per minute per IP
 require_once '_rate_limit.php';
