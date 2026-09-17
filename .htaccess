@@ -1,0 +1,23 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Skip if already going to public/
+    RewriteCond %{REQUEST_URI} ^/yeppie/museobaler/public
+    RewriteRule ^ - [L]
+
+    # Rewrite everything else to public/
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+# SECURITY: Block direct access to sensitive files
+# These files contain credentials, configuration, or source code that must
+# never be served directly to a browser.
+<FilesMatch "(\.env|composer\.(json|lock)|package(-lock)?\.json|phpunit\.xml|\.gitignore|\.gitattributes|artisan)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# SECURITY: Block access to hidden directories (e.g., .git, .kiro)
+RedirectMatch 404 /\..*

@@ -1,0 +1,393 @@
+====================================================================
+ MUSEOBALER DATABASE - TABLE REFERENCE
+====================================================================
+
+CONTENTS
+  VISITORS & ATTENDANCE    visitors, visit_groups, attendances, attendance_corrections, scans, tours
+  STAFF                    staff, staff_attendances, staff_attendance_days, staff_schedules
+  MUSEUM CONTENT           exhibits, exhibit_images, exhibit_translations, categories, museum_halls, museum_info, bookmarks
+  AUTH & APP               users, sessions, password_reset_tokens, notifications, feedback, logs
+
+####################################################################
+#  VISITORS & ATTENDANCE
+####################################################################
+
+VISITORS
+--------------------------------------------------------------------
+  visitor_id      bigint unsigned                     PRIMARY KEY, auto
+  group_id        bigint unsigned                     optional, -> visit_groups.group_id (on delete set null)
+  first_name      varchar(255)                        required
+  last_name       varchar(255)                        required
+  middle_name     varchar(255)                        optional
+  age             int                                 optional
+  sex             enum('Male','Female','Other','Prefer not to say')
+                                                      optional
+  visitor_type    enum('Local','Tourist','Foreign')   required, default Local
+  admission_fee   decimal(8,2)                        required, default 0.00
+  payment_status  enum('Free','Unpaid','Paid')        required, default Free
+  paid_at         timestamp                           optional
+  id_verified     tinyint(1)                          required, default 0
+  verified_at     timestamp                           optional
+  verified_by     varchar(255)                        optional
+  visit_type      enum('Solo','Group','School','Family','Walk-in')
+                                                      required, default Solo
+  city            varchar(255)                        optional
+  province        varchar(255)                        optional
+  country         varchar(255)                        optional, default Philippines
+  email           varchar(255)                        optional
+  auth_provider   varchar(255)                        required, default manual
+  source          enum('app','kiosk','desk','recovered')
+                                                      required, default app
+  registered_by   bigint unsigned                     optional
+  explore_mode    varchar(255)                        required, default Storyline
+  last_visit      timestamp                           optional
+  created_at      timestamp                           optional
+  updated_at      timestamp                           optional
+  ..................................................................
+  index    group_id
+  index    created_at
+
+VISIT_GROUPS
+--------------------------------------------------------------------
+  group_id        bigint unsigned                     PRIMARY KEY, auto
+  group_name      varchar(255)                        optional
+  group_type      enum('Family','Group','School','Tour')
+                                                      required, default Group
+  contact_name    varchar(255)                        optional
+  contact_phone   varchar(255)                        optional
+  visitor_type    enum('Local','Tourist','Foreign')   required, default Tourist
+  city            varchar(255)                        optional
+  province        varchar(255)                        optional
+  country         varchar(255)                        optional, default Philippines
+  headcount       int unsigned                        required, default 1
+  paying_count    int unsigned                        required, default 0
+  total_fee       decimal(10,2)                       required, default 0.00
+  payment_status  enum('Free','Unpaid','Paid')        required, default Unpaid
+  paid_at         timestamp                           optional
+  visit_date      date                                required
+  registered_by   bigint unsigned                     optional
+  notes           text                                optional
+  created_at      timestamp                           optional
+  updated_at      timestamp                           optional
+  ..................................................................
+  index    visit_date
+  index    payment_status
+
+ATTENDANCES
+--------------------------------------------------------------------
+  attendance_id  bigint unsigned  PRIMARY KEY, auto
+  visitor_id     bigint unsigned  optional, -> visitors.visitor_id (on delete set null)
+  visitor_name   varchar(255)     optional
+  latitude       decimal(10,7)    optional
+  longitude      decimal(10,7)    optional
+  accuracy       int              optional
+  method         varchar(255)     required, default geofence
+  visit_date     date             required
+  created_at     timestamp        optional
+  updated_at     timestamp        optional
+  exited_at      timestamp        optional
+  duration_mins  int              optional
+  ..................................................................
+  unique   visitor_id, visit_date
+
+ATTENDANCE_CORRECTIONS
+--------------------------------------------------------------------
+  correction_id   bigint unsigned                     PRIMARY KEY, auto
+  staff_id        bigint unsigned                     required, -> staff.staff_id (on delete cascade)
+  work_date       date                                required
+  type            enum('in','out')                    required
+  requested_time  time                                required
+  reason          text                                required
+  requested_by    bigint unsigned                     required
+  requested_at    timestamp                           required, default CURRENT_TIMESTAMP
+  status          enum('Pending','Approved','Rejected')
+                                                      required, default Pending
+  reviewed_by     bigint unsigned                     optional
+  reviewed_at     timestamp                           optional
+  review_note     text                                optional
+  created_at      timestamp                           optional
+  updated_at      timestamp                           optional
+  ..................................................................
+  index    staff_id
+  index    status, work_date
+
+SCANS
+--------------------------------------------------------------------
+  scan_id        bigint unsigned     PRIMARY KEY, auto
+  exhibit_id     bigint unsigned     required, -> exhibits.exhibit_id (on delete cascade)
+  visitor_id     bigint unsigned     optional, -> visitors.visitor_id (on delete set null)
+  language_code  varchar(10)         optional
+  scan_type      enum('qr','image')  optional
+  scanned_at     timestamp           required, default CURRENT_TIMESTAMP
+  created_at     timestamp           optional
+  updated_at     timestamp           optional
+  ..................................................................
+  index    exhibit_id
+  index    visitor_id
+
+TOURS
+--------------------------------------------------------------------
+  tour_id         bigint unsigned                     PRIMARY KEY, auto
+  guide_staff_id  bigint unsigned                     optional, -> staff.staff_id (on delete set null)
+  tour_type       enum('Requested','Foreign','Educational')
+                                                      required
+  visitor_id      bigint unsigned                     optional, -> visitors.visitor_id (on delete set null)
+  group_id        bigint unsigned                     optional, -> visit_groups.group_id (on delete set null)
+  headcount       int unsigned                        required, default 1
+  started_at      timestamp                           optional
+  ended_at        timestamp                           optional
+  notes           text                                optional
+  created_by      bigint unsigned                     optional
+  created_at      timestamp                           optional
+  updated_at      timestamp                           optional
+  ..................................................................
+  index    guide_staff_id
+  index    visitor_id
+  index    group_id
+  index    started_at
+
+####################################################################
+#  STAFF
+####################################################################
+
+STAFF
+--------------------------------------------------------------------
+  staff_id        bigint unsigned                     PRIMARY KEY, auto
+  name            varchar(255)                        required
+  email           varchar(255)                        required
+  password        varchar(255)                        required
+  role            enum('SuperAdmin','Administrator')  required, default Administrator
+  status          tinyint(1)                          required, default 1
+  remember_token  varchar(100)                        optional
+  created_at      timestamp                           optional
+  updated_at      timestamp                           optional
+  ..................................................................
+  unique   email
+
+STAFF_ATTENDANCES
+--------------------------------------------------------------------
+  staff_attendance_id  bigint unsigned      PRIMARY KEY, auto
+  staff_id             bigint unsigned      required, -> staff.staff_id (on delete cascade)
+  work_date            date                 required
+  type                 enum('in','out')     required
+  scanned_at           timestamp            required, default CURRENT_TIMESTAMP
+  latitude             decimal(10,7)        optional
+  longitude            decimal(10,7)        optional
+  accuracy             int                  optional
+  distance_m           int                  optional
+  method               enum('qr','manual')  required, default qr
+  recorded_by          bigint unsigned      optional
+  ip_address           varchar(255)         optional
+  user_agent           varchar(512)         optional
+  created_at           timestamp            optional
+  updated_at           timestamp            optional
+  ..................................................................
+  unique   staff_id, work_date, type
+  index    work_date
+
+STAFF_ATTENDANCE_DAYS
+--------------------------------------------------------------------
+  work_date   date             PRIMARY KEY
+  day_secret  varchar(64)      required
+  opened_by   bigint unsigned  optional
+  created_at  timestamp        optional
+  updated_at  timestamp        optional
+
+STAFF_SCHEDULES
+--------------------------------------------------------------------
+  schedule_id    bigint unsigned    PRIMARY KEY, auto
+  staff_id       bigint unsigned    required, -> staff.staff_id (on delete cascade)
+  weekday        tinyint unsigned   required
+  shift_start    time               required
+  shift_end      time               required
+  grace_minutes  smallint unsigned  required, default 15
+  is_rest_day    tinyint(1)         required, default 0
+  created_at     timestamp          optional
+  updated_at     timestamp          optional
+  ..................................................................
+  unique   staff_id, weekday
+
+####################################################################
+#  MUSEUM CONTENT
+####################################################################
+
+EXHIBITS
+--------------------------------------------------------------------
+  exhibit_id       bigint unsigned                     PRIMARY KEY, auto
+  exhibit_code     varchar(255)                        required
+  name             varchar(255)                        required
+  description      text                                optional
+  fun_facts        text                                optional
+  category_id      bigint unsigned                     optional, -> categories.category_id (on delete set null)
+  floor            enum('Ground Floor','2nd Floor')    required, default Ground Floor
+  hall             enum('Hall A','Hall B','Hall C','Hall D','Hall E')
+                                                       optional
+  authors          varchar(255)                        optional
+  languages        varchar(255)                        required, default Filipino,English
+  storyline_order  int                                 required, default 0
+  image            varchar(255)                        optional
+  status           tinyint(1)                          required, default 1
+  date_published   date                                optional
+  created_at       timestamp                           optional
+  updated_at       timestamp                           optional
+  ..................................................................
+  unique   exhibit_code
+  index    category_id
+
+EXHIBIT_IMAGES
+--------------------------------------------------------------------
+  image_id    bigint unsigned  PRIMARY KEY, auto
+  exhibit_id  bigint unsigned  required, -> exhibits.exhibit_id (on delete cascade)
+  filename    varchar(255)     required
+  caption     varchar(255)     optional
+  sort_order  int              required, default 0
+  created_at  timestamp        optional
+  updated_at  timestamp        optional
+  ..................................................................
+  index    exhibit_id
+
+EXHIBIT_TRANSLATIONS
+--------------------------------------------------------------------
+  translation_id  bigint unsigned  PRIMARY KEY, auto
+  exhibit_id      bigint unsigned  required, -> exhibits.exhibit_id (on delete cascade)
+  language_code   varchar(10)      required
+  language_label  varchar(255)     required
+  title           varchar(255)     optional
+  description     text             optional
+  fun_facts       text             optional
+  audio_file      varchar(255)     optional
+  created_at      timestamp        optional
+  updated_at      timestamp        optional
+  ..................................................................
+  unique   exhibit_id, language_code
+
+CATEGORIES
+--------------------------------------------------------------------
+  category_id  bigint unsigned  PRIMARY KEY, auto
+  name         varchar(255)     required
+  description  text             optional
+  created_at   timestamp        optional
+  updated_at   timestamp        optional
+
+MUSEUM_HALLS
+--------------------------------------------------------------------
+  hall_id      bigint unsigned  PRIMARY KEY, auto
+  name         varchar(255)     required
+  floor        varchar(255)     optional
+  description  varchar(255)     optional
+  icon         varchar(255)     optional
+  sort_order   int              required, default 0
+  created_at   timestamp        optional
+  updated_at   timestamp        optional
+
+MUSEUM_INFO
+--------------------------------------------------------------------
+  info_id            bigint unsigned  PRIMARY KEY, auto
+  name               varchar(255)     required, default Museo de Baler
+  tagline            varchar(255)     optional
+  story              text             optional
+  story2             text             optional
+  address            varchar(255)     optional
+  hours              varchar(255)     optional
+  closed_on          varchar(255)     optional
+  phone              varchar(255)     optional
+  email              varchar(255)     optional
+  admission          varchar(255)     optional
+  latitude           decimal(10,7)    optional
+  longitude          decimal(10,7)    optional
+  geofence_radius_m  int              required, default 150
+  created_at         timestamp        optional
+  updated_at         timestamp        optional
+
+BOOKMARKS
+--------------------------------------------------------------------
+  bookmark_id  bigint unsigned  PRIMARY KEY, auto
+  visitor_id   bigint unsigned  required, -> visitors.visitor_id (on delete cascade)
+  exhibit_id   bigint unsigned  required, -> exhibits.exhibit_id (on delete cascade)
+  created_at   timestamp        optional
+  updated_at   timestamp        optional
+  ..................................................................
+  unique   visitor_id, exhibit_id
+  index    exhibit_id
+
+####################################################################
+#  AUTH & APP
+####################################################################
+
+USERS
+--------------------------------------------------------------------
+  id                 bigint unsigned                     PRIMARY KEY, auto
+  name               varchar(255)                        required
+  email              varchar(255)                        required
+  email_verified_at  timestamp                           optional
+  password           varchar(255)                        required
+  role               enum('Administrator','Curator','Guide')
+                                                         required, default Administrator
+  status             tinyint(1)                          required, default 1
+  remember_token     varchar(100)                        optional
+  created_at         timestamp                           optional
+  updated_at         timestamp                           optional
+  ..................................................................
+  unique   email
+
+SESSIONS
+--------------------------------------------------------------------
+  id             varchar(255)     PRIMARY KEY
+  user_id        bigint unsigned  optional
+  ip_address     varchar(45)      optional
+  user_agent     text             optional
+  payload        longtext         required
+  last_activity  int              required
+  ..................................................................
+  index    user_id
+  index    last_activity
+
+PASSWORD_RESET_TOKENS
+--------------------------------------------------------------------
+  email       varchar(255)  PRIMARY KEY
+  token       varchar(255)  required
+  created_at  timestamp     optional
+
+NOTIFICATIONS
+--------------------------------------------------------------------
+  notif_id    bigint unsigned  PRIMARY KEY, auto
+  title       varchar(255)     required
+  body        text             optional
+  type        varchar(255)     required, default info
+  is_active   tinyint(1)       required, default 1
+  created_at  timestamp        optional
+  updated_at  timestamp        optional
+
+FEEDBACK
+--------------------------------------------------------------------
+  feedback_id    bigint unsigned                PRIMARY KEY, auto
+  visitor_id     bigint unsigned                optional, -> visitors.visitor_id (on delete set null)
+  tour_id        bigint unsigned                optional, -> tours.tour_id (on delete set null)
+  staff_id       bigint unsigned                optional
+  first_name     varchar(255)                   optional
+  last_name      varchar(255)                   optional
+  middle_name    varchar(255)                   optional
+  rating         tinyint                        required, default 5
+  guide_rating   tinyint                        optional
+  attributed_by  enum('none','visitor','duty')  required, default none
+  comment        text                           optional
+  submitted_at   timestamp                      required, default CURRENT_TIMESTAMP
+  created_at     timestamp                      optional
+  updated_at     timestamp                      optional
+  ..................................................................
+  index    visitor_id
+  index    tour_id
+  index    staff_id
+
+LOGS
+--------------------------------------------------------------------
+  log_id      bigint unsigned  PRIMARY KEY, auto
+  user_id     bigint unsigned  optional
+  user_name   varchar(255)     optional
+  role        varchar(255)     optional
+  action      varchar(255)     required
+  details     text             optional
+  ip_address  varchar(255)     optional
+  created_at  timestamp        optional
+  updated_at  timestamp        optional
+

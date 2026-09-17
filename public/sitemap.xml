@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Museo de Baler — sitemap.xml
+  INCLUDED : Public-facing visitor pages only
+  EXCLUDED : Admin panel, login, staff/backend paths, duplicate URLs, API internals
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+
+  <!-- ═══════════════════════════════════
+       LEVEL 1 — Home (Visitor PWA)
+       ═══════════════════════════════════ -->
+  <url>
+    <loc>http://museobaler.com/visitor/</loc>
+    <priority>1.0</priority>
+    <changefreq>weekly</changefreq>
+    <lastmod>2026-07-25</lastmod>
+  </url>
+
+  <!-- ═══════════════════════════════════
+       LEVEL 2 — Core Public Pages
+       ═══════════════════════════════════ -->
+
+  <!-- About the Museum -->
+  <url>
+    <loc>http://museobaler.com/visitor/#about</loc>
+    <priority>0.9</priority>
+    <changefreq>monthly</changefreq>
+    <lastmod>2026-07-25</lastmod>
+  </url>
+
+  <!-- Exhibits Hub (browse all exhibits) -->
+  <url>
+    <loc>http://museobaler.com/visitor/#exhibits</loc>
+    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <lastmod>2026-07-25</lastmod>
+  </url>
+
+  <!-- Museum Map -->
+  <url>
+    <loc>http://museobaler.com/visitor/#map</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+    <lastmod>2026-07-25</lastmod>
+  </url>
+
+  <!-- Notifications / Announcements -->
+  <url>
+    <loc>http://museobaler.com/visitor/#notifications</loc>
+    <priority>0.6</priority>
+    <changefreq>weekly</changefreq>
+    <lastmod>2026-07-25</lastmod>
+  </url>
+
+  <!-- ═══════════════════════════════════
+       LEVEL 3 — Individual Exhibit Pages
+       (child pages under Exhibits hub)
+       ═══════════════════════════════════ -->
+
+  <url>
+    <loc>http://museobaler.com/api/exhibits.php?code=EXH-001</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+    <lastmod>2026-07-25</lastmod>
+  </url>
+  <url>
+    <loc>http://museobaler.com/api/exhibits.php?code=EXH-002</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+    <lastmod>2026-07-25</lastmod>
+  </url>
+  <url>
+    <loc>http://museobaler.com/api/exhibits.php?code=EXH-003</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+    <lastmod>2026-07-25</lastmod>
+  </url>
+  <url>
+    <loc>http://museobaler.com/api/exhibits.php?code=EXH-004</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+    <lastmod>2026-07-25</lastmod>
+  </url>
+  <url>
+    <loc>http://museobaler.com/api/exhibits.php?code=EXH-005</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+    <lastmod>2026-07-25</lastmod>
+  </url>
+  <url>
+    <loc>http://museobaler.com/api/exhibits.php?code=EXH-006</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+    <lastmod>2026-07-25</lastmod>
+  </url>
+  <url>
+    <loc>http://museobaler.com/api/exhibits.php?code=EXH-007</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+    <lastmod>2026-07-25</lastmod>
+  </url>
+  <url>
+    <loc>http://museobaler.com/api/exhibits.php?code=EXH-008</loc>
+    <priority>0.8</priority>
+    <changefreq>monthly</changefreq>
+    <lastmod>2026-07-25</lastmod>
+  </url>
+
+  <!-- ═══════════════════════════════════
+       Legal
+       ═══════════════════════════════════ -->
+  <url>
+    <loc>http://museobaler.com/visitor/#privacy</loc>
+    <priority>0.4</priority>
+    <changefreq>yearly</changefreq>
+    <lastmod>2026-07-25</lastmod>
+  </url>
+  <url>
+    <loc>http://museobaler.com/visitor/#terms</loc>
+    <priority>0.4</priority>
+    <changefreq>yearly</changefreq>
+    <lastmod>2026-07-25</lastmod>
+  </url>
+
+</urlset>

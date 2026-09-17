@@ -1,0 +1,701 @@
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --gd:#2D5016;--gm:#4A7C2F;--gl:#7BAE5A;--gp:#C8DFB0;
+  --bd:#5C3D1E;--bm:#8B6340;--bl:#C4956A;--bp:#EDD9C0;
+  --ec:#FAF6F0;--ew:#F5EDE0;--es:#E8D5B7;
+  --w:#fff;--td:#1A1A1A;--tm:#4A4A4A;--tl:#666;
+  --sh:0 2px 12px rgba(0,0,0,.10);
+  --r:14px;--r-sm:10px;
+
+  /* ── SEMANTIC SURFACES ──
+     The markup sets these inline, and an inline style outranks every rule in
+     this file — so a card written as "background:white" can never be themed.
+     Everything themable therefore has to go through a token. */
+  --field-bg:#fafafa;      /* text input / select ground   */
+  --toggle-off:#D0D0D0;    /* switch track, off            */
+  --danger-bg:#FEF2F2;  --danger-br:#FECACA;  --danger-fg:#DC2626;
+  --ok-bg:#F0FDF4;      --ok-br:#BBF7D0;
+  --warn-bg:#FFFBEB;    --warn-br:#FDE68A;
+
+  /* ── TEXT SCALE ──
+     Every font-size in the app is written as calc(Npx * var(--fs)), so this
+     one number is the Text Size setting. Set on :root by setTextSize(). */
+  --fs:1;
+  /* Mode-aware — default to storyline (green) */
+  --mode-primary:var(--gd);
+  --mode-secondary:var(--gm);
+  --mode-light:var(--gl);
+  --mode-pale:var(--gp);
+  /* The accent as TEXT, which is a different job from the accent as a fill:
+     --mode-secondary is picked to carry white text on a header, and reads at
+     only 3:1 when used as text on a dark card. */
+  --accent-text:var(--mode-secondary);
+
+  /* ── LAYOUT ──
+     --app-h  the real, visible height of the viewport. 100vh is wrong on every
+              mobile browser (it measures the viewport as if the URL bar were
+              collapsed), so it is only the last resort; the @supports rule below
+              upgrades it to 100dvh, and js/viewport.js overrides it inline on
+              browsers older than dvh.
+     --safe-* the notch, the rounded corners and the home indicator. These are
+              0px on a device that has none, so adding them is always safe. */
+  --app-h:100vh;
+  --safe-t:env(safe-area-inset-top,0px);
+  --safe-r:env(safe-area-inset-right,0px);
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --safe-l:env(safe-area-inset-left,0px);
+  --nav-h:72px;
+}
+@supports (height:100dvh){ :root{ --app-h:100dvh } }
+html,body{
+  font-family:'Instrument Sans',sans-serif;
+  background:#C9B99A;
+  color:var(--td);
+  height:100%;
+  overflow:hidden;
+  overflow-x:hidden;
+  overscroll-behavior:none;
+  -webkit-text-size-adjust:100%;
+  text-size-adjust:100%;
+  /* The base for anything without its own size, and the one place the Text
+     Size setting reaches text the markup forgot to size. */
+  font-size:calc(14px * var(--fs));
+}
+/* Form controls do not inherit the page font by default. */
+input,select,textarea,button{font-family:inherit}
+select,option{font-family:'Instrument Sans',sans-serif;color:var(--td)}
+h1,h2,h3{font-family:'Young Serif',serif;font-weight:400}
+button{cursor:pointer;font-family:'Instrument Sans',sans-serif;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+a{text-decoration:none;color:inherit}
+img{max-width:100%}
+
+/* ── APP SHELL ── */
+/* One layout, three sizes:
+     phone   (<600px)    the app fills the device, edge to edge
+     tablet  (600–1023)  the app runs full height in a centred column
+     desktop (>=1024)    the app sits in a phone frame, scaled to fit the window
+
+   Everything below is driven by --app-h rather than 100vh. On a mobile browser
+   100vh is the height the viewport WOULD have with the URL bar collapsed, which
+   is taller than what is actually on screen — so a 100vh shell pushes the bottom
+   nav out of sight and the only way to see the whole app is to pinch-zoom out.
+   --app-h resolves to 100dvh where supported, and js/viewport.js fills it in for
+   browsers too old for dvh. */
+#app{
+  height:var(--app-h);
+  width:100%;
+  max-width:100%;
+  margin:0 auto;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  overflow-x:hidden;
+  position:relative;
+  background:var(--ec);
+}
+
+/* ── SCREENS ── */
+.screen{display:none;flex:1;flex-direction:column;overflow:hidden;height:100%;position:relative;width:100%}
+.screen.active{display:flex;flex-direction:column;width:100%}
+.sbody{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain}
+.sbody::-webkit-scrollbar{display:none}
+
+/* ── STATUS BAR ── */
+.sb{display:flex;justify-content:space-between;align-items:center;padding:14px 20px 6px;flex-shrink:0}
+.sb-time{font-size:calc(12px * var(--fs));font-weight:700}
+.sb-icons{display:flex;gap:5px}
+.sb-icons .material-icons-round{font-size:15px}
+
+/* ── BOTTOM NAV ── */
+.bnav{
+  flex-shrink:0;
+  height:calc(var(--nav-h) + var(--safe-b));
+  background:var(--w);
+  border-top:1px solid var(--es);
+  display:flex;
+  align-items:center;
+  justify-content:space-around;
+  padding:0 calc(8px + var(--safe-l)) calc(10px + var(--safe-b)) calc(8px + var(--safe-r));
+}
+.ni{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;flex:1;min-height:44px;cursor:pointer;padding:4px 0;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.ni .material-icons-round{font-size:24px;color:var(--tl)}
+.ni.on .material-icons-round{color:var(--accent-text)}
+.nl{font-size:calc(11px * var(--fs));color:var(--tl);letter-spacing:.01em}
+.ni.on .nl{color:var(--accent-text);font-weight:600}
+.nscan{width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--mode-secondary),var(--mode-primary));display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,.25);flex-shrink:0}
+.nscan .material-icons-round{font-size:24px;color:#fff}
+
+/* ── ICON BUTTON (header actions: back, settings) ──
+   A bare 22px glyph was the whole tap target. 40px is the floor. */
+.icon-btn{
+  width:40px;height:40px;flex-shrink:0;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,0.15);border:none;border-radius:12px;
+  color:#fff;cursor:pointer;padding:0;
+}
+.icon-btn .material-icons-round{font-size:22px;color:#fff}
+.icon-btn:active{background:rgba(255,255,255,0.28)}
+
+/* ── PROFILE STATS ── */
+.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
+.stat{
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  background:var(--w);border:none;border-radius:14px;padding:12px 6px 11px;
+  box-shadow:var(--sh);cursor:pointer;color:var(--td);text-align:center;
+  font-family:'Instrument Sans',sans-serif;
+}
+.stat-ico{
+  width:34px;height:34px;border-radius:10px;background:var(--mode-pale);
+  display:flex;align-items:center;justify-content:center;
+}
+.stat-ico .material-icons-round{font-size:19px;color:var(--mode-primary)}
+.stat-n{font-family:'Young Serif',serif;font-size:calc(22px * var(--fs));line-height:1.1;color:var(--td)}
+.stat-l{font-size:calc(11px * var(--fs));color:var(--tl);font-weight:600;line-height:1.2}
+body.dark-mode .stat-ico{background:rgba(255,255,255,0.08)}
+body.dark-mode .stat-ico .material-icons-round{color:var(--accent-text)}
+@media (max-width:360px){.stat-grid{gap:8px}.stat{padding:10px 4px 9px}}
+
+/* ── HALLS ── */
+.hall{background:var(--w);border-radius:16px;padding:14px 16px;box-shadow:var(--sh)}
+.hall-row{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.hall-ico{width:40px;height:40px;border-radius:12px;background:var(--mode-pale);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.hall-ico .material-icons-round{font-size:22px;color:var(--mode-primary)}
+.hall.done .hall-ico{background:var(--ok-bg)}
+.hall-name{font-size:calc(14px * var(--fs));font-weight:700;color:var(--td)}
+.hall-sub{font-size:calc(11px * var(--fs));color:var(--tl);margin-top:2px}
+.hall-mark{font-size:22px;color:var(--es)}
+.hall.done .hall-mark{color:var(--accent-text)}
+body.dark-mode .hall-ico{background:rgba(255,255,255,0.08)}
+body.dark-mode .hall-ico .material-icons-round{color:var(--accent-text)}
+
+/* ── HEADER GRADIENT ── */
+.hdr{background:linear-gradient(160deg,var(--gd),var(--gm));flex-shrink:0}
+.hdr-brown{background:linear-gradient(135deg,var(--bd),var(--bm))}
+.hdr-content{padding:8px 20px 20px}
+
+/* ── CARDS ── */
+.card{background:var(--w);border-radius:var(--r);box-shadow:var(--sh)}
+.card-p{padding:14px 16px}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:13px 20px;border:none;border-radius:var(--r-sm);font-size:calc(14px * var(--fs));font-weight:700;transition:opacity .15s}
+.btn:hover{opacity:.9}
+.btn-green{background:linear-gradient(135deg,var(--gm),var(--gd));color:#fff}
+.btn-brown{background:linear-gradient(135deg,var(--bm),var(--bd));color:#fff}
+.btn-outline{background:var(--w);color:var(--td);border:1.5px solid var(--es)}
+.btn-ghost{background:transparent;color:var(--tl);border:none;padding:8px}
+.btn-full{width:100%}
+.btn-sm{padding:9px 16px;font-size:calc(13px * var(--fs))}
+.btn .material-icons-round{font-size:18px}
+
+/* ── FORM ── */
+.fg{margin-bottom:12px}
+.fl{font-size:calc(11px * var(--fs));color:var(--tl);margin-bottom:5px;display:block}
+.fi{width:100%;padding:11px 12px;border:1.5px solid var(--es);border-radius:11px;font-family:'Instrument Sans',sans-serif;font-size:calc(13px * var(--fs));color:var(--td);outline:none;background:var(--field-bg);transition:border-color .15s}
+.fi:focus{border-color:var(--mode-secondary)}
+.fi-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* ── BADGES ── */
+.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:calc(11px * var(--fs));font-weight:600}
+.b-green{background:var(--ok-bg);color:var(--gd)}
+.b-brown{background:var(--bp);color:var(--bd)}
+.b-gray{background:var(--ew);color:var(--tl)}
+
+/* ── TOAST ── */
+#toast{position:fixed;bottom:calc(var(--nav-h) + 18px + var(--safe-b));left:50%;transform:translateX(-50%) translateY(20px);max-width:calc(100% - 32px);background:#1a1a1a;color:#fff;padding:10px 20px;border-radius:20px;font-size:calc(13px * var(--fs));font-weight:500;text-align:center;opacity:0;transition:all .3s;pointer-events:none;z-index:999}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── LOADING OVERLAY ── */
+#loading{position:fixed;inset:0;background:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;z-index:9999;display:none}
+#loading.show{display:flex}
+.spinner{width:36px;height:36px;border:3px solid var(--mode-pale);border-top-color:var(--mode-secondary);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── NOTIFICATION DOT ── */
+.notif-dot{width:8px;height:8px;background:#ef4444;border-radius:50%;position:absolute;top:2px;right:2px}
+
+/* ── PROGRESS BAR ── */
+.prog-track{background:var(--es);border-radius:4px;height:8px;overflow:hidden}
+.prog-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--mode-secondary),var(--mode-light));transition:width .6s ease}
+
+/* ── STAR RATING ── */
+.stars{display:flex;gap:6px;justify-content:center;margin:12px 0}
+.star{font-size:calc(32px * var(--fs));color:var(--es);cursor:pointer;transition:color .15s;user-select:none}
+.star.active{color:#fbbf24}
+
+/* ── LANGUAGE CHIPS ── */
+.lang-chips{display:flex;gap:8px;flex-wrap:wrap}
+.lang-chip{padding:7px 14px;border-radius:20px;border:1.5px solid var(--es);background:var(--ew);font-size:calc(13px * var(--fs));cursor:pointer;transition:all .15s}
+.lang-chip.active{border-color:var(--mode-secondary);background:var(--mode-pale);color:var(--mode-primary);font-weight:600}
+
+/* ── EXHIBIT CARD ── */
+.ex-item{background:var(--w);border-radius:var(--r);padding:12px;display:flex;align-items:center;gap:12px;box-shadow:var(--sh);margin-bottom:10px}
+.ex-ico{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden}
+.ex-ico img{width:100%;height:100%;object-fit:cover}
+.ex-ico .material-icons-round{font-size:22px;color:#fff}
+.ex-info{flex:1;min-width:0}
+.ex-name{font-size:calc(13px * var(--fs));font-weight:700;color:var(--td);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ex-sub{font-size:calc(11px * var(--fs));color:var(--tl);margin-top:2px}
+
+/* ── QR SCANNER ── */
+#qr-reader{width:100%;border-radius:var(--r);overflow:hidden}
+#qr-reader video{width:100%!important;border-radius:var(--r)}
+
+/* ── AUDIO PLAYER ── */
+.audio-bar{background:var(--ew);border-radius:var(--r-sm);padding:12px 14px;display:flex;align-items:center;gap:12px;margin-top:14px}
+.audio-btn{width:40px;height:40px;border-radius:50%;background:var(--mode-secondary);display:flex;align-items:center;justify-content:center;border:none;flex-shrink:0}
+.audio-btn .material-icons-round{font-size:20px;color:#fff}
+.audio-progress{flex:1;height:4px;background:var(--es);border-radius:2px;cursor:pointer;position:relative}
+.audio-fill{height:100%;background:var(--mode-secondary);border-radius:2px;width:0%;transition:width .1s linear}
+.audio-time{font-size:calc(11px * var(--fs));color:var(--tl);white-space:nowrap}
+
+/* ── MODAL SHEET ── */
+.sheet-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:none;align-items:flex-end}
+.sheet-overlay.open{display:flex}
+.sheet{
+  background:var(--w);
+  border-radius:24px 24px 0 0;
+  padding:20px calc(20px + var(--safe-r)) calc(36px + var(--safe-b)) calc(20px + var(--safe-l));
+  width:100%;
+  max-height:calc(var(--app-h) * 0.88);
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  animation:slideUp .25s ease;
+}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.sheet-handle{width:40px;height:4px;background:var(--es);border-radius:2px;margin:0 auto 16px}
+
+/* ── PICKER (Settings) ── */
+.pick{
+  display:inline-flex;align-items:center;gap:4px;
+  background:var(--ew);border:none;border-radius:8px;padding:6px 6px 6px 10px;
+  font-family:'Instrument Sans',sans-serif;font-size:calc(13px * var(--fs));font-weight:600;color:var(--td);
+  cursor:pointer;white-space:nowrap;
+}
+.pick .material-icons-round{font-size:18px;color:var(--tl)}
+.pick-title{font-family:'Young Serif',serif;font-size:calc(18px * var(--fs));color:var(--td);margin-bottom:2px}
+.pick-sub{font-size:calc(12px * var(--fs));color:var(--tl);margin-bottom:14px}
+.pick-list{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.pick-row{
+  display:flex;align-items:center;justify-content:space-between;
+  width:100%;padding:12px 14px;border:1.5px solid var(--es);border-radius:12px;
+  background:var(--field-bg);color:var(--td);
+  font-family:'Instrument Sans',sans-serif;font-size:calc(14px * var(--fs));font-weight:500;text-align:left;cursor:pointer;
+}
+.pick-row .material-icons-round{font-size:20px;color:var(--tl)}
+.pick-row.on{border-color:var(--mode-secondary);background:var(--mode-pale);color:var(--mode-primary);font-weight:700}
+.pick-row.on .material-icons-round{color:var(--mode-secondary)}
+body.dark-mode .pick-row.on{background:var(--ok-bg);color:var(--accent-text)}
+body.dark-mode .pick-row.on .material-icons-round{color:var(--accent-text)}
+
+/* ── RADIO PILLS ── */
+.radio-pill{display:flex;align-items:center;gap:7px;padding:9px 14px;border:1.5px solid var(--es);border-radius:10px;background:var(--field-bg);cursor:pointer;font-size:calc(13px * var(--fs));color:var(--tm);}
+.radio-pill input{accent-color:var(--mode-secondary);}
+.radio-pill.active{border-color:var(--mode-secondary);background:var(--mode-pale);color:var(--mode-primary);font-weight:600;}
+
+/* ── SCAN LINE ANIMATION ── */
+@keyframes scanLine{0%,100%{top:20%}50%{top:78%}}
+
+/* ── TOGGLE SWITCH ── */
+.toggle{transition:background .2s;cursor:pointer;}
+.toggle div{transition:all .2s;}
+
+/* ── HIGH CONTRAST ──
+   Was `filter:contrast(1.4)` on <body>, which had two problems: it washes the
+   whole page (camera feed included) rather than raising contrast where it
+   matters, and a filtered element becomes the containing block for every
+   position:fixed descendant — so the toast, the sheets and the spinner all
+   stopped being viewport-anchored while it was on. This raises the actual
+   contrast of text, borders and surfaces instead. */
+body.high-contrast{
+  --td:#000; --tm:#1a1a1a; --tl:#333;
+  --ec:#fff; --ew:#f2f2f2; --es:#000; --w:#fff;
+  --field-bg:#fff;
+  --sh:0 0 0 1.5px #000;
+  --toggle-off:#6b6b6b;
+  --accent-text:#14481f;
+}
+/* The rules below are written against the tokens, not against #000/#fff, so
+   the dark variant inverts them for free. Spelling them out literally is what
+   left the bottom-nav labels at #1a1a1a on a black nav in dark + high
+   contrast — legible in one theme, invisible in the other. */
+body.high-contrast .card,
+body.high-contrast .ex-item{border:1.5px solid var(--es)}
+body.high-contrast .fi{border-width:2px;border-color:var(--es)}
+body.high-contrast .bnav{border-top:2px solid var(--es)}
+body.high-contrast .nl,
+body.high-contrast .ex-sub,
+body.high-contrast .fl,
+body.high-contrast .audio-time{color:var(--tm)}
+body.high-contrast .btn-outline{border-color:var(--es);border-width:2px}
+/* The inactive star is --es, which in high contrast is the text colour — that
+   would read as five filled stars. Hold it at a mid grey in both themes. */
+body.high-contrast .star{color:#8a8a8a}
+
+/* Dark + high contrast: pure white on pure black. Only the tokens change. */
+body.dark-mode.high-contrast{
+  --td:#fff; --tm:#f0f0f0; --tl:#dcdcdc;
+  --ec:#000; --ew:#121212; --es:#fff; --w:#0a0a0a;
+  --field-bg:#000;
+  --sh:0 0 0 1.5px #fff;
+  --toggle-off:#8a8a8a;
+  --accent-text:#a7e08a;
+}
+
+/* ── EXHIBIT TABS ── */
+.ex-tab{transition:color .15s;}
+
+/* ── TEXT SIZE BUTTONS ── */
+.txt-size-btn{transition:all .15s;}
+
+/* ══════════════════════════════════════════
+   DARK MODE
+══════════════════════════════════════════ */
+body.dark-mode {
+  --ec:#15171a; --ew:#1f2227; --es:#333941; --w:#22262c;
+  --td:#f2f4f6; --tm:#c3c8cf; --tl:#8b929b;
+  --sh:0 2px 12px rgba(0,0,0,.45);
+  --field-bg:#2b3037;
+  --toggle-off:#4a515b;
+  --accent-text:var(--mode-light);
+  --danger-bg:#3a1d1d; --danger-br:#6b2b2b; --danger-fg:#fca5a5;
+  --ok-bg:#16301f;     --ok-br:#2b5c3a;
+  --warn-bg:#332a14;   --warn-br:#6b571f;
+  background:#0e1013;
+}
+/* The pale category/badge tints are readable as accents in dark mode, but the
+   near-white ones have to come down or they punch holes in the page. */
+body.dark-mode .b-green{background:var(--ok-bg);color:#86efac}
+body.dark-mode .b-gray{background:var(--ew);color:var(--tl)}
+body.dark-mode .b-brown{background:#3a2d20;color:#e3c39a}
+body.dark-mode .btn-outline{background:var(--ew);border-color:var(--es);color:var(--td)}
+body.dark-mode .sheet-overlay{background:rgba(0,0,0,.65)}
+body.dark-mode #loading{background:rgba(10,12,15,.85)}
+body.dark-mode #toast{background:#e8eaed;color:#15171a}
+/* The scanner screens are already near-black by design; leave them alone. */
+
+/* ══════════════════════════════════════════
+   TEXT SIZE
+   ──────────────────────────────────────────
+   The old rules set a font-size on <body> and on `.sbody p`. Almost nothing
+   in this app inherits either: the screens are built from divs carrying an
+   inline font-size, and inline wins. So the setting moved to --fs, a single
+   multiplier that every font-size in the markup is written against.
+   ══════════════════════════════════════════ */
+body.text-small  { --fs:0.88 }
+body.text-medium { --fs:1 }
+body.text-large  { --fs:1.15 }
+
+/* ══════════════════════════════════════════
+   LANGUAGE DIRECTION (RTL support placeholder)
+══════════════════════════════════════════ */
+body.lang-ar, body.lang-he { direction: rtl; }
+
+/* ── MODE-AWARE DARK MODE OVERRIDES ── */
+body.dark-mode .lang-chip.active { border-color:var(--mode-secondary) !important; color:var(--mode-light) !important; }
+body.dark-mode .radio-pill.active { border-color:var(--mode-secondary) !important; color:var(--mode-light) !important; }
+
+/* ── QR SCANNER SQUARE VIEWFINDER ── */
+/* The qr-reader divs sit inside a square aspect-ratio container */
+#qr-reader, #qr-reader-free {
+  width:100%!important;
+}
+#qr-reader video, #qr-reader-free video {
+  width:100%!important;
+  height:100%!important;
+  object-fit:cover!important;
+}
+/* Hide html5-qrcode default UI clutter */
+#qr-reader img[alt="Info icon"],
+#qr-reader-free img[alt="Info icon"],
+#qr-reader__dashboard_section_csr,
+#qr-reader-free__dashboard_section_csr,
+#qr-reader__dashboard_section_fsr,
+#qr-reader-free__dashboard_section_fsr,
+#qr-reader__status_span,
+#qr-reader-free__status_span,
+#qr-reader__camera_permission_button,
+#qr-reader-free__camera_permission_button {
+  display:none!important;
+}
+/* Scan line animation */
+@keyframes scanLine {
+  0%   { top:15%; opacity:1; }
+  50%  { top:80%; opacity:1; }
+  100% { top:15%; opacity:1; }
+}
+
+/* ── IMAGE SEARCH VIEWFINDER STATES ── */
+/* Parent container of #qr-reader / #qr-reader-free gets these classes */
+@keyframes imgSearchPulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,.55); }
+  50%     { box-shadow: 0 0 0 8px rgba(16,185,129,.0); }
+}
+@keyframes imgSearchMatch {
+  0%   { box-shadow: 0 0 0 0 rgba(16,185,129,.9); }
+  100% { box-shadow: 0 0 0 14px rgba(16,185,129,.0); }
+}
+.img-search-scanning {
+  border-radius: var(--r, 12px);
+  animation: imgSearchPulse .9s ease-in-out infinite;
+  outline: 2.5px solid rgba(16,185,129,.7);
+}
+.img-search-matched {
+  border-radius: var(--r, 12px);
+  animation: imgSearchMatch .4s ease-out forwards;
+  outline: 3px solid #10b981;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   RESPONSIVE LAYER
+   ──────────────────────────────────────────────────────────────────
+   The screens themselves are already fluid — every one of them is a
+   flex column of `flex-shrink:0` chrome around a `flex:1` scroller —
+   so nothing below re-flows content. What it does is fit that column
+   to the device it is actually running on: the real visible height,
+   the notch and the home indicator, the on-screen keyboard, landscape,
+   and the narrow (320–360px) phones the 390px design was not drawn for.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── PHONES (<600px) — the app owns the whole device ────────────── */
+@media (max-width:599px){
+
+  /* The fake iOS status bar ("9:41", signal, wifi, battery) is a mockup
+     prop. On a real phone it sits directly beneath the *actual* status
+     bar, showing the same clock twice and costing ~34px of the screen —
+     which is a large slice of a 640px-tall viewport. Collapse it into
+     the safe-area spacer it should have been. It stays visible in the
+     desktop phone frame further down, where it still reads as a mockup. */
+  .sb{
+    padding:0!important;
+    height:max(var(--safe-t), 8px);
+    min-height:0;
+    overflow:hidden;
+    flex-shrink:0;
+  }
+  .sb > *{display:none!important}
+
+  /* Landscape notch: inset the whole shell rather than each screen — the
+     per-screen padding is inline, so a stylesheet rule could never win it.
+     Both insets are 0px in portrait and on every device without a notch. */
+  #app{
+    padding-left:var(--safe-l);
+    padding-right:var(--safe-r);
+  }
+
+}
+
+/* ── TOUCH INPUT — any device driven by a finger ─────────────────────
+   iOS zooms the whole page in when you focus a field whose text is under
+   16px, and it does not zoom back out afterwards — the single most likely
+   reason the app looked "not exact" and had to be pinch-zoomed out again.
+   16px is the documented fix. Keyed off pointer type rather than width,
+   because a phone in landscape is 844px wide and still has a keyboard,
+   and an iPad focus-zooms exactly like an iPhone. Pointer-driven browsers
+   keep the 13px design. */
+@media (pointer:coarse){
+  .fi,
+  input:not([type="radio"]):not([type="checkbox"]):not([type="file"]),
+  select,
+  textarea{
+    font-size:max(16px, calc(16px * var(--fs)))!important;
+  }
+  .fi{padding:12px}
+}
+/* The desktop preview frame is mouse-driven but stands in for a phone, so
+   match it below the phone breakpoint too. */
+@media (max-width:599px){
+  .fi,
+  input:not([type="radio"]):not([type="checkbox"]):not([type="file"]),
+  select,
+  textarea{
+    font-size:max(16px, calc(16px * var(--fs)))!important;
+  }
+  .fi{padding:12px}
+}
+
+/* ── NARROW PHONES (<=360px) — iPhone SE, Galaxy A0x, older Androids ─
+   The design is drawn on a 390px canvas. At 320–360px the 16px gutters
+   plus a two-up grid leave the cards cramped, so pull the gutters and
+   the grid gaps in a little. */
+@media (max-width:360px){
+  .sbody{
+    padding-left:calc(12px + var(--safe-l))!important;
+    padding-right:calc(12px + var(--safe-r))!important;
+  }
+  .hdr-content{padding-left:14px;padding-right:14px}
+  .fi-row{gap:8px}
+  .card-p{padding:12px 13px}
+  .ex-item{padding:10px;gap:10px}
+  .ex-ico{width:40px;height:40px}
+  .btn{padding:12px 16px}
+  .nl{font-size:calc(10px * var(--fs))}
+  .nscan{width:48px;height:48px}
+  .lang-chip{padding:6px 12px;font-size:calc(12px * var(--fs))}
+  .star{font-size:calc(28px * var(--fs))}
+  .stars{gap:4px}
+}
+
+/* ── LANDSCAPE PHONES — a 390px-tall viewport ───────────────────────
+   Reclaim every fixed row so the scroller still has something left. */
+@media (orientation:landscape) and (max-height:520px){
+  .sb{display:none!important}
+  .bnav{
+    height:calc(54px + var(--safe-b));
+    padding-bottom:calc(4px + var(--safe-b));
+  }
+  .ni .material-icons-round{font-size:20px}
+  .nl{font-size:calc(10px * var(--fs))}
+  .nscan{width:42px;height:42px}
+  .nscan .material-icons-round{font-size:20px}
+  .hdr-content{padding-top:6px;padding-bottom:12px}
+  .sheet{max-height:calc(var(--app-h) - 24px)}
+
+  /* Every scroller carries padding-bottom:90px inline, put there to clear a
+     bottom nav that is in fact its flex *sibling* — the scroller already stops
+     above it, so those 90px are dead space. Padding cannot shrink, so on a
+     390px-tall landscape viewport that dead space is what pushes the nav off
+     the bottom of the screen (Profile, whose header alone is 250px, was the
+     screen where it showed). Reclaim it while the screen is short. */
+  .sbody{padding-bottom:16px!important}
+
+  /* Profile's portrait header is 250px of avatar and badges — nearly two
+     thirds of a landscape screen. Tighten it so the content below is still
+     worth scrolling. */
+  #profile-header{padding-bottom:10px!important}
+}
+
+/* ── SOFT KEYBOARD OPEN ─────────────────────────────────────────────
+   Set by js/viewport.js. With the keyboard up, the visible viewport can
+   halve; the bottom nav is the first thing worth giving up so the field
+   being typed into stays on screen. */
+body.kb-open .bnav{display:none}
+body.kb-open #toast{bottom:16px}
+
+/* ── TABLETS & FOLDABLES (600–1023px) ───────────────────────────────
+   A 390px phone frame floating in the middle of an iPad is a mockup, not
+   an app. Run the real thing full height in a centred column instead. */
+@media (min-width:600px) and (max-width:1023px){
+  body{
+    display:flex;
+    align-items:stretch;
+    justify-content:center;
+    height:100%;
+    overflow:hidden;
+  }
+  #app{
+    width:min(520px, 100%);
+    max-width:520px;
+    height:var(--app-h);
+    box-shadow:0 0 60px rgba(0,0,0,.22);
+  }
+  /* Keep the fixed-position overlays inside the column. */
+  .sheet-overlay,
+  #loading{position:absolute}
+  #toast{position:absolute}
+  #pwa-install-sheet{position:absolute!important}
+}
+
+/* ── DESKTOP (>=1024px) — phone frame, for previewing the app ───────── */
+@media (min-width:1024px){
+  body{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px 20px;
+    height:auto;
+    min-height:100vh;
+    overflow:auto;
+  }
+  #app{
+    width:390px;
+    max-width:390px;
+    /* Was a flat 844px, which overflowed a 768px-tall laptop screen.
+       Fit the window and let the screens' own scrollers absorb the rest. */
+    height:min(844px, calc(100vh - 48px));
+    border-radius:44px;
+    box-shadow:0 8px 40px rgba(0,0,0,0.28), inset 0 0 0 2px rgba(255,255,255,0.15);
+    overflow:hidden;
+    flex-shrink:0;
+  }
+
+  /* Everything `position:fixed` — toast, sheets, spinner, install prompt —
+     escapes the frame and pins itself to the browser window instead. #app is
+     `position:relative`, so switching them to absolute puts them back inside
+     the phone where the preview expects them. */
+  .sheet-overlay,
+  #loading{position:absolute}
+  #toast{position:absolute;bottom:90px}
+  #pwa-install-sheet{position:absolute!important}
+}
+
+/* ── LARGE DESKTOP — a taller frame when the window can hold it ────── */
+@media (min-width:1024px) and (min-height:940px){
+  #app{height:844px}
+}
+
+/* ── REDUCED MOTION ─────────────────────────────────────────────────
+   The scan line, the sheet slide-up and the spinner all animate forever;
+   honour the OS switch that asks them not to. */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.01ms!important;
+    scroll-behavior:auto!important;
+  }
+  .spinner{animation:spin .7s linear infinite!important}
+}
+
+/* ── VIEWPORT DEBUG BADGE ───────────────────────────────────────────
+   Rendered by js/viewport.js only when the URL carries ?debug=1. Reports
+   what the device is actually giving the app, which is the thing you
+   cannot read off a phone screen any other way. */
+#vp-debug{
+  position:fixed;
+  top:0;
+  left:0;
+  z-index:99999;
+  background:rgba(0,0,0,.82);
+  color:#7BAE5A;
+  font:600 10px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+  padding:4px 8px;
+  border-radius:0 0 8px 0;
+  pointer-events:none;
+  white-space:pre;
+}
+
+/* ── AUTH: sign in / create account ── */
+.auth-tab{flex:1;padding:9px 10px;border:none;background:transparent;border-radius:9px;font-family:'Instrument Sans',sans-serif;font-size:calc(13px * var(--fs));font-weight:600;color:var(--tl);cursor:pointer;transition:all .15s}
+.auth-tab.active{background:var(--w);color:var(--mode-primary);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+
+/* Password field with a reveal button tucked inside */
+.pw-wrap{position:relative}
+.pw-wrap .fi{padding-right:42px}
+.pw-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;padding:6px;display:flex;align-items:center;color:var(--tl);cursor:pointer}
+.pw-toggle .material-icons-round{font-size:19px}
+
+/* Live password rule checklist */
+.pw-rule{display:flex;align-items:center;gap:7px;font-size:calc(11.5px * var(--fs));color:var(--tl);line-height:1.4}
+.pw-rule .material-icons-round{font-size:14px;flex-shrink:0}
+.pw-rule.ok{color:#15803D}
+.pw-rule.bad{color:var(--tl)}
+
+/* Pulsing dot on the "waiting for clearance" screen */
+.pending-dot{width:9px;height:9px;border-radius:50%;background:var(--mode-secondary);flex-shrink:0;animation:pendingPulse 1.4s ease-in-out infinite}
+.pending-dot.cleared{background:#16a34a;animation:none}
+@keyframes pendingPulse{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
+
+/* ── SHEETS THAT MAY OR MAY NOT FILL THE SCREEN ──────────────────────
+   The sign-in card and the "waiting for clearance" sheet carry a short form on
+   a tall phone. Stretched to fill (flex:1) they stranded ~250px of blank white
+   under the last button; centring the content instead just moved the gap above
+   it and left the tabs floating mid-screen.
+
+   So the sheet sizes to its content and sits on the bottom edge, letting the
+   green gradient own the space above it — the same bottom-sheet shape the
+   confirm step already uses. When the content IS taller than the room
+   available (Create Account, with its rule checklist), margin-top:auto has no
+   free space to claim, the sheet shrinks against min-height:0 and .sbody
+   scrolls it normally. */
+.sheet-bottom{flex:0 1 auto;margin-top:auto;min-height:0;max-height:100%}
