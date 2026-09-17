@@ -1,0 +1,11 @@
+Header always set ngrok-skip-browser-warning "true"
+Header always set Access-Control-Allow-Origin "*"
+Header always set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+Header always set Access-Control-Allow-Headers "Content-Type, ngrok-skip-browser-warning"
+
+# SECURITY: Block direct browser access to the auth/db.php include file.
+# This file is meant to be included by other PHP scripts only, not accessed via HTTP.
+<Files "db.php">
+    Order allow,deny
+    Deny from all
+</Files>

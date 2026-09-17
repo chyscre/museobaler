@@ -1,0 +1,57 @@
+<IfModule mod_rewrite.c>
+    <IfModule mod_negotiation.c>
+        Options -MultiViews -Indexes
+    </IfModule>
+
+    RewriteEngine On
+
+    # Handle Authorization Header
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Handle X-XSRF-Token Header
+    RewriteCond %{HTTP:x-xsrf-token} .
+    RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
+
+    # Redirect Trailing Slashes If Not A Folder...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} (.+)/$
+    RewriteRule ^ %1 [L,R=301]
+
+    # Send Requests To Front Controller...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+# SECURITY: Block access to PHP files inside auth/ directory from the web.
+# db.php is an include-only file — it should never be requested directly.
+# If accessed directly, it would expose DB connection logic or errors.
+<FilesMatch "^db\.php$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# SECURITY: Prevent access to .env and other sensitive files if they end up in public/
+<FilesMatch "(\.env|\.htpasswd|\.DS_Store)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# SECURITY: HTTP Strict Transport Security (HSTS)
+# Tells browsers to only connect via HTTPS for the next year.
+# Prevents protocol downgrade attacks and cookie hijacking over HTTP.
+# NOTE: Only enable this when your site has a valid SSL certificate.
+# <IfModule mod_headers.c>
+#     Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+# </IfModule>
+
+# SECURITY: Additional security headers as a fallback (also set in PHP middleware)
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    # SAMEORIGIN, not DENY: third-party sites still cannot frame this app, but
+    # DENY also blocked our own pages from embedding it — which is what
+    # visitor/preview.html does to show the app at several device sizes at once.
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>

@@ -1,0 +1,217 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Museo de Baler — Visitor App Sitemap</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#1a1f2e;font-family:'Segoe UI',Arial,sans-serif;padding:40px 30px 80px;}
+h1{text-align:center;font-size:14px;font-weight:600;color:#8ba7d4;margin-bottom:40px;}
+.wrap{position:relative;}
+svg{position:absolute;top:0;left:0;pointer-events:none;}
+
+/* boxes */
+.node{position:absolute;border-radius:5px;display:flex;align-items:center;justify-content:center;text-align:center;font-family:'Segoe UI',Arial,sans-serif;line-height:1.3;}
+</style>
+</head>
+<body>
+<h1>Museo de Baler — Guide App Sitemap</h1>
+<div class="wrap" id="wrap"><svg id="svg"></svg></div>
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+const RW=160, RH=38;   // root
+const BW=118, BH=34;   // branch header
+const CW=118, CH=30;   // child
+const SW=118, SH=24;   // spec
+const BRANCH_GAP = 16; // gap between branch columns
+const C_GAP = 10;      // vertical gap between children
+const S_GAP = 6;       // vertical gap between specs
+const SPEC_HOFFSET = 20; // horizontal gap: child right → spec left
+const ROOT_Y = 20;
+const BUS_Y  = ROOT_Y + RH + 48;
+const HEAD_Y = BUS_Y  + 32;
+const CHILD_START_Y = HEAD_Y + BH + 36;
+
+// ── Data ─────────────────────────────────────────────────────────────────────
+const BRANCHES = [
+  { label:'Home', children:[
+    { label:'Quick Access',    specs:['Featured exhibits','Scan shortcut'] },
+    { label:'Most Viewed',     specs:['Top 4 by scans','Locked preview'] },
+    { label:'Category',        specs:['Filter by type','History / Culture / Nature'] },
+    { label:'About Museum',    specs:['Museum story','Hours & address','Hall directory'] },
+  ]},
+  { label:'Exhibit', children:[
+    { label:'Browse All',      specs:['All active exhibits','Sort by storyline'] },
+    { label:'Exhibit Detail',  specs:['Title & description','Author & date','Category & hall'] },
+    { label:'Audio Guide',     specs:['EN / FIL audio','TTS fallback','Playback speed'] },
+    { label:'Gallery',         specs:['Multi-image view','Lightbox zoom'] },
+    { label:'Bookmark',        specs:['Save / unsave','Synced to profile'] },
+  ]},
+  { label:'Scan', children:[
+    { label:'Camera',             specs:['Live QR scan','Environment camera'] },
+    { label:'Image Recognition',  specs:['Point at exhibit','Google Vision API','Auto-load exhibit'] },
+    { label:'Manual Code',        specs:['Type exhibit code','Keyboard input'] },
+    { label:'Storyline Mode',     specs:['Guided path','Progress bar','Next exhibit hint'] },
+    { label:'Free Roam Mode',     specs:['Any scan order','No guided path'] },
+    { label:'Photo Upload',       specs:['Scan from image','Gallery picker'] },
+    { label:'Recent Scans',       specs:['Last scanned list','Quick re-open'] },
+  ]},
+  { label:'Map', children:[
+    { label:'Ground Floor',    specs:['Hall A, B, C','SVG interactive'] },
+    { label:'2nd Floor',       specs:['Hall D, E','SVG interactive'] },
+    { label:'Storyline Path',  specs:['Numbered steps','Scanned checkmarks','Next pulsing marker'] },
+    { label:'Location Mark',   specs:['Exhibit position','Floor indicator'] },
+    { label:'Hall Directory',  specs:['Hall name & desc','Floor assignment'] },
+    { label:'Geofence',        specs:['150m radius','Auto-trigger on open'] },
+    { label:'Auto Attendance', specs:['Once per day','Silent logging'] },
+  ]},
+  { label:'Profile', children:[
+    { label:'Settings',        specs:['Language EN/FIL/ES','Dark mode / Text size','Narration & speed','High contrast'] },
+    { label:'Story Progress',  specs:['Steps completed','Progress %'] },
+    { label:'Scanned History', specs:['All scanned exhibits','Sorted by time'] },
+    { label:'Bookmarks',       specs:['Saved exhibits','Remove bookmark'] },
+    { label:'Feedback',        specs:['1-5 star rating','Comment text'] },
+    { label:'AI Chatbot',      specs:['Ask about exhibits','OpenAI powered','Museum context aware'] },
+    { label:'Sign Out',        specs:['Clear session','Return to register'] },
+  ]},
+];
+
+// ── Layout ────────────────────────────────────────────────────────────────────
+// Each branch column = CW + SPEC_HOFFSET + SW
+const COL_W = CW + SPEC_HOFFSET + SW;
+
+// Branch x positions (left edge of child/spec area)
+const branchX = BRANCHES.map((_, i) => 30 + i * (COL_W + BRANCH_GAP));
+// Branch header centers
+const branchCx = branchX.map(x => x + COL_W / 2);
+
+// Canvas size
+const canvasW = 30 + BRANCHES.length * (COL_W + BRANCH_GAP) - BRANCH_GAP + 30;
+
+// Height: find tallest branch
+function childH(child) {
+  return Math.max(CH, child.specs.length * SH + (child.specs.length - 1) * S_GAP);
+}
+function branchTotalH(branch) {
+  return branch.children.reduce((sum, c, i) => sum + childH(c) + (i > 0 ? C_GAP : 0), 0);
+}
+const maxH     = Math.max(...BRANCHES.map(branchTotalH));
+const canvasH  = CHILD_START_Y + maxH + 60;
+
+// ── Render ────────────────────────────────────────────────────────────────────
+const wrap = document.getElementById('wrap');
+const svg  = document.getElementById('svg');
+wrap.style.width  = canvasW + 'px';
+wrap.style.height = canvasH + 'px';
+svg.setAttribute('width',  canvasW);
+svg.setAttribute('height', canvasH);
+
+// Arrow marker def
+const defs = `<defs>
+  <marker id="a1" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+    <path d="M0,0 L0,6 L8,3 z" fill="#4a72b0"/>
+  </marker>
+  <marker id="a2" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+    <path d="M0,0 L0,6 L8,3 z" fill="#2d5a9e"/>
+  </marker>
+</defs>`;
+svg.innerHTML = defs;
+
+function addLine(x1,y1,x2,y2,color,arrow) {
+  const l = document.createElementNS('http://www.w3.org/2000/svg','line');
+  l.setAttribute('x1',x1); l.setAttribute('y1',y1);
+  l.setAttribute('x2',x2); l.setAttribute('y2',y2);
+  l.setAttribute('stroke',color); l.setAttribute('stroke-width','1.5');
+  if(arrow) l.setAttribute('marker-end','url(#'+(color==="#4a72b0"?'a1':'a2')+')');
+  svg.appendChild(l);
+}
+
+function addBox(x,y,w,h,bg,border,color,text,fontSize,bold) {
+  const d = document.createElement('div');
+  d.className = 'node';
+  d.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;`+
+    `background:${bg};border:1.5px solid ${border};color:${color};`+
+    `font-size:${fontSize}px;font-weight:${bold?700:400};padding:0 6px;`;
+  d.textContent = text;
+  wrap.appendChild(d);
+}
+
+// Root
+const rootX = canvasW/2 - RW/2;
+addBox(rootX, ROOT_Y, RW, RH, '#2d4a7a','#6a9fd8','#c8daf5','Museo de Baler App',13,true);
+const rootCx = canvasW/2;
+
+// Trunk root → bus
+addLine(rootCx, ROOT_Y+RH, rootCx, BUS_Y, '#4a72b0', false);
+
+// Bus horizontal
+addLine(branchCx[0], BUS_Y, branchCx[branchCx.length-1], BUS_Y, '#4a72b0', false);
+
+BRANCHES.forEach((branch, bi) => {
+  const cx  = branchCx[bi];
+  const bx  = cx - BW/2;
+  const childLeft = branchX[bi]; // left edge of child boxes
+
+  // Bus → head (with arrow)
+  addLine(cx, BUS_Y, cx, HEAD_Y, '#4a72b0', true);
+
+  // Branch header
+  addBox(bx, HEAD_Y, BW, BH, '#2d4a7a','#4a72b0','#c8daf5', branch.label, 12, true);
+
+  // Vertical line from header bottom to first child midY
+  let curY = CHILD_START_Y;
+  const firstMY = curY + CH/2;
+  addLine(cx, HEAD_Y+BH, cx, firstMY, '#4a72b0', false);
+  // Horizontal to rail
+  const railX = childLeft - 8;
+  addLine(cx, firstMY, railX, firstMY, '#4a72b0', false);
+
+  // Rail vertical (draw after computing all children)
+  const childMidYs = [];
+
+  branch.children.forEach((child, ci) => {
+    const ch  = childH(child);
+    const cmy = curY + CH/2;
+    childMidYs.push(cmy);
+
+    // Rail → child (arrow)
+    addLine(railX, cmy, childLeft, cmy, '#4a72b0', true);
+
+    // Child box
+    addBox(childLeft, curY, CW, CH, '#2d4a7a','#4a72b0','#c8daf5', child.label, 11, false);
+
+    // Specs
+    const specLeft  = childLeft + CW + SPEC_HOFFSET;
+    const specRailX = specLeft - 8;
+
+    // child right → first spec (horizontal, same Y as child mid)
+    addLine(childLeft+CW, cmy, specLeft, cmy, '#2d5a9e', true);
+
+    // Spec rail vertical (from first spec mid down to last spec mid)
+    if (child.specs.length > 1) {
+      const lastSMY = cmy + (child.specs.length-1)*(SH+S_GAP);
+      addLine(specRailX, cmy, specRailX, lastSMY, '#2d5a9e', false);
+    }
+
+    child.specs.forEach((sp, si) => {
+      // Each spec box starts at: cmy - SH/2 + si*(SH+S_GAP)
+      const sy  = cmy - SH/2 + si*(SH+S_GAP);
+      const smy = sy + SH/2;
+      if (si > 0) addLine(specRailX, smy, specLeft, smy, '#2d5a9e', true);
+      addBox(specLeft, sy, SW, SH, '#172840','#2d5a9e','#7aa3d4', sp, 10, false);
+    });
+
+    curY += ch + C_GAP;
+  });
+
+  // Draw vertical rail for children
+  if (childMidYs.length > 1) {
+    addLine(railX, childMidYs[0], railX, childMidYs[childMidYs.length-1], '#4a72b0', false);
+  }
+});
+</script>
+<div style="text-align:center;margin-top:24px;font-size:11px;color:#4a72b0;">
+  Museo de Baler · Guide App Sitemap · All Features & Specifications
+</div>
+</body>
+</html>

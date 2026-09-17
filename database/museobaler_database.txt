@@ -1,0 +1,876 @@
+==============================================================================
+ MUSEOBALER MUSEUM SYSTEM - DATABASE SCHEMA
+ Source: MySQL database `museobaler` (live dump, generated 2026-09-16 14:38)
+ Purpose: reference for ERD, DFD, use-case and other system diagrams
+ Note: Laravel framework tables (jobs, failed_jobs, job_batches, cache, cache_locks,
+       sessions, password_reset_tokens, users, migrations) are excluded - they are not
+       part of the museum system. Staff and visitor logins use the staff/visitors tables.
+==============================================================================
+
+CONTENTS
+  1. Table inventory (with row counts)
+  2. Table-by-table column reference
+  3. Foreign key relationships (ERD edges)
+  4. Relationship summary (cardinality)
+  5. Raw CREATE TABLE statements (DDL)
+
+==============================================================================
+ 1. TABLE INVENTORY
+==============================================================================
+
+  [VISITORS & ATTENDANCE]
+    visitors                      29 columns        6 rows
+    visit_groups                  19 columns        0 rows
+    attendances                   12 columns       12 rows
+    attendance_corrections        14 columns        0 rows
+    scans                          8 columns        7 rows
+    tours                         12 columns        0 rows
+    bookmarks                      5 columns        0 rows
+
+  [STAFF]
+    staff                         11 columns        4 rows
+    staff_attendances             15 columns        1 rows
+    staff_attendance_days          5 columns        4 rows
+    staff_schedules                9 columns       21 rows
+
+  [MUSEUM CONTENT]
+    exhibits                      18 columns        9 rows
+    exhibit_images                 7 columns        6 rows
+    exhibit_translations          10 columns        6 rows
+    exhibit_training_images        5 columns        0 rows
+    categories                     5 columns       12 rows
+    museum_halls                   8 columns       10 rows
+    museum_info                   17 columns        1 rows
+
+  [ENGAGEMENT & LOGGING]
+    feedback                      14 columns        2 rows
+    notifications                  7 columns        4 rows
+    logs                           9 columns       70 rows
+
+==============================================================================
+ 2. TABLE-BY-TABLE COLUMN REFERENCE
+==============================================================================
+
+##########  VISITORS & ATTENDANCE  ##########
+
+VISITORS
+------------------------------------------------------------------------------
+  visitor_id                 bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  group_id                   bigint unsigned                    nullable, FK -> visit_groups.group_id (on delete SET NULL)
+  first_name                 varchar(255)                       NOT NULL
+  last_name                  varchar(255)                       NOT NULL
+  middle_name                varchar(255)                       nullable
+  age                        int                                nullable
+  sex                        enum('Male','Female','Other','Prefer not to say')
+                                                                nullable
+  visitor_type               enum('Local','Tourist','Foreign')  NOT NULL, default Local
+  admission_fee              decimal(8,2)                       NOT NULL, default 0.00
+  payment_status             enum('Free','Unpaid','Paid')       NOT NULL, default Free
+  paid_at                    timestamp                          nullable
+  id_verified                tinyint(1)                         NOT NULL, default 0
+  verified_at                timestamp                          nullable
+  verified_by                varchar(255)                       nullable
+  visit_type                 enum('Solo','Group','School','Family','Walk-in')
+                                                                NOT NULL, default Solo
+  city                       varchar(255)                       nullable
+  province                   varchar(255)                       nullable
+  country                    varchar(255)                       nullable, default Philippines
+  email                      varchar(255)                       nullable
+  password                   varchar(255)                       nullable
+  api_token                  varchar(64)                        nullable
+  token_expires_at           timestamp                          nullable
+  auth_provider              varchar(255)                       NOT NULL, default manual
+  source                     enum('app','kiosk','desk','recovered')
+                                                                NOT NULL, default app
+  registered_by              bigint unsigned                    nullable
+  explore_mode               varchar(255)                       NOT NULL, default Storyline
+  last_visit                 timestamp                          nullable
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+  Indexes:
+    visitors_api_token_index                 (api_token)
+    visitors_created_at_index                (created_at)
+    visitors_group_id_foreign                (group_id)
+
+VISIT_GROUPS
+------------------------------------------------------------------------------
+  group_id                   bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  group_name                 varchar(255)                       nullable
+  group_type                 enum('Family','Group','School','Tour')
+                                                                NOT NULL, default Group
+  contact_name               varchar(255)                       nullable
+  contact_phone              varchar(255)                       nullable
+  visitor_type               enum('Local','Tourist','Foreign')  NOT NULL, default Tourist
+  city                       varchar(255)                       nullable
+  province                   varchar(255)                       nullable
+  country                    varchar(255)                       nullable, default Philippines
+  headcount                  int unsigned                       NOT NULL, default 1
+  paying_count               int unsigned                       NOT NULL, default 0
+  total_fee                  decimal(10,2)                      NOT NULL, default 0.00
+  payment_status             enum('Free','Unpaid','Paid')       NOT NULL, default Unpaid
+  paid_at                    timestamp                          nullable
+  visit_date                 date                               NOT NULL
+  registered_by              bigint unsigned                    nullable
+  notes                      text                               nullable
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+  Indexes:
+    visit_groups_payment_status_index        (payment_status)
+    visit_groups_visit_date_index            (visit_date)
+
+ATTENDANCES
+------------------------------------------------------------------------------
+  attendance_id              bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  visitor_id                 bigint unsigned                    nullable, FK -> visitors.visitor_id (on delete SET NULL)
+  visitor_name               varchar(255)                       nullable
+  latitude                   decimal(10,7)                      nullable
+  longitude                  decimal(10,7)                      nullable
+  accuracy                   int                                nullable
+  method                     varchar(255)                       NOT NULL, default geofence
+  visit_date                 date                               NOT NULL
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+  exited_at                  timestamp                          nullable
+  duration_mins              int                                nullable
+  Indexes:
+    attendances_visitor_id_visit_date_unique (visitor_id,visit_date)  UNIQUE
+
+ATTENDANCE_CORRECTIONS
+------------------------------------------------------------------------------
+  correction_id              bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  staff_id                   bigint unsigned                    NOT NULL, FK -> staff.staff_id (on delete CASCADE)
+  work_date                  date                               NOT NULL
+  type                       enum('in','out')                   NOT NULL
+  requested_time             time                               NOT NULL
+  reason                     text                               NOT NULL
+  requested_by               bigint unsigned                    NOT NULL
+  requested_at               timestamp                          NOT NULL, default CURRENT_TIMESTAMP
+  status                     enum('Pending','Approved','Rejected')
+                                                                NOT NULL, default Pending
+  reviewed_by                bigint unsigned                    nullable
+  reviewed_at                timestamp                          nullable
+  review_note                text                               nullable
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+  Indexes:
+    attendance_corrections_staff_id_foreign  (staff_id)
+    attendance_corrections_status_work_date_index (status,work_date)
+
+SCANS
+------------------------------------------------------------------------------
+  scan_id                    bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  exhibit_id                 bigint unsigned                    NOT NULL, FK -> exhibits.exhibit_id (on delete CASCADE)
+  visitor_id                 bigint unsigned                    nullable, FK -> visitors.visitor_id (on delete SET NULL)
+  language_code              varchar(10)                        nullable
+  scan_type                  enum('qr','image')                 nullable
+  scanned_at                 timestamp                          NOT NULL, default CURRENT_TIMESTAMP
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+  Indexes:
+    scans_exhibit_id_foreign                 (exhibit_id)
+    scans_visitor_id_foreign                 (visitor_id)
+
+TOURS
+------------------------------------------------------------------------------
+  tour_id                    bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  guide_staff_id             bigint unsigned                    nullable, FK -> staff.staff_id (on delete SET NULL)
+  tour_type                  enum('Requested','Foreign','Educational')
+                                                                NOT NULL
+  visitor_id                 bigint unsigned                    nullable, FK -> visitors.visitor_id (on delete SET NULL)
+  group_id                   bigint unsigned                    nullable, FK -> visit_groups.group_id (on delete SET NULL)
+  headcount                  int unsigned                       NOT NULL, default 1
+  started_at                 timestamp                          nullable
+  ended_at                   timestamp                          nullable
+  notes                      text                               nullable
+  created_by                 bigint unsigned                    nullable
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+  Indexes:
+    tours_group_id_foreign                   (group_id)
+    tours_guide_staff_id_foreign             (guide_staff_id)
+    tours_started_at_index                   (started_at)
+    tours_visitor_id_foreign                 (visitor_id)
+
+BOOKMARKS
+------------------------------------------------------------------------------
+  bookmark_id                bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  visitor_id                 bigint unsigned                    NOT NULL, FK -> visitors.visitor_id (on delete CASCADE)
+  exhibit_id                 bigint unsigned                    NOT NULL, FK -> exhibits.exhibit_id (on delete CASCADE)
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+  Indexes:
+    bookmarks_exhibit_id_foreign             (exhibit_id)
+    bookmarks_visitor_id_exhibit_id_unique   (visitor_id,exhibit_id)  UNIQUE
+
+##########  STAFF  ##########
+
+STAFF
+------------------------------------------------------------------------------
+  staff_id                   bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  name                       varchar(255)                       NOT NULL
+  email                      varchar(255)                       UNIQUE, NOT NULL
+  password                   varchar(255)                       NOT NULL
+  must_change_password       tinyint(1)                         NOT NULL, default 0
+  password_changed_at        timestamp                          nullable
+  role                       enum('TourismHead','Administrator')
+                                                                NOT NULL, default Administrator
+  status                     tinyint(1)                         NOT NULL, default 1
+  remember_token             varchar(100)                       nullable
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+  Indexes:
+    staff_email_unique                       (email)  UNIQUE
+
+STAFF_ATTENDANCES
+------------------------------------------------------------------------------
+  staff_attendance_id        bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  staff_id                   bigint unsigned                    NOT NULL, FK -> staff.staff_id (on delete CASCADE)
+  work_date                  date                               NOT NULL
+  type                       enum('in','out')                   NOT NULL
+  scanned_at                 timestamp                          NOT NULL, default CURRENT_TIMESTAMP
+  latitude                   decimal(10,7)                      nullable
+  longitude                  decimal(10,7)                      nullable
+  accuracy                   int                                nullable
+  distance_m                 int                                nullable
+  method                     enum('qr','manual')                NOT NULL, default qr
+  recorded_by                bigint unsigned                    nullable
+  ip_address                 varchar(255)                       nullable
+  user_agent                 varchar(512)                       nullable
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+  Indexes:
+    staff_attendances_staff_id_work_date_type_unique (staff_id,work_date,type)  UNIQUE
+    staff_attendances_work_date_index        (work_date)
+
+STAFF_ATTENDANCE_DAYS
+------------------------------------------------------------------------------
+  work_date                  date                               PRIMARY KEY, NOT NULL
+  day_secret                 varchar(64)                        NOT NULL
+  opened_by                  bigint unsigned                    nullable
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+
+STAFF_SCHEDULES
+------------------------------------------------------------------------------
+  schedule_id                bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  staff_id                   bigint unsigned                    NOT NULL, FK -> staff.staff_id (on delete CASCADE)
+  weekday                    tinyint unsigned                   NOT NULL
+  shift_start                time                               NOT NULL
+  shift_end                  time                               NOT NULL
+  grace_minutes              smallint unsigned                  NOT NULL, default 15
+  is_rest_day                tinyint(1)                         NOT NULL, default 0
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+  Indexes:
+    staff_schedules_staff_id_weekday_unique  (staff_id,weekday)  UNIQUE
+
+##########  MUSEUM CONTENT  ##########
+
+EXHIBITS
+------------------------------------------------------------------------------
+  exhibit_id                 bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  exhibit_code               varchar(255)                       UNIQUE, NOT NULL
+  name                       varchar(255)                       NOT NULL
+  description                text                               nullable
+  fun_facts                  text                               nullable
+  category_id                bigint unsigned                    nullable, FK -> categories.category_id (on delete SET NULL)
+  floor                      enum('Ground Floor','2nd Floor')   NOT NULL, default Ground Floor
+  hall                       enum('Hall A','Hall B','Hall C','Hall D','Hall E')
+                                                                nullable
+  authors                    varchar(255)                       nullable
+  languages                  varchar(255)                       NOT NULL, default Filipino,English
+  source_language            varchar(10)                        NOT NULL, default en
+  storyline_order            int                                NOT NULL, default 0
+  image                      varchar(255)                       nullable
+  qr_file                    varchar(255)                       nullable
+  status                     tinyint(1)                         NOT NULL, default 1
+  date_published             date                               nullable
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+  Indexes:
+    exhibits_category_id_foreign             (category_id)
+    exhibits_exhibit_code_unique             (exhibit_code)  UNIQUE
+
+EXHIBIT_IMAGES
+------------------------------------------------------------------------------
+  image_id                   bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  exhibit_id                 bigint unsigned                    NOT NULL, FK -> exhibits.exhibit_id (on delete CASCADE)
+  filename                   varchar(255)                       NOT NULL
+  caption                    varchar(255)                       nullable
+  sort_order                 int                                NOT NULL, default 0
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+  Indexes:
+    exhibit_images_exhibit_id_foreign        (exhibit_id)
+
+EXHIBIT_TRANSLATIONS
+------------------------------------------------------------------------------
+  translation_id             bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  exhibit_id                 bigint unsigned                    NOT NULL, FK -> exhibits.exhibit_id (on delete CASCADE)
+  language_code              varchar(10)                        NOT NULL
+  language_label             varchar(255)                       NOT NULL
+  title                      varchar(255)                       nullable
+  description                text                               nullable
+  fun_facts                  text                               nullable
+  audio_file                 varchar(255)                       nullable
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+  Indexes:
+    exhibit_translations_exhibit_id_language_code_unique (exhibit_id,language_code)  UNIQUE
+
+EXHIBIT_TRAINING_IMAGES
+------------------------------------------------------------------------------
+  training_image_id          bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  exhibit_id                 bigint unsigned                    nullable, FK -> exhibits.exhibit_id (on delete CASCADE)
+  filename                   varchar(255)                       NOT NULL
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+  Indexes:
+    exhibit_training_images_exhibit_id_foreign (exhibit_id)
+
+CATEGORIES
+------------------------------------------------------------------------------
+  category_id                bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  name                       varchar(255)                       NOT NULL
+  description                text                               nullable
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+
+MUSEUM_HALLS
+------------------------------------------------------------------------------
+  hall_id                    bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  name                       varchar(255)                       NOT NULL
+  floor                      varchar(255)                       nullable
+  description                varchar(255)                       nullable
+  icon                       varchar(255)                       nullable
+  sort_order                 int                                NOT NULL, default 0
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+
+MUSEUM_INFO
+------------------------------------------------------------------------------
+  info_id                    bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  name                       varchar(255)                       NOT NULL, default Museo de Baler
+  tagline                    varchar(255)                       nullable
+  story                      text                               nullable
+  story2                     text                               nullable
+  address                    varchar(255)                       nullable
+  hours                      varchar(255)                       nullable
+  closed_on                  varchar(255)                       nullable
+  phone                      varchar(255)                       nullable
+  email                      varchar(255)                       nullable
+  admission_fee              decimal(8,2)                       NOT NULL, default 50.00
+  admission                  varchar(255)                       nullable
+  latitude                   decimal(10,7)                      nullable
+  longitude                  decimal(10,7)                      nullable
+  geofence_radius_m          int                                NOT NULL, default 150
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+
+##########  ENGAGEMENT & LOGGING  ##########
+
+FEEDBACK
+------------------------------------------------------------------------------
+  feedback_id                bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  visitor_id                 bigint unsigned                    nullable, FK -> visitors.visitor_id (on delete SET NULL)
+  tour_id                    bigint unsigned                    nullable, FK -> tours.tour_id (on delete SET NULL)
+  staff_id                   bigint unsigned                    nullable
+  first_name                 varchar(255)                       nullable
+  last_name                  varchar(255)                       nullable
+  middle_name                varchar(255)                       nullable
+  rating                     tinyint                            NOT NULL, default 5
+  guide_rating               tinyint                            nullable
+  attributed_by              enum('none','visitor','duty')      NOT NULL, default none
+  comment                    text                               nullable
+  submitted_at               timestamp                          NOT NULL, default CURRENT_TIMESTAMP
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+  Indexes:
+    feedback_staff_id_index                  (staff_id)
+    feedback_tour_id_foreign                 (tour_id)
+    feedback_visitor_id_foreign              (visitor_id)
+
+NOTIFICATIONS
+------------------------------------------------------------------------------
+  notif_id                   bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  title                      varchar(255)                       NOT NULL
+  body                       text                               nullable
+  type                       varchar(255)                       NOT NULL, default info
+  is_active                  tinyint(1)                         NOT NULL, default 1
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+
+LOGS
+------------------------------------------------------------------------------
+  log_id                     bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  user_id                    bigint unsigned                    nullable
+  user_name                  varchar(255)                       nullable
+  role                       varchar(255)                       nullable
+  action                     varchar(255)                       NOT NULL
+  details                    text                               nullable
+  ip_address                 varchar(255)                       nullable
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+
+==============================================================================
+ 3. FOREIGN KEY RELATIONSHIPS (ERD EDGES)
+==============================================================================
+  CHILD TABLE                COLUMN                        PARENT TABLE.COLUMN        ON DELETE      ON UPDATE
+  --------------------------------------------------------------------------------------------------------------
+  attendance_corrections     staff_id                  ->  staff.staff_id             CASCADE        NO ACTION
+  attendances                visitor_id                ->  visitors.visitor_id        SET NULL       NO ACTION
+  bookmarks                  exhibit_id                ->  exhibits.exhibit_id        CASCADE        NO ACTION
+  bookmarks                  visitor_id                ->  visitors.visitor_id        CASCADE        NO ACTION
+  exhibit_images             exhibit_id                ->  exhibits.exhibit_id        CASCADE        NO ACTION
+  exhibit_training_images    exhibit_id                ->  exhibits.exhibit_id        CASCADE        NO ACTION
+  exhibit_translations       exhibit_id                ->  exhibits.exhibit_id        CASCADE        NO ACTION
+  exhibits                   category_id               ->  categories.category_id     SET NULL       NO ACTION
+  feedback                   tour_id                   ->  tours.tour_id              SET NULL       NO ACTION
+  feedback                   visitor_id                ->  visitors.visitor_id        SET NULL       NO ACTION
+  scans                      exhibit_id                ->  exhibits.exhibit_id        CASCADE        NO ACTION
+  scans                      visitor_id                ->  visitors.visitor_id        SET NULL       NO ACTION
+  staff_attendances          staff_id                  ->  staff.staff_id             CASCADE        NO ACTION
+  staff_schedules            staff_id                  ->  staff.staff_id             CASCADE        NO ACTION
+  tours                      group_id                  ->  visit_groups.group_id      SET NULL       NO ACTION
+  tours                      guide_staff_id            ->  staff.staff_id             SET NULL       NO ACTION
+  tours                      visitor_id                ->  visitors.visitor_id        SET NULL       NO ACTION
+  visitors                   group_id                  ->  visit_groups.group_id      SET NULL       NO ACTION
+
+==============================================================================
+ 4. RELATIONSHIP SUMMARY (for ERD cardinality)
+==============================================================================
+  Notation:  PARENT  --<  child.column   = one PARENT row has many child rows
+             PARENT  ---  child.column   = one-to-one (child column is UNIQUE)
+
+  CATEGORIES
+    --< exhibits.category_id                     one-to-many, optional (nullable FK)
+
+  EXHIBITS
+    --< bookmarks.exhibit_id                     one-to-many, mandatory (NOT NULL FK)
+    --< exhibit_images.exhibit_id                one-to-many, mandatory (NOT NULL FK)
+    --< exhibit_training_images.exhibit_id       one-to-many, optional (nullable FK)
+    --< exhibit_translations.exhibit_id          one-to-many, mandatory (NOT NULL FK)
+    --< scans.exhibit_id                         one-to-many, mandatory (NOT NULL FK)
+
+  STAFF
+    --< attendance_corrections.staff_id          one-to-many, mandatory (NOT NULL FK)
+    --< staff_attendances.staff_id               one-to-many, mandatory (NOT NULL FK)
+    --< staff_schedules.staff_id                 one-to-many, mandatory (NOT NULL FK)
+    --< tours.guide_staff_id                     one-to-many, optional (nullable FK)
+
+  TOURS
+    --< feedback.tour_id                         one-to-many, optional (nullable FK)
+
+  VISIT_GROUPS
+    --< tours.group_id                           one-to-many, optional (nullable FK)
+    --< visitors.group_id                        one-to-many, optional (nullable FK)
+
+  VISITORS
+    --< attendances.visitor_id                   one-to-many, optional (nullable FK)
+    --< bookmarks.visitor_id                     one-to-many, mandatory (NOT NULL FK)
+    --< feedback.visitor_id                      one-to-many, optional (nullable FK)
+    --< scans.visitor_id                         one-to-many, optional (nullable FK)
+    --< tours.visitor_id                         one-to-many, optional (nullable FK)
+
+  Tables with no foreign keys (standalone):
+    - logs
+    - museum_halls
+    - museum_info
+    - notifications
+    - staff_attendance_days
+
+==============================================================================
+ 5. RAW CREATE TABLE STATEMENTS (DDL)
+==============================================================================
+
+-- attendance_corrections
+CREATE TABLE `attendance_corrections` (
+  `correction_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `staff_id` bigint unsigned NOT NULL,
+  `work_date` date NOT NULL,
+  `type` enum('in','out') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `requested_time` time NOT NULL,
+  `reason` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `requested_by` bigint unsigned NOT NULL,
+  `requested_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `status` enum('Pending','Approved','Rejected') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Pending',
+  `reviewed_by` bigint unsigned DEFAULT NULL,
+  `reviewed_at` timestamp NULL DEFAULT NULL,
+  `review_note` text COLLATE utf8mb4_unicode_ci,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`correction_id`),
+  KEY `attendance_corrections_staff_id_foreign` (`staff_id`),
+  KEY `attendance_corrections_status_work_date_index` (`status`,`work_date`),
+  CONSTRAINT `attendance_corrections_staff_id_foreign` FOREIGN KEY (`staff_id`) REFERENCES `staff` (`staff_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- attendances
+CREATE TABLE `attendances` (
+  `attendance_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `visitor_id` bigint unsigned DEFAULT NULL,
+  `visitor_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `latitude` decimal(10,7) DEFAULT NULL,
+  `longitude` decimal(10,7) DEFAULT NULL,
+  `accuracy` int DEFAULT NULL,
+  `method` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'geofence',
+  `visit_date` date NOT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  `exited_at` timestamp NULL DEFAULT NULL,
+  `duration_mins` int DEFAULT NULL,
+  PRIMARY KEY (`attendance_id`),
+  UNIQUE KEY `attendances_visitor_id_visit_date_unique` (`visitor_id`,`visit_date`),
+  CONSTRAINT `attendances_visitor_id_foreign` FOREIGN KEY (`visitor_id`) REFERENCES `visitors` (`visitor_id`) ON DELETE SET NULL
+) ENGINE=InnoDB AUTO_INCREMENT=24 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- bookmarks
+CREATE TABLE `bookmarks` (
+  `bookmark_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `visitor_id` bigint unsigned NOT NULL,
+  `exhibit_id` bigint unsigned NOT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`bookmark_id`),
+  UNIQUE KEY `bookmarks_visitor_id_exhibit_id_unique` (`visitor_id`,`exhibit_id`),
+  KEY `bookmarks_exhibit_id_foreign` (`exhibit_id`),
+  CONSTRAINT `bookmarks_exhibit_id_foreign` FOREIGN KEY (`exhibit_id`) REFERENCES `exhibits` (`exhibit_id`) ON DELETE CASCADE,
+  CONSTRAINT `bookmarks_visitor_id_foreign` FOREIGN KEY (`visitor_id`) REFERENCES `visitors` (`visitor_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- categories
+CREATE TABLE `categories` (
+  `category_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `description` text COLLATE utf8mb4_unicode_ci,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`category_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- exhibit_images
+CREATE TABLE `exhibit_images` (
+  `image_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `exhibit_id` bigint unsigned NOT NULL,
+  `filename` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `caption` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `sort_order` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`image_id`),
+  KEY `exhibit_images_exhibit_id_foreign` (`exhibit_id`),
+  CONSTRAINT `exhibit_images_exhibit_id_foreign` FOREIGN KEY (`exhibit_id`) REFERENCES `exhibits` (`exhibit_id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- exhibit_training_images
+CREATE TABLE `exhibit_training_images` (
+  `training_image_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `exhibit_id` bigint unsigned DEFAULT NULL,
+  `filename` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`training_image_id`),
+  KEY `exhibit_training_images_exhibit_id_foreign` (`exhibit_id`),
+  CONSTRAINT `exhibit_training_images_exhibit_id_foreign` FOREIGN KEY (`exhibit_id`) REFERENCES `exhibits` (`exhibit_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- exhibit_translations
+CREATE TABLE `exhibit_translations` (
+  `translation_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `exhibit_id` bigint unsigned NOT NULL,
+  `language_code` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `language_label` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `title` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `description` text COLLATE utf8mb4_unicode_ci,
+  `fun_facts` text COLLATE utf8mb4_unicode_ci,
+  `audio_file` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`translation_id`),
+  UNIQUE KEY `exhibit_translations_exhibit_id_language_code_unique` (`exhibit_id`,`language_code`),
+  CONSTRAINT `exhibit_translations_exhibit_id_foreign` FOREIGN KEY (`exhibit_id`) REFERENCES `exhibits` (`exhibit_id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- exhibits
+CREATE TABLE `exhibits` (
+  `exhibit_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `exhibit_code` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `description` text COLLATE utf8mb4_unicode_ci,
+  `fun_facts` text COLLATE utf8mb4_unicode_ci,
+  `category_id` bigint unsigned DEFAULT NULL,
+  `floor` enum('Ground Floor','2nd Floor') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Ground Floor',
+  `hall` enum('Hall A','Hall B','Hall C','Hall D','Hall E') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `authors` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `languages` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Filipino,English',
+  `source_language` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'en',
+  `storyline_order` int NOT NULL DEFAULT '0',
+  `image` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `qr_file` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `status` tinyint(1) NOT NULL DEFAULT '1',
+  `date_published` date DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`exhibit_id`),
+  UNIQUE KEY `exhibits_exhibit_code_unique` (`exhibit_code`),
+  KEY `exhibits_category_id_foreign` (`category_id`),
+  CONSTRAINT `exhibits_category_id_foreign` FOREIGN KEY (`category_id`) REFERENCES `categories` (`category_id`) ON DELETE SET NULL
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- feedback
+CREATE TABLE `feedback` (
+  `feedback_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `visitor_id` bigint unsigned DEFAULT NULL,
+  `tour_id` bigint unsigned DEFAULT NULL,
+  `staff_id` bigint unsigned DEFAULT NULL,
+  `first_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `last_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `middle_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `rating` tinyint NOT NULL DEFAULT '5',
+  `guide_rating` tinyint DEFAULT NULL,
+  `attributed_by` enum('none','visitor','duty') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'none',
+  `comment` text COLLATE utf8mb4_unicode_ci,
+  `submitted_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`feedback_id`),
+  KEY `feedback_visitor_id_foreign` (`visitor_id`),
+  KEY `feedback_tour_id_foreign` (`tour_id`),
+  KEY `feedback_staff_id_index` (`staff_id`),
+  CONSTRAINT `feedback_tour_id_foreign` FOREIGN KEY (`tour_id`) REFERENCES `tours` (`tour_id`) ON DELETE SET NULL,
+  CONSTRAINT `feedback_visitor_id_foreign` FOREIGN KEY (`visitor_id`) REFERENCES `visitors` (`visitor_id`) ON DELETE SET NULL
+) ENGINE=InnoDB AUTO_INCREMENT=120 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- logs
+CREATE TABLE `logs` (
+  `log_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` bigint unsigned DEFAULT NULL,
+  `user_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `role` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `action` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `details` text COLLATE utf8mb4_unicode_ci,
+  `ip_address` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`log_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=122 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- museum_halls
+CREATE TABLE `museum_halls` (
+  `hall_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `floor` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `description` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `icon` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `sort_order` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`hall_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- museum_info
+CREATE TABLE `museum_info` (
+  `info_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Museo de Baler',
+  `tagline` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `story` text COLLATE utf8mb4_unicode_ci,
+  `story2` text COLLATE utf8mb4_unicode_ci,
+  `address` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `hours` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `closed_on` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `phone` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `email` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `admission_fee` decimal(8,2) NOT NULL DEFAULT '50.00',
+  `admission` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `latitude` decimal(10,7) DEFAULT NULL,
+  `longitude` decimal(10,7) DEFAULT NULL,
+  `geofence_radius_m` int NOT NULL DEFAULT '150',
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`info_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- notifications
+CREATE TABLE `notifications` (
+  `notif_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `title` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `body` text COLLATE utf8mb4_unicode_ci,
+  `type` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'info',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`notif_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- scans
+CREATE TABLE `scans` (
+  `scan_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `exhibit_id` bigint unsigned NOT NULL,
+  `visitor_id` bigint unsigned DEFAULT NULL,
+  `language_code` varchar(10) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `scan_type` enum('qr','image') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `scanned_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`scan_id`),
+  KEY `scans_exhibit_id_foreign` (`exhibit_id`),
+  KEY `scans_visitor_id_foreign` (`visitor_id`),
+  CONSTRAINT `scans_exhibit_id_foreign` FOREIGN KEY (`exhibit_id`) REFERENCES `exhibits` (`exhibit_id`) ON DELETE CASCADE,
+  CONSTRAINT `scans_visitor_id_foreign` FOREIGN KEY (`visitor_id`) REFERENCES `visitors` (`visitor_id`) ON DELETE SET NULL
+) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- staff
+CREATE TABLE `staff` (
+  `staff_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `email` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `password` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `must_change_password` tinyint(1) NOT NULL DEFAULT '0',
+  `password_changed_at` timestamp NULL DEFAULT NULL,
+  `role` enum('TourismHead','Administrator') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Administrator',
+  `status` tinyint(1) NOT NULL DEFAULT '1',
+  `remember_token` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`staff_id`),
+  UNIQUE KEY `staff_email_unique` (`email`)
+) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- staff_attendance_days
+CREATE TABLE `staff_attendance_days` (
+  `work_date` date NOT NULL,
+  `day_secret` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `opened_by` bigint unsigned DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`work_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- staff_attendances
+CREATE TABLE `staff_attendances` (
+  `staff_attendance_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `staff_id` bigint unsigned NOT NULL,
+  `work_date` date NOT NULL,
+  `type` enum('in','out') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `scanned_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `latitude` decimal(10,7) DEFAULT NULL,
+  `longitude` decimal(10,7) DEFAULT NULL,
+  `accuracy` int DEFAULT NULL,
+  `distance_m` int DEFAULT NULL,
+  `method` enum('qr','manual') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'qr',
+  `recorded_by` bigint unsigned DEFAULT NULL,
+  `ip_address` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `user_agent` varchar(512) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`staff_attendance_id`),
+  UNIQUE KEY `staff_attendances_staff_id_work_date_type_unique` (`staff_id`,`work_date`,`type`),
+  KEY `staff_attendances_work_date_index` (`work_date`),
+  CONSTRAINT `staff_attendances_staff_id_foreign` FOREIGN KEY (`staff_id`) REFERENCES `staff` (`staff_id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=432 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- staff_schedules
+CREATE TABLE `staff_schedules` (
+  `schedule_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `staff_id` bigint unsigned NOT NULL,
+  `weekday` tinyint unsigned NOT NULL,
+  `shift_start` time NOT NULL,
+  `shift_end` time NOT NULL,
+  `grace_minutes` smallint unsigned NOT NULL DEFAULT '15',
+  `is_rest_day` tinyint(1) NOT NULL DEFAULT '0',
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`schedule_id`),
+  UNIQUE KEY `staff_schedules_staff_id_weekday_unique` (`staff_id`,`weekday`),
+  CONSTRAINT `staff_schedules_staff_id_foreign` FOREIGN KEY (`staff_id`) REFERENCES `staff` (`staff_id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=71 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- tours
+CREATE TABLE `tours` (
+  `tour_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `guide_staff_id` bigint unsigned DEFAULT NULL,
+  `tour_type` enum('Requested','Foreign','Educational') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `visitor_id` bigint unsigned DEFAULT NULL,
+  `group_id` bigint unsigned DEFAULT NULL,
+  `headcount` int unsigned NOT NULL DEFAULT '1',
+  `started_at` timestamp NULL DEFAULT NULL,
+  `ended_at` timestamp NULL DEFAULT NULL,
+  `notes` text COLLATE utf8mb4_unicode_ci,
+  `created_by` bigint unsigned DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`tour_id`),
+  KEY `tours_guide_staff_id_foreign` (`guide_staff_id`),
+  KEY `tours_visitor_id_foreign` (`visitor_id`),
+  KEY `tours_group_id_foreign` (`group_id`),
+  KEY `tours_started_at_index` (`started_at`),
+  CONSTRAINT `tours_group_id_foreign` FOREIGN KEY (`group_id`) REFERENCES `visit_groups` (`group_id`) ON DELETE SET NULL,
+  CONSTRAINT `tours_guide_staff_id_foreign` FOREIGN KEY (`guide_staff_id`) REFERENCES `staff` (`staff_id`) ON DELETE SET NULL,
+  CONSTRAINT `tours_visitor_id_foreign` FOREIGN KEY (`visitor_id`) REFERENCES `visitors` (`visitor_id`) ON DELETE SET NULL
+) ENGINE=InnoDB AUTO_INCREMENT=31 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- visit_groups
+CREATE TABLE `visit_groups` (
+  `group_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `group_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `group_type` enum('Family','Group','School','Tour') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Group',
+  `contact_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `contact_phone` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `visitor_type` enum('Local','Tourist','Foreign') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Tourist',
+  `city` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `province` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `country` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT 'Philippines',
+  `headcount` int unsigned NOT NULL DEFAULT '1',
+  `paying_count` int unsigned NOT NULL DEFAULT '0',
+  `total_fee` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `payment_status` enum('Free','Unpaid','Paid') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Unpaid',
+  `paid_at` timestamp NULL DEFAULT NULL,
+  `visit_date` date NOT NULL,
+  `registered_by` bigint unsigned DEFAULT NULL,
+  `notes` text COLLATE utf8mb4_unicode_ci,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`group_id`),
+  KEY `visit_groups_visit_date_index` (`visit_date`),
+  KEY `visit_groups_payment_status_index` (`payment_status`)
+) ENGINE=InnoDB AUTO_INCREMENT=177 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- visitors
+CREATE TABLE `visitors` (
+  `visitor_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `group_id` bigint unsigned DEFAULT NULL,
+  `first_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `last_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `middle_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `age` int DEFAULT NULL,
+  `sex` enum('Male','Female','Other','Prefer not to say') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `visitor_type` enum('Local','Tourist','Foreign') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Local',
+  `admission_fee` decimal(8,2) NOT NULL DEFAULT '0.00',
+  `payment_status` enum('Free','Unpaid','Paid') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Free',
+  `paid_at` timestamp NULL DEFAULT NULL,
+  `id_verified` tinyint(1) NOT NULL DEFAULT '0',
+  `verified_at` timestamp NULL DEFAULT NULL,
+  `verified_by` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `visit_type` enum('Solo','Group','School','Family','Walk-in') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Solo',
+  `city` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `province` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `country` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT 'Philippines',
+  `email` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `password` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `api_token` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `token_expires_at` timestamp NULL DEFAULT NULL,
+  `auth_provider` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'manual',
+  `source` enum('app','kiosk','desk','recovered') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'app',
+  `registered_by` bigint unsigned DEFAULT NULL,
+  `explore_mode` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Storyline',
+  `last_visit` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`visitor_id`),
+  KEY `visitors_group_id_foreign` (`group_id`),
+  KEY `visitors_created_at_index` (`created_at`),
+  KEY `visitors_api_token_index` (`api_token`),
+  CONSTRAINT `visitors_group_id_foreign` FOREIGN KEY (`group_id`) REFERENCES `visit_groups` (`group_id`) ON DELETE SET NULL
+) ENGINE=InnoDB AUTO_INCREMENT=226 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- END OF FILE

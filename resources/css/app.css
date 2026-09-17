@@ -1,0 +1,288 @@
+/* ── RESET ── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{font-family:'Instrument Sans',sans-serif;background:#D6CFC4;color:#1a1a1a;font-size:14px;line-height:1.5;height:100%}
+h1,h2,h3,h4,h5{font-family:'Young Serif',serif;font-weight:400;line-height:1.25}
+button,input,select,textarea{font-family:'Instrument Sans',sans-serif}
+button{cursor:pointer}
+a{text-decoration:none;color:inherit}
+img{max-width:100%}
+
+/* ── TOKENS ── */
+:root{
+  --bg:#fafafa;--surface:#fff;--border:#e5e7eb;--border-light:#f3f4f6;
+  --green:#22c55e;--green-dark:#16a34a;--green-pale:#dcfce7;--green-mid:#bbf7d0;
+  --gold:#fbbf24;--gold-pale:#fef9c3;--gold-dark:#d97706;
+  --text:#1a1a1a;--text-2:#374151;--text-3:#6b7280;--text-4:#9ca3af;
+  --red:#ef4444;--red-pale:#fee2e2;
+  --blue:#3b82f6;--blue-pale:#dbeafe;
+  --purple:#8b5cf6;--purple-pale:#ede9fe;
+  --shadow-sm:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.04);
+  --shadow-md:0 4px 12px rgba(0,0,0,.08),0 2px 4px rgba(0,0,0,.04);
+  --shadow-lg:0 10px 28px rgba(0,0,0,.10),0 4px 8px rgba(0,0,0,.05);
+  --r:10px;--r-sm:7px;--r-lg:14px;
+}
+
+/* ── LAYOUT ── */
+.layout{display:flex;height:100vh;overflow:hidden}
+.sidebar{width:220px;flex-shrink:0;background:#fff;border-right:1px solid var(--border);display:flex;flex-direction:column;box-shadow:var(--shadow-sm)}
+.main-content{flex:1;min-width:0;overflow-y:auto;background:#f3f4f6;padding:24px;scrollbar-width:thin;scrollbar-color:#d1d5db transparent}
+.main-content::-webkit-scrollbar{width:5px}
+.main-content::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:3px}
+
+/* ── SIDEBAR ── */
+.sidebar-brand{display:flex;align-items:center;gap:10px;padding:18px 16px;border-bottom:1px solid var(--border)}
+.brand-icon{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--green-dark),var(--green));display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0}
+.brand-icon svg{width:16px;height:16px}
+.brand-name{font-family:'Young Serif',serif;font-size:13px;color:var(--text)}
+.brand-sub{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em}
+.sidebar-nav{flex:1;padding:12px 10px;display:flex;flex-direction:column;gap:2px}
+.nav-item{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:var(--r-sm);border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text-3);transition:all .15s;text-align:left;width:100%;text-decoration:none}
+.nav-item:hover{background:#f3f4f6;color:var(--text)}
+.nav-item.active{background:var(--green-pale);color:var(--green-dark);font-weight:700}
+.nav-item svg{width:15px;height:15px;flex-shrink:0}
+.sidebar-footer{padding:12px 14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.user-info{flex:1;display:flex;align-items:center;gap:8px;min-width:0}
+.avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--gold),#f59e0b);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+.user-name{font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-role{font-size:10px;color:var(--text-3)}
+/* The three controls beside the avatar share one size and one hover, so
+   they read as a set. Logout keeps its red hover as the one destructive act. */
+.icon-btn,.logout-btn{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;color:var(--text-3);transition:all .15s;flex-shrink:0;background:none;border:none;cursor:pointer;text-decoration:none;position:relative}
+.icon-btn:hover{background:var(--border-light);color:var(--text)}
+.logout-btn:hover{background:#fee2e2;color:var(--red)}
+.icon-btn svg,.logout-btn svg{width:15px;height:15px}
+.icon-btn .dot{position:absolute;top:5px;right:5px;width:7px;height:7px;background:var(--red);border-radius:50%;border:1.5px solid var(--surface)}
+
+/* ── PAGE HEADER ── */
+.ph{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+.ph-left h2{font-size:22px;color:var(--text);margin-bottom:3px}
+.ph-left p{font-size:12px;color:var(--text-3)}
+.ph-right{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--r-sm);border:none;font-size:13px;font-weight:600;transition:all .15s;white-space:nowrap;cursor:pointer;text-decoration:none}
+.btn svg{width:14px;height:14px;flex-shrink:0}
+.btn-green{background:var(--green);color:#fff}.btn-green:hover{background:var(--green-dark)}
+.btn-gold{background:var(--gold);color:#fff}.btn-gold:hover{background:var(--gold-dark)}
+.btn-outline{background:var(--surface);color:var(--text-2);border:1.5px solid var(--border)}.btn-outline:hover{border-color:var(--green);color:var(--green-dark);background:var(--green-pale)}
+.btn-red{background:var(--red);color:#fff}.btn-red:hover{background:#dc2626}
+.btn-sm{padding:6px 12px;font-size:12px}
+.btn-xs{padding:4px 9px;font-size:11.5px}
+
+/* ── CARDS ── */
+.card{background:var(--surface);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--shadow-sm)}
+.card-p{padding:18px 20px}
+.card-p-lg{padding:22px 24px}
+
+/* ── COLLAPSIBLE CARD ──
+   A card that starts closed. Used on the front desk so the two registration
+   forms and the check-in code do not all compete for the screen at once —
+   staff open the one they are about to use. */
+.fold{background:var(--surface);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--shadow-sm)}
+.fold>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:16px 20px;user-select:none}
+.fold>summary::-webkit-details-marker{display:none}
+.fold-ico{width:34px;height:34px;border-radius:9px;background:var(--green-pale);color:var(--green-dark);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.fold-ico svg{width:16px;height:16px}
+.fold-text{flex:1;min-width:0}
+.fold-title{font-size:14px;font-weight:600;color:var(--text)}
+.fold-sub{font-size:12px;color:var(--text-3);margin-top:2px}
+.fold-chev{width:16px;height:16px;color:var(--text-3);flex-shrink:0;transition:transform .15s}
+.fold[open]>summary{border-bottom:1px solid var(--border-light)}
+.fold[open] .fold-chev{transform:rotate(180deg)}
+.fold-body{padding:18px 20px 20px}
+.fold>summary:hover{background:var(--bg)}
+.fold[open]>summary:hover{background:transparent}
+
+/* ── STAT CARDS ── */
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:22px}
+.stat{background:var(--surface);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--shadow-sm);padding:18px 20px;display:flex;align-items:center;gap:14px;transition:box-shadow .15s,transform .15s}
+.stat:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
+.stat-ico{width:44px;height:44px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.stat-ico svg{width:20px;height:20px}
+.stat-ico.green{background:var(--green-pale);color:var(--green-dark)}
+.stat-ico.gold{background:var(--gold-pale);color:var(--gold-dark)}
+.stat-ico.blue{background:var(--blue-pale);color:var(--blue)}
+.stat-ico.purple{background:var(--purple-pale);color:var(--purple)}
+.stat-val{font-family:'Young Serif',serif;font-size:26px;color:var(--text);line-height:1}
+.stat-lbl{font-size:11.5px;color:var(--text-3);font-weight:500;text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
+
+/* ── SECTION TITLE ── */
+.sec-title{font-size:15px;color:var(--text);margin-bottom:3px}
+.sec-sub{font-size:12px;color:var(--text-3);margin-bottom:16px}
+
+/* ── CHARTS ── */
+.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:22px}
+.chart-wrap{position:relative;height:210px}
+.chart-wrap-cat{position:relative;height:240px}
+
+/* ── FILTER BAR ──
+   Every control is an icon plus a label. Wide screens show both; at phone
+   width the bar drops to icons only (see RESPONSIVE) — there is no in-between
+   state where labels truncate or the bar spills across four lines. */
+.fbar{display:flex;align-items:center;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+.search-box{position:relative;flex:1;min-width:180px;max-width:300px}
+.search-box input{width:100%;height:38px;padding:0 12px 0 34px;border-radius:var(--r-sm);border:1.5px solid var(--border);background:var(--surface);font-size:13px;color:var(--text);transition:border-color .15s}
+.search-box input:focus{outline:none;border-color:var(--green)}
+.search-box .si{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-4);width:14px;height:14px;pointer-events:none}
+.fsel{height:38px;padding:0 34px 0 12px;border-radius:var(--r-sm);border:1.5px solid var(--border);background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 12px center;-webkit-appearance:none;-moz-appearance:none;appearance:none;font-size:13px;color:var(--text);cursor:pointer;transition:border-color .15s}
+.fsel:focus{outline:none;border-color:var(--green)}
+/* Options are styled explicitly so they stay readable when the phone-width
+   select hides its own text. */
+.fsel option{color:var(--text);font-size:13px;font-weight:400}
+.date-in{height:38px;padding:0 12px;border-radius:var(--r-sm);border:1.5px solid var(--border);background:var(--surface);font-size:13px;color:var(--text)}
+.date-in:focus{outline:none;border-color:var(--green)}
+/* A select with a leading icon. `.on` marks a non-default value so the
+   icon-only form still shows which filters are doing something. */
+.fctl{position:relative;display:inline-flex;align-items:center}
+.fctl>svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--text-4);pointer-events:none;transition:color .15s}
+.fctl .fsel{padding-left:33px}
+.fctl.on>svg{color:var(--green-dark)}
+.fctl.on .fsel{border-color:var(--green-mid);color:var(--green-dark);font-weight:600}
+.fbar .btn{height:38px}
+.fcount{font-size:12px;color:var(--text-3);white-space:nowrap;margin-left:auto}
+
+/* ── TABLE ── */
+/* overflow-x:auto, not hidden: these tables carry action buttons in the last
+   column, and a hidden overflow silently clipped them off the right edge on a
+   narrower window — the controls were not just ugly, they were unreachable. */
+.tbl-wrap{background:var(--surface);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--shadow-sm);overflow-x:auto;overflow-y:hidden}
+/* Squeezing 11 columns into a narrow window wrapped every cell onto two
+   lines. Below this width the table scrolls sideways instead. */
+.tbl-wrap table{width:100%;min-width:940px;border-collapse:collapse}
+.tbl-wrap thead tr{background:#f9fafb;border-bottom:1.5px solid var(--border)}
+.tbl-wrap thead th{padding:11px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.07em;white-space:nowrap}
+.tbl-wrap tbody tr{border-bottom:1px solid var(--border-light);transition:background .1s}
+.tbl-wrap tbody tr:last-child{border-bottom:none}
+.tbl-wrap tbody tr:hover{background:#f9fafb}
+.tbl-wrap tbody td{padding:12px 14px;font-size:13px;color:var(--text-2);vertical-align:middle}
+.tbl-foot{padding:11px 14px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);background:#f9fafb}
+.tbl-count{font-size:12px;color:var(--text-3)}
+
+/* ── BADGES ── */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:20px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.badge::before{content:'';width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.b-green{background:var(--green-pale);color:var(--green-dark)}.b-green::before{background:var(--green)}
+.b-gold{background:var(--gold-pale);color:var(--gold-dark)}.b-gold::before{background:var(--gold)}
+.b-gray{background:#f3f4f6;color:var(--text-3)}.b-gray::before{background:#9ca3af}
+.b-red{background:var(--red-pale);color:#b91c1c}.b-red::before{background:var(--red)}
+.b-blue{background:var(--blue-pale);color:#1d4ed8}.b-blue::before{background:var(--blue)}
+.b-purple{background:var(--purple-pale);color:#6d28d9}.b-purple::before{background:var(--purple)}
+
+/* ── TABS ── */
+.tab-bar{display:flex;gap:2px;border-bottom:1.5px solid var(--border);margin-bottom:18px}
+.tab-btn{padding:9px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text-3);border-bottom:2.5px solid transparent;margin-bottom:-1.5px;transition:all .15s;cursor:pointer}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--green-dark);border-bottom-color:var(--green);font-weight:700}
+.inner-panel{display:none}
+.inner-panel.active{display:block}
+
+/* ── EXHIBIT GRID ── */
+.ex-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
+.ex-card{background:var(--surface);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--shadow-sm);overflow:hidden;transition:box-shadow .15s,transform .15s}
+.ex-card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px)}
+.ex-card.archived{opacity:.55}
+.ex-thumb{height:130px;display:flex;align-items:center;justify-content:center;font-size:52px;position:relative;background:linear-gradient(135deg,#f0fdf4,#dcfce7)}
+.ex-thumb img{width:100%;height:100%;object-fit:cover}
+.arch-tag{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.55);color:#fff;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:20px}
+.ex-body{padding:14px 16px}
+.ex-title{font-family:'Young Serif',serif;font-size:14.5px;margin-bottom:8px;color:var(--text)}
+.ex-meta{font-size:11.5px;color:var(--text-3);line-height:1.8;margin-bottom:12px}
+.ex-meta strong{color:var(--green-dark)}
+.ex-actions{display:flex;gap:6px;flex-wrap:wrap}
+
+/* ── MODAL ── */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:500;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(2px)}
+.overlay.open{display:flex}
+.modal{background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-lg);width:100%;max-width:520px;padding:26px;position:relative;animation:modalIn .2s ease;max-height:90vh;overflow-y:auto}
+.modal-lg{max-width:640px}
+@keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(8px)}to{opacity:1;transform:none}}
+.modal-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.modal-hd h3{font-size:18px}
+.modal-close{background:none;border:none;color:var(--text-3);padding:4px;border-radius:6px;transition:all .12s;cursor:pointer}
+.modal-close:hover{background:#f3f4f6;color:var(--text)}
+.modal-close svg{width:18px;height:18px}
+.modal-ft{display:flex;justify-content:flex-end;gap:8px;margin-top:22px}
+
+/* ── FORM ── */
+.fg{margin-bottom:14px}
+.fl{display:block;font-size:11.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+.fi{width:100%;padding:9px 12px;border-radius:var(--r-sm);border:1.5px solid var(--border);font-size:13px;color:var(--text);transition:border-color .15s;background:var(--surface)}
+.fi:focus{outline:none;border-color:var(--green)}
+select.fi{padding-right:34px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;-webkit-appearance:none;-moz-appearance:none;appearance:none}
+.fi-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+textarea.fi{resize:vertical;min-height:80px}
+.fi-val{font-size:13px;color:var(--text-2);padding:9px 12px;background:#f9fafb;border-radius:var(--r-sm);border:1px solid var(--border);min-height:36px}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:24px;right:24px;z-index:900;background:#1a1a1a;color:#fff;padding:11px 18px;border-radius:var(--r-sm);font-size:13px;font-weight:500;box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:8px;transform:translateY(60px);opacity:0;transition:all .25s ease;pointer-events:none}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.t-green{background:var(--green-dark)}
+.toast.t-gold{background:var(--gold-dark)}
+.toast.t-red{background:#b91c1c}
+
+/* ── ALERTS ── */
+.alert{padding:10px 16px;border-radius:var(--r-sm);font-size:13px;margin-bottom:16px}
+.alert-success{background:var(--green-pale);border:1px solid var(--green-mid);color:var(--green-dark)}
+.alert-error{background:var(--red-pale);border:1px solid #fecaca;color:#b91c1c}
+
+/* ── SPINNER ── */
+.spinner{width:36px;height:36px;border:3px solid var(--green-pale);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── MAP ── */
+.mode-toggle{display:flex;border:1.5px solid var(--border);border-radius:var(--r-sm);overflow:hidden}
+.mode-btn{padding:7px 14px;border:none;background:transparent;font-size:12.5px;font-weight:600;color:var(--text-3);cursor:pointer;transition:all .15s}
+.mode-btn.active{background:var(--green);color:#fff}
+.floor-tab{padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text-3);border-bottom:2.5px solid transparent;margin-bottom:-1.5px;cursor:pointer;transition:all .15s}
+.floor-tab:hover{color:var(--text)}
+.floor-tab.active{color:var(--green-dark);border-bottom-color:var(--green);font-weight:700}
+.story-path{animation:dash 1s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-20}}
+
+/* ── PAGINATION ── */
+.pagination{display:flex;gap:4px;margin-top:12px;flex-wrap:wrap}
+.pagination .page-item .page-link{display:flex;align-items:center;justify-content:center;min-width:32px;height:32px;padding:0 8px;border-radius:6px;border:1.5px solid var(--border);background:var(--surface);font-size:12px;font-weight:600;color:var(--text-3);text-decoration:none;transition:all .12s}
+.pagination .page-item.active .page-link{background:var(--green);border-color:var(--green);color:#fff}
+.pagination .page-item .page-link:hover{border-color:var(--green);color:var(--green-dark)}
+.pagination .page-item.disabled .page-link{opacity:.4;pointer-events:none}
+
+/* ── RATING BARS (dashboard feedback summary) ── */
+.rbar-row{margin-bottom:10px}
+.rbar-label{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text-2);margin-bottom:5px}
+.rbar-label span:first-child{font-weight:500;color:var(--gold-dark)}
+.rbar-label span:last-child{color:var(--text-3);font-size:11px}
+.rbar-track{height:8px;background:var(--border-light);border-radius:99px;overflow:hidden}
+.rbar-fill{height:100%;border-radius:99px;transition:width .4s ease}
+
+/* ── RESPONSIVE ── */
+@media(max-width:768px){
+  .sidebar{width:60px}
+  .brand-name,.brand-sub,.nav-item span,.user-name,.user-role{display:none}
+  .sidebar-brand{justify-content:center;padding:14px 0}
+  .nav-item{justify-content:center;padding:10px 0}
+  .sidebar-footer{justify-content:center}
+  .main-content{padding:16px}
+  .charts-grid{grid-template-columns:1fr}
+  .fi-row{grid-template-columns:1fr}
+
+  /* Filter bar: icons only. The search box is a 38px button until tapped,
+     then it takes the whole row (layout JS toggles `.open`). Selects keep
+     their full labels inside the native picker. */
+  .fbar{gap:6px}
+  .search-box{flex:0 0 38px;min-width:0;max-width:none}
+  .search-box input{width:38px;padding:0;color:transparent;cursor:pointer;caret-color:transparent}
+  .search-box input::placeholder{color:transparent}
+  .search-box .si{left:50%;transform:translate(-50%,-50%)}
+  .search-box.open{flex:1 0 100%}
+  .search-box.open input{width:100%;padding:0 12px 0 34px;color:var(--text);cursor:text;caret-color:auto}
+  .search-box.open input::placeholder{color:var(--text-4)}
+  .search-box.open .si{left:10px;transform:translateY(-50%)}
+  .fctl .fsel,.fctl.on .fsel{width:38px;padding:0;color:transparent;background-image:none}
+  .fctl>svg{left:50%;transform:translate(-50%,-50%)}
+  .fctl.on .fsel{background-color:var(--green-pale)}
+  .fbar .btn{width:38px;padding:0;justify-content:center;gap:0;font-size:0}
+  .fcount{flex-basis:100%;margin-left:0}
+
+  /* Page header actions follow the same rule: icon + label, or icon only. */
+  .ph-right .btn:has(svg){width:34px;height:34px;padding:0;justify-content:center;gap:0;font-size:0}
+}

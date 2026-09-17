@@ -1,0 +1,1785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<!-- maximum-scale/user-scalable bought nothing: iOS has ignored them since
+     iOS 10, and on the browsers that do honour them they only take pinch-zoom
+     away from anyone who needs it. viewport-fit=cover is what lets the page
+     paint under the notch, and what makes the env(safe-area-inset-*) values
+     the stylesheet relies on report anything but 0. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2D5016">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<!-- black-translucent runs the installed app behind the iOS status bar, which
+     is what makes safe-area-inset-top report the notch instead of 0. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Museo de Baler">
+<meta name="format-detection" content="telephone=no">
+<title>Museo de Baler</title>
+<link rel="manifest" href="./manifest.json">
+<!-- iOS ignores the manifest icons for Add to Home Screen. -->
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<link rel="stylesheet" href="./css/app.css?v=5">
+<!-- Device fit: real viewport height, safe areas, soft keyboard. Runs before
+     anything else measures the layout. -->
+<script src="./js/viewport.js?v=5"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<!-- TensorFlow.js + Teachable Machine image model -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.5/dist/teachablemachine-image.min.js"></script>
+</head>
+<body>
+<div id="app">
+<!-- Inside the shell, not beside it: out here it was a stray flex item in the
+     desktop frame and floated over the notch on a phone. -->
+<div id="offline-banner"><span class="material-icons-round" style="font-size:14px;vertical-align:middle;">wifi_off</span> You're offline — showing cached content</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 1 · REGISTER
+══════════════════════════════════════════ -->
+<div id="s-register" class="screen active">
+  <div style="height:100%;background:linear-gradient(160deg,var(--gd) 0%,var(--gm) 45%,var(--gl) 100%);display:flex;flex-direction:column;">
+    <div class="sb" style="color:white;">
+      <span class="sb-time" style="color:white;" id="time-register">9:41</span>
+      <div class="sb-icons" style="color:white;"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;padding:20px 24px 16px;flex-shrink:0;">
+      <div style="width:60px;height:60px;border-radius:18px;background:rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;margin-bottom:12px;">
+        <span class="material-icons-round" style="font-size:34px;color:white;">account_balance</span>
+      </div>
+      <div style="font-family:'Young Serif',serif;font-size:24px;color:white;text-align:center;line-height:1.2;">Museo de Baler</div>
+      <div style="font-size:12px;color:rgba(255,255,255,0.75);margin-top:5px;text-align:center;">Your guided museum companion</div>
+    </div>
+    <div class="sbody sheet-bottom" style="background:white;border-radius:32px 32px 0 0;padding:24px 24px 28px;">
+      <!-- Sign in / Create account switch -->
+      <div style="display:flex;background:var(--ew);border-radius:12px;padding:4px;margin-bottom:20px;">
+        <button id="auth-tab-signin" class="auth-tab active" onclick="setAuthMode('signin')">Sign In</button>
+        <button id="auth-tab-signup" class="auth-tab" onclick="setAuthMode('signup')">Create Account</button>
+      </div>
+
+      <div id="auth-heading" style="font-family:'Young Serif',serif;font-size:19px;color:var(--td);margin-bottom:3px;">Welcome back</div>
+      <div id="auth-subheading" style="font-size:13px;color:var(--tl);margin-bottom:20px;">Sign in to continue your museum journey</div>
+
+      <div class="fg">
+        <label class="fl">Email Address <span style="color:#ef4444;">*</span></label>
+        <input id="reg-email" class="fi" type="email" inputmode="email" autocomplete="email" placeholder="e.g. juan.reyes@gmail.com">
+      </div>
+
+      <!-- Name fields are only needed when creating an account -->
+      <div id="signup-names" class="fi-row" style="margin-bottom:12px;display:none;">
+        <div>
+          <label class="fl">First Name <span style="color:#ef4444;">*</span></label>
+          <input id="reg-first" class="fi" type="text" autocomplete="given-name" placeholder="e.g. Juan">
+        </div>
+        <div>
+          <label class="fl">Last Name <span style="color:#ef4444;">*</span></label>
+          <input id="reg-last" class="fi" type="text" autocomplete="family-name" placeholder="e.g. Reyes">
+        </div>
+      </div>
+
+      <div class="fg">
+        <label class="fl">Password <span style="color:#ef4444;">*</span></label>
+        <div class="pw-wrap">
+          <input id="reg-password" class="fi" type="password" autocomplete="current-password" placeholder="Enter your password" oninput="onPasswordInput()">
+          <button type="button" class="pw-toggle" onclick="togglePw('reg-password', this)" aria-label="Show password">
+            <span class="material-icons-round">visibility</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Confirmation + live rule checklist, shown while creating an account -->
+      <div id="signup-password-extras" style="display:none;">
+        <div class="fg">
+          <label class="fl">Confirm Password <span style="color:#ef4444;">*</span></label>
+          <div class="pw-wrap">
+            <input id="reg-password2" class="fi" type="password" autocomplete="new-password" placeholder="Re-enter your password" oninput="onPasswordInput()">
+            <button type="button" class="pw-toggle" onclick="togglePw('reg-password2', this)" aria-label="Show password">
+              <span class="material-icons-round">visibility</span>
+            </button>
+          </div>
+        </div>
+        <div style="background:var(--ew);border-radius:11px;padding:11px 13px;margin-bottom:14px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <span style="font-size:11px;font-weight:700;color:var(--tl);text-transform:uppercase;letter-spacing:0.6px;">Password strength</span>
+            <span id="pw-strength-label" style="font-size:11.5px;font-weight:700;color:var(--tl);">—</span>
+          </div>
+          <div style="height:5px;background:#E5E7EB;border-radius:4px;overflow:hidden;margin-bottom:10px;">
+            <div id="pw-strength-bar" style="height:100%;width:0;border-radius:4px;background:#ef4444;transition:width .2s,background .2s;"></div>
+          </div>
+          <div id="pw-rules" style="display:flex;flex-direction:column;gap:5px;"></div>
+        </div>
+      </div>
+
+      <div id="reg-error" style="display:none;font-size:12px;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:9px 12px;margin-bottom:12px;"></div>
+
+      <button id="auth-submit" class="btn btn-green btn-full" style="font-size:15px;padding:14px;margin-bottom:14px;" onclick="submitAuth()">
+        <span class="material-icons-round">login</span><span id="auth-submit-label">Sign In</span>
+      </button>
+
+      <div style="display:flex;gap:8px;align-items:flex-start;background:var(--ew);border-radius:10px;padding:10px 12px;margin-bottom:8px;">
+        <span class="material-icons-round" style="font-size:16px;color:var(--tl);flex-shrink:0;margin-top:1px;">info_outline</span>
+        <p id="auth-hint" style="font-size:11.5px;color:var(--tm);line-height:1.5;">First time here? Tap <strong>Create Account</strong> to register for your visit.</p>
+      </div>
+      <div style="font-size:11px;color:var(--tl);text-align:center;line-height:1.6;margin-top:8px;">By continuing, you agree to our <span style="color:var(--mode-secondary);font-weight:600;">Terms of Service</span> and <span style="color:var(--mode-secondary);font-weight:600;">Privacy Policy</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 1B · LOGIN CONFIRM
+══════════════════════════════════════════ -->
+<div id="s-login-confirm" class="screen">
+  <div style="height:100%;background:linear-gradient(160deg,var(--gd) 0%,var(--gm) 45%,var(--gl) 100%);position:relative;">
+    <div class="sb">
+      <span class="sb-time" style="color:white;" id="time-login">9:41</span>
+      <div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;padding:40px 24px 0;">
+      <div style="width:72px;height:72px;border-radius:20px;background:rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;margin-bottom:16px;">
+        <span class="material-icons-round" style="font-size:40px;color:white;">account_balance</span>
+      </div>
+      <div style="font-family:'Young Serif',serif;font-size:26px;color:white;">Museo de Baler</div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.75);margin-top:6px;">Your guided museum companion</div>
+    </div>
+    <div style="position:absolute;inset:0;background:rgba(0,0,0,0.45);"></div>
+    <div style="position:absolute;bottom:0;left:0;right:0;background:white;border-radius:24px 24px 0 0;padding:22px 20px 36px;z-index:2;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+        <div style="font-family:'Young Serif',serif;font-size:18px;color:var(--td);">Confirm Your Details</div>
+        <span class="material-icons-round" style="font-size:22px;color:var(--tl);cursor:pointer;" onclick="showScreen('s-register')">close</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;background:var(--ew);border-radius:14px;padding:14px;margin-bottom:14px;">
+        <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--mode-secondary),var(--mode-primary));display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <span class="material-icons-round" style="font-size:22px;color:white;">person</span>
+        </div>
+        <div>
+          <div id="confirm-name" style="font-size:15px;font-weight:700;color:var(--td);">Chynna Lacsa</div>
+          <div id="confirm-email" style="font-size:12px;color:var(--tl);">chynna.lacsa@gmail.com</div>
+        </div>
+      </div>
+      <div style="font-size:13px;color:var(--tm);line-height:1.6;margin-bottom:16px;">We'll create your visitor record with the details above. Your visit history and bookmarks are saved to this email, so you can continue from it on your next visit.</div>
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:20px;">
+        <div id="tc-check" onclick="toggleTC()" style="width:20px;height:20px;border-radius:5px;background:var(--gm);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;cursor:pointer;">
+          <span class="material-icons-round" style="font-size:14px;color:white;">check</span>
+        </div>
+        <div style="font-size:12px;color:var(--tm);line-height:1.6;">I agree to the <span style="color:var(--mode-secondary);font-weight:600;">Terms &amp; Conditions</span> and <span style="color:var(--mode-secondary);font-weight:600;">Privacy Policy</span> of Museo de Baler</div>
+      </div>
+      <button class="btn btn-green btn-full" style="margin-bottom:10px;font-size:15px;padding:15px;" onclick="confirmSignIn()">Continue</button>
+      <button class="btn btn-outline btn-full" style="font-size:15px;padding:15px;background:#F0F0F0;border:none;color:var(--tm);" onclick="showScreen('s-register')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 1D · VISITOR INFO
+══════════════════════════════════════════ -->
+<div id="s-visitor-info" class="screen">
+  <div style="height:100%;background:var(--ec);display:flex;flex-direction:column;">
+    <div style="background:linear-gradient(160deg,var(--gd) 0%,var(--gm) 60%,var(--gl) 100%);padding:0 0 24px;flex-shrink:0;">
+      <div class="sb">
+        <span class="sb-time" style="color:white;" id="time-info">9:41</span>
+        <div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:4px 20px 0;">
+        <div onclick="showScreen('s-register')" style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+          <span class="material-icons-round" style="font-size:18px;color:white;">arrow_back</span>
+        </div>
+        <div>
+          <div style="font-family:'Young Serif',serif;font-size:18px;color:white;">Visitor Information</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.7);">Complete your registration</div>
+        </div>
+      </div>
+      <div style="margin:14px 20px 0;height:4px;background:rgba(255,255,255,0.25);border-radius:4px;overflow:hidden;">
+        <div style="width:100%;height:100%;background:white;border-radius:4px;"></div>
+      </div>
+    </div>
+    <div class="sbody" style="flex:1;background:white;border-radius:26px 26px 0 0;margin-top:-16px;padding:20px 22px 32px;">
+      <div style="background:#F0FDF4;border-radius:10px;padding:10px 13px;display:flex;gap:8px;align-items:flex-start;margin-bottom:18px;">
+        <span class="material-icons-round" style="font-size:16px;color:var(--mode-primary);flex-shrink:0;margin-top:1px;">info_outline</span>
+        <p style="font-size:12px;color:var(--mode-primary);line-height:1.5;">This info is required for official museum visitor records. It won't be shared publicly.</p>
+      </div>
+      <!-- Name + email were captured on the welcome screen; shown here for confirmation -->
+      <div style="display:flex;align-items:center;gap:11px;background:var(--ew);border-radius:12px;padding:11px 13px;margin-bottom:18px;">
+        <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--mode-secondary),var(--mode-primary));display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <span class="material-icons-round" style="font-size:19px;color:white;">person</span>
+        </div>
+        <div style="min-width:0;">
+          <div id="vi-name-label" style="font-size:13.5px;font-weight:700;color:var(--td);">—</div>
+          <div id="vi-email-label" style="font-size:11.5px;color:var(--tl);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">—</div>
+        </div>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--tl);text-transform:uppercase;letter-spacing:0.7px;margin-bottom:10px;">Personal Details</div>
+      <div class="fg">
+        <label class="fl">Middle Name <span style="font-size:10px;color:#9ca3af;">(optional)</span></label>
+        <input id="vi-middle" class="fi" type="text" placeholder="e.g. Santos">
+      </div>
+      <div class="fi-row" style="margin-bottom:16px;">
+        <div>
+          <label class="fl">Age <span style="color:#ef4444;">*</span></label>
+          <input id="vi-age" class="fi" type="number" inputmode="numeric" placeholder="e.g. 25" min="1" max="120">
+        </div>
+        <div>
+          <label class="fl">Sex <span style="color:#ef4444;">*</span></label>
+          <select id="vi-sex" class="fi">
+            <option value="" disabled selected>Select</option>
+            <option>Male</option><option>Female</option><option>Prefer not to say</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--tl);text-transform:uppercase;letter-spacing:0.7px;margin-bottom:10px;">Visit Details</div>
+      <div style="margin-bottom:16px;">
+        <div style="font-size:11px;color:var(--tl);margin-bottom:8px;">Visit Type <span style="color:#ef4444;">*</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;" id="visit-type-group">
+          <label class="radio-pill active"><input type="radio" name="vtype" value="Walk-in" checked onchange="selectRadioPill(this)"> Walk-in</label>
+          <label class="radio-pill"><input type="radio" name="vtype" value="Group" onchange="selectRadioPill(this)"> Group</label>
+          <label class="radio-pill"><input type="radio" name="vtype" value="School" onchange="selectRadioPill(this)"> School</label>
+        </div>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <div style="font-size:11px;color:var(--tl);margin-bottom:8px;">Visitor Type <span style="color:#ef4444;">*</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;" id="visitor-type-group">
+          <label class="radio-pill active"><input type="radio" name="vistype" value="Local" checked onchange="selectVisitorType(this)"> Local</label>
+          <label class="radio-pill"><input type="radio" name="vistype" value="Tourist" onchange="selectVisitorType(this)"> Tourist</label>
+          <label class="radio-pill"><input type="radio" name="vistype" value="Foreign" onchange="selectVisitorType(this)"> Foreign</label>
+        </div>
+      </div>
+
+      <!-- ── Visitor-type dependent fields ─────────────────────────────── -->
+
+      <!-- LOCAL — Aurora resident, free entry, ID sighted at the desk -->
+      <div id="panel-local" class="vistype-panel">
+        <div class="fg">
+          <label class="fl">Municipality <span style="color:#ef4444;">*</span></label>
+          <select id="vi-municipality" class="fi">
+            <option value="" disabled selected>Select your municipality</option>
+            <option>Baler</option>
+            <option>Casiguran</option>
+            <option>Dilasag</option>
+            <option>Dinalungan</option>
+            <option>Dingalan</option>
+            <option>Dipaculao</option>
+            <option>Maria Aurora</option>
+            <option>San Luis</option>
+          </select>
+          <div style="font-size:10.5px;color:var(--tl);margin-top:5px;line-height:1.5;">Aurora province only. If you live outside Aurora, please choose <strong>Tourist</strong> instead.</div>
+        </div>
+        <div style="display:flex;gap:9px;align-items:flex-start;background:#FFFBEB;border:1px solid #FDE68A;border-radius:11px;padding:11px 13px;margin-bottom:14px;">
+          <span class="material-icons-round" style="font-size:17px;color:#B45309;flex-shrink:0;margin-top:1px;">badge</span>
+          <div>
+            <div style="font-size:12px;font-weight:700;color:#B45309;margin-bottom:2px;">Bring a valid ID</div>
+            <p style="font-size:11.5px;color:#92400E;line-height:1.5;">Present proof of residency at the entrance desk — barangay certificate, PhilSys ID, driver's licence, school or company ID. Museum staff will verify it before you enter.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TOURIST — Filipino from outside Aurora -->
+      <div id="panel-tourist" class="vistype-panel" style="display:none;">
+        <div class="fi-row" style="margin-bottom:14px;">
+          <div>
+            <label class="fl">City / Municipality <span style="color:#ef4444;">*</span></label>
+            <input id="vi-city" class="fi" type="text" placeholder="e.g. Quezon City">
+          </div>
+          <div>
+            <label class="fl">Province <span style="color:#ef4444;">*</span></label>
+            <input id="vi-province" class="fi" type="text" placeholder="e.g. Metro Manila">
+          </div>
+        </div>
+      </div>
+
+      <!-- FOREIGN — visitor from outside the Philippines -->
+      <div id="panel-foreign" class="vistype-panel" style="display:none;">
+        <div class="fg">
+          <label class="fl">Country <span style="color:#ef4444;">*</span></label>
+          <select id="vi-country" class="fi" onchange="toggleCountryOther()">
+            <option value="" disabled selected>Select country</option>
+            <option>United States</option><option>Japan</option>
+            <option>South Korea</option><option>Singapore</option><option>Australia</option>
+            <option>China</option><option>United Kingdom</option><option>Canada</option>
+            <option>Germany</option><option>Spain</option><option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="fg" id="country-other-wrap" style="display:none;">
+          <label class="fl">Please specify your country <span style="color:#ef4444;">*</span></label>
+          <input id="vi-country-other" class="fi" type="text" placeholder="e.g. New Zealand">
+        </div>
+        <div class="fg">
+          <label class="fl">City <span style="font-size:10px;color:#9ca3af;">(optional)</span></label>
+          <input id="vi-city-foreign" class="fi" type="text" placeholder="e.g. Tokyo">
+        </div>
+      </div>
+
+      <!-- Admission fee summary — updates with the selected visitor type -->
+      <div id="fee-box" style="border-radius:13px;padding:14px 15px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div style="min-width:0;">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;margin-bottom:3px;" id="fee-label">Admission Fee</div>
+          <div id="fee-note" style="font-size:11.5px;line-height:1.5;"></div>
+        </div>
+        <div id="fee-amount" style="font-family:'Young Serif',serif;font-size:21px;white-space:nowrap;flex-shrink:0;">FREE</div>
+      </div>
+      <button class="btn btn-green btn-full" style="font-size:15px;padding:14px;" onclick="submitRegistration()">
+        <span class="material-icons-round">check_circle</span>Complete Registration
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 1E · REGISTRATION SUCCESS
+══════════════════════════════════════════ -->
+<div id="s-reg-success" class="screen">
+  <div style="height:100%;background:linear-gradient(160deg,var(--gd) 0%,var(--gm) 45%,var(--gl) 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 28px;text-align:center;position:relative;">
+    <div class="sb" style="position:absolute;top:0;left:0;right:0;">
+      <span class="sb-time" style="color:white;" id="time-success">9:41</span>
+      <div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div>
+    </div>
+    <div style="width:90px;height:90px;border-radius:50%;background:rgba(255,255,255,0.2);border:3px solid rgba(255,255,255,0.5);display:flex;align-items:center;justify-content:center;margin-bottom:24px;">
+      <span class="material-icons-round" style="font-size:48px;color:white;">check_circle</span>
+    </div>
+    <div style="font-family:'Young Serif',serif;font-size:28px;color:white;margin-bottom:10px;line-height:1.2;">You're all set!</div>
+    <div style="font-size:14px;color:rgba(255,255,255,0.85);line-height:1.7;margin-bottom:32px;">Your visitor account has been created. Welcome to Museo de Baler — enjoy your visit!</div>
+    <div style="background:rgba(255,255,255,0.15);border:1.5px solid rgba(255,255,255,0.3);border-radius:18px;padding:18px 20px;width:100%;margin-bottom:28px;text-align:left;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+        <div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <span class="material-icons-round" style="font-size:22px;color:white;">person</span>
+        </div>
+        <div>
+          <div id="success-name" style="font-size:15px;font-weight:700;color:white;">Juan M. Reyes</div>
+          <div id="success-email" style="font-size:12px;color:rgba(255,255,255,0.7);">juan.reyes@gmail.com</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="background:rgba(255,255,255,0.12);border-radius:10px;padding:9px 12px;">
+          <div style="font-size:10px;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Visit Type</div>
+          <div id="success-vtype" style="font-size:13px;font-weight:600;color:white;">Walk-in</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.12);border-radius:10px;padding:9px 12px;">
+          <div style="font-size:10px;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Visitor Type</div>
+          <div id="success-vistype" style="font-size:13px;font-weight:600;color:white;">Local</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.12);border-radius:10px;padding:9px 12px;">
+          <div style="font-size:10px;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Location</div>
+          <div id="success-loc" style="font-size:13px;font-weight:600;color:white;">Baler, Aurora</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.12);border-radius:10px;padding:9px 12px;">
+          <div style="font-size:10px;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Age / Sex</div>
+          <div id="success-agesex" style="font-size:13px;font-weight:600;color:white;">— / —</div>
+        </div>
+      </div>
+      <!-- Admission outcome — free for verified locals, payable at the counter otherwise -->
+      <div style="background:rgba(255,255,255,0.12);border-radius:10px;padding:11px 12px;margin-top:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div style="min-width:0;">
+          <div style="font-size:10px;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Admission</div>
+          <div id="success-fee-note" style="font-size:11.5px;color:rgba(255,255,255,0.85);line-height:1.45;">—</div>
+        </div>
+        <div id="success-fee" style="font-family:'Young Serif',serif;font-size:19px;color:white;white-space:nowrap;flex-shrink:0;">FREE</div>
+      </div>
+    </div>
+    <button class="btn btn-full" style="background:white;color:var(--mode-primary);font-size:15px;padding:15px;border-radius:14px;border:none;font-weight:700;" onclick="afterRegistrationContinue()">
+      <span class="material-icons-round" style="font-size:20px;">arrow_forward</span>Continue
+    </button>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════
+     SCREEN 1F · WAITING FOR STAFF CLEARANCE
+     The museum content stays locked until the front desk records the
+     admission. This screen polls the server and unlocks itself the moment
+     staff marks the fee paid or verifies the residency ID.
+══════════════════════════════════════════ -->
+<div id="s-pending" class="screen">
+  <div style="height:100%;background:linear-gradient(160deg,var(--gd) 0%,var(--gm) 45%,var(--gl) 100%);display:flex;flex-direction:column;">
+    <div class="sb" style="color:white;">
+      <span class="sb-time" style="color:white;" id="time-pending">9:41</span>
+      <div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;align-items:center;padding:22px 28px 20px;flex-shrink:0;text-align:center;">
+      <div style="width:74px;height:74px;border-radius:50%;background:rgba(255,255,255,0.18);border:2px solid rgba(255,255,255,0.4);display:flex;align-items:center;justify-content:center;margin-bottom:14px;">
+        <span class="material-icons-round" id="pending-icon" style="font-size:38px;color:white;">lock_clock</span>
+      </div>
+      <div style="font-family:'Young Serif',serif;font-size:23px;color:white;line-height:1.2;">Almost there</div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.8);margin-top:6px;line-height:1.5;">A staff member needs to confirm your admission before the museum opens on your phone.</div>
+    </div>
+
+    <div class="sbody sheet-bottom" style="background:white;border-radius:28px 28px 0 0;padding:22px 22px 28px;">
+      <!-- What this particular visitor has to do -->
+      <div id="pending-action" style="border-radius:14px;padding:15px 16px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:7px;">
+          <span class="material-icons-round" id="pending-action-icon" style="font-size:19px;">payments</span>
+          <div id="pending-action-title" style="font-size:14px;font-weight:700;">Pay at the entrance counter</div>
+        </div>
+        <p id="pending-action-text" style="font-size:12.5px;line-height:1.55;"></p>
+        <div id="pending-fee-row" style="display:flex;align-items:baseline;justify-content:space-between;margin-top:12px;padding-top:11px;border-top:1px dashed currentColor;">
+          <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Amount due</span>
+          <span id="pending-fee" style="font-family:'Young Serif',serif;font-size:20px;">₱50.00</span>
+        </div>
+      </div>
+
+      <!-- Who to show at the desk -->
+      <div style="display:flex;align-items:center;gap:11px;background:var(--ew);border-radius:12px;padding:11px 13px;margin-bottom:16px;">
+        <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--mode-secondary),var(--mode-primary));display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <span class="material-icons-round" style="font-size:19px;color:white;">person</span>
+        </div>
+        <div style="min-width:0;flex:1;">
+          <div id="pending-name" style="font-size:13.5px;font-weight:700;color:var(--td);">—</div>
+          <div id="pending-meta" style="font-size:11.5px;color:var(--tl);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">—</div>
+        </div>
+      </div>
+
+      <!-- Live status line: this screen re-checks on its own -->
+      <div style="display:flex;align-items:center;gap:9px;justify-content:center;margin-bottom:14px;">
+        <span id="pending-spinner" class="pending-dot"></span>
+        <span id="pending-status" style="font-size:12px;color:var(--tl);">Waiting for staff confirmation…</span>
+      </div>
+
+      <button class="btn btn-green btn-full" style="font-size:15px;padding:14px;margin-bottom:10px;" onclick="checkClearance(true)">
+        <span class="material-icons-round">refresh</span>Check again
+      </button>
+      <button class="btn btn-outline btn-full" style="font-size:14px;padding:12px;" onclick="confirmLogout()">
+        <span class="material-icons-round">logout</span>Sign out
+      </button>
+
+      <p style="font-size:11px;color:var(--tl);text-align:center;line-height:1.6;margin-top:16px;">Show this screen to the staff at the entrance desk — they will find your name in the museum's records.</p>
+    </div>
+  </div>
+</div>
+<!-- ══════════════════════════════════════════
+     SCREEN 2 · MODE CHOICE
+══════════════════════════════════════════ -->
+<div id="s-mode-choice" class="screen">
+  <div style="height:100%;background:var(--ec);display:flex;flex-direction:column;">
+    <div style="background:linear-gradient(170deg,#2D5016 0%,#4A7C2F 50%,#F5EDE0 100%);flex-shrink:0;">
+      <div class="sb">
+        <span class="sb-time" style="color:white;" id="time-mode">9:41</span>
+        <div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;padding:16px 22px 20px;text-align:center;">
+        <div style="width:74px;height:74px;background:rgba(255,255,255,0.15);border-radius:22px;display:flex;align-items:center;justify-content:center;margin-bottom:13px;border:1.5px solid rgba(255,255,255,0.28);">
+          <span class="material-icons-round" style="font-size:40px;color:white;">auto_stories</span>
+        </div>
+        <div style="font-family:'Young Serif',serif;font-size:23px;color:white;line-height:1.2;margin-bottom:7px;">How would you like to explore?</div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.72);line-height:1.5;">Choose your experience. You can change this anytime in Settings.</div>
+      </div>
+    </div>
+    <div class="sbody" style="flex:1;background:white;border-radius:26px 26px 0 0;padding:22px 18px 28px;display:flex;flex-direction:column;gap:11px;">
+      <div id="mode-storyline" onclick="selectMode('storyline')" style="border-radius:14px;padding:17px;display:flex;gap:12px;align-items:flex-start;background:var(--ew);border:2px solid var(--es);cursor:pointer;transition:all .2s;">
+        <div id="mode-sl-icon" style="width:48px;height:48px;border-radius:14px;background:var(--es);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <span class="material-icons-round" style="font-size:25px;color:var(--tl);">route</span>
+        </div>
+        <div style="flex:1;">
+          <div style="font-family:'Young Serif',serif;font-size:16px;color:var(--td);margin-bottom:4px;">Follow the Storyline</div>
+          <div style="font-size:12px;color:var(--tm);line-height:1.5;">Experience exhibits in a curated narrative order. The app guides you to each next exhibit on the map — like a living history book.</div>
+        </div>
+        <div id="mode-sl-radio" style="width:22px;height:22px;border-radius:50%;border:2px solid var(--es);flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;"></div>
+      </div>
+      <div id="mode-free" onclick="selectMode('free')" style="border-radius:14px;padding:17px;display:flex;gap:12px;align-items:flex-start;background:var(--ew);border:2px solid var(--es);cursor:pointer;transition:all .2s;">
+        <div id="mode-fr-icon" style="width:48px;height:48px;border-radius:14px;background:var(--es);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <span class="material-icons-round" style="font-size:25px;color:var(--tl);">explore</span>
+        </div>
+        <div style="flex:1;">
+          <div style="font-family:'Young Serif',serif;font-size:16px;color:var(--td);margin-bottom:4px;">Explore Freely</div>
+          <div style="font-size:12px;color:var(--tm);line-height:1.5;">Scan any exhibit in any order. Browse at your own pace without a guided path.</div>
+        </div>
+        <div id="mode-fr-radio" style="width:22px;height:22px;border-radius:50%;border:2px solid var(--es);flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;"></div>
+      </div>
+      <div id="mode-tip" style="background:var(--gp);border-radius:10px;padding:11px 13px;display:flex;gap:8px;align-items:flex-start;">
+        <span class="material-icons-round" style="font-size:17px;color:var(--mode-primary);flex-shrink:0;margin-top:1px;">info_outline</span>
+        <p id="mode-tip-text" style="font-size:12px;color:var(--mode-primary);line-height:1.5;">In <strong>Storyline mode</strong>, after each scan the map highlights exactly where to go next — just follow the path through the museum.</p>
+      </div>
+      <div style="background:white;border-radius:14px;padding:13px 14px;box-shadow:var(--sh);">
+        <div style="font-size:10px;font-weight:700;color:var(--tl);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;">Story Path Preview</div>
+        <div style="display:flex;align-items:center;">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;"><div style="width:34px;height:34px;background:var(--gm);border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid var(--gd);"><span class="material-icons-round" style="font-size:15px;color:white;">history_edu</span></div><span style="font-size:8px;font-weight:600;color:var(--tm);text-align:center;max-width:42px;line-height:1.2;">Siege Diorama</span></div>
+          <div style="flex:1;height:2px;background:var(--gl);margin-bottom:14px;"></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;"><div style="width:34px;height:34px;background:var(--es);border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid var(--bl);"><span class="material-icons-round" style="font-size:15px;color:var(--bm);">church</span></div><span style="font-size:8px;font-weight:600;color:var(--tl);text-align:center;max-width:42px;line-height:1.2;">Baler Church</span></div>
+          <div style="flex:1;height:2px;background:var(--es);margin-bottom:14px;"></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;"><div style="width:34px;height:34px;background:var(--es);border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid var(--bl);"><span class="material-icons-round" style="font-size:15px;color:var(--bm);">forest</span></div><span style="font-size:8px;font-weight:600;color:var(--tl);text-align:center;max-width:42px;line-height:1.2;">Agta Culture</span></div>
+          <div style="flex:1;height:2px;background:var(--es);margin-bottom:14px;"></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;"><div style="width:34px;height:34px;background:var(--es);border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid var(--bl);"><span class="material-icons-round" style="font-size:15px;color:var(--bm);">account_balance</span></div><span style="font-size:8px;font-weight:600;color:var(--tl);text-align:center;max-width:42px;line-height:1.2;">Quezon Legacy</span></div>
+          <div style="flex:1;height:2px;background:var(--es);margin-bottom:14px;"></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;"><div style="width:34px;height:34px;background:var(--es);border-radius:50%;display:flex;align-items:center;justify-content:center;"><span class="material-icons-round" style="font-size:15px;color:var(--tl);">more_horiz</span></div><span style="font-size:8px;font-weight:600;color:var(--tl);text-align:center;max-width:42px;line-height:1.2;">+96 more</span></div>
+        </div>
+      </div>
+      <button id="mode-start-btn" class="btn btn-green btn-full" style="font-size:16px;padding:15px;opacity:0.45;cursor:not-allowed;" onclick="setMode()" disabled>
+        <span class="material-icons-round" style="font-size:20px;">check_circle</span>Start Exploring
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 3 · HOME
+══════════════════════════════════════════ -->
+<div id="s-home" class="screen">
+  <div style="height:100%;background:var(--ec);display:flex;flex-direction:column;">
+    <div id="home-header" style="background:linear-gradient(160deg,var(--mode-primary),var(--mode-secondary));padding-bottom:24px;flex-shrink:0;">
+      <div class="sb">
+        <span class="sb-time" style="color:white;" id="time-home">9:41</span>
+        <div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div>
+      </div>
+      <div style="padding:8px 20px 0;">
+        <div style="font-size:13px;color:rgba(255,255,255,0.75);" id="home-greeting">Good morning,</div>
+        <div style="font-family:'Young Serif',serif;font-size:20px;color:white;margin-top:2px;" id="home-name">Visitor</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="material-icons-round" style="font-size:16px;color:rgba(255,255,255,0.8);">account_balance</span>
+            <span style="font-size:13px;color:rgba(255,255,255,0.85);font-weight:600;">Museo de Baler</span>
+            <span style="font-size:11px;color:rgba(255,255,255,0.6);">·</span>
+            <span class="material-icons-round" style="font-size:14px;color:rgba(255,255,255,0.7);">location_on</span>
+            <span style="font-size:12px;color:rgba(255,255,255,0.7);" id="home-location">Baler, Aurora</span>
+          </div>
+          <div id="connection-badge" style="display:flex;align-items:center;gap:4px;background:rgba(255,255,255,0.15);border-radius:20px;padding:3px 10px;">
+            <span id="connection-dot" style="width:6px;height:6px;border-radius:50%;background:#4ade80;flex-shrink:0;"></span>
+            <span id="connection-label" style="font-size:10px;color:rgba(255,255,255,0.85);font-weight:600;">Online</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="sbody" style="flex:1;padding:16px 16px 90px;">
+      <div id="home-scan-banner" onclick="onScanEnter()" style="background:linear-gradient(135deg,var(--bd),var(--bm));border-radius:16px;padding:16px;display:flex;align-items:center;gap:14px;margin-bottom:18px;cursor:pointer;">
+        <div style="width:48px;height:48px;border-radius:14px;background:rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <span class="material-icons-round" style="font-size:28px;color:white;">qr_code_scanner</span>
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:14px;font-weight:700;color:white;">Scan an Exhibit</div>
+          <div id="home-scan-subtitle" style="font-size:12px;color:rgba(255,255,255,0.75);margin-top:2px;">Point your camera at any QR code</div>
+        </div>
+        <span class="material-icons-round" style="font-size:20px;color:rgba(255,255,255,0.8);">chevron_right</span>
+      </div>
+      <div style="margin-bottom:18px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <div style="font-family:'Young Serif',serif;font-size:16px;color:var(--td);">Most Viewed</div>
+          <span style="font-size:12px;color:var(--mode-secondary);font-weight:600;cursor:pointer;" onclick="showScreen('s-home-exhibits')">See all</span>
+        </div>
+        <div id="most-viewed-list" style="display:flex;gap:12px;overflow-x:auto;padding-bottom:4px;"></div>
+      </div>
+      <div style="margin-bottom:18px;">
+        <div style="font-family:'Young Serif',serif;font-size:16px;color:var(--td);margin-bottom:10px;">Categories</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div onclick="filterCategory('History')" style="background:white;border-radius:14px;padding:14px;display:flex;align-items:center;gap:10px;box-shadow:var(--sh);cursor:pointer;">
+            <div style="width:36px;height:36px;border-radius:10px;background:var(--bp);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="material-icons-round" style="font-size:20px;color:var(--bd);">history_edu</span></div>
+            <div><div style="font-size:13px;font-weight:700;color:var(--td);">History</div><div style="font-size:11px;color:var(--tl);">18 exhibits</div></div>
+          </div>
+          <div onclick="filterCategory('Nature')" style="background:white;border-radius:14px;padding:14px;display:flex;align-items:center;gap:10px;box-shadow:var(--sh);cursor:pointer;">
+            <div style="width:36px;height:36px;border-radius:10px;background:var(--gp);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="material-icons-round" style="font-size:20px;color:var(--mode-primary);">forest</span></div>
+            <div><div style="font-size:13px;font-weight:700;color:var(--td);">Nature</div><div style="font-size:11px;color:var(--tl);">14 exhibits</div></div>
+          </div>
+          <div onclick="filterCategory('Culture')" style="background:white;border-radius:14px;padding:14px;display:flex;align-items:center;gap:10px;box-shadow:var(--sh);cursor:pointer;">
+            <div style="width:36px;height:36px;border-radius:10px;background:#E8E0F0;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="material-icons-round" style="font-size:20px;color:#6B4FA0;">palette</span></div>
+            <div><div style="font-size:13px;font-weight:700;color:var(--td);">Culture</div><div style="font-size:11px;color:var(--tl);">11 exhibits</div></div>
+          </div>
+          <div onclick="filterCategory('Science')" style="background:white;border-radius:14px;padding:14px;display:flex;align-items:center;gap:10px;box-shadow:var(--sh);cursor:pointer;">
+            <div style="width:36px;height:36px;border-radius:10px;background:#E0EEF8;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="material-icons-round" style="font-size:20px;color:#2A6B9E;">science</span></div>
+            <div><div style="font-size:13px;font-weight:700;color:var(--td);">Science</div><div style="font-size:11px;color:var(--tl);">8 exhibits</div></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <div style="font-family:'Young Serif',serif;font-size:16px;color:var(--td);">All Exhibits</div>
+          <span style="font-size:12px;color:var(--mode-secondary);font-weight:600;cursor:pointer;" onclick="showScreen('s-home-exhibits')">See all</span>
+        </div>
+        <div id="home-exhibit-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+      </div>
+    </div>
+    <nav class="bnav">
+      <div class="ni on" onclick="showScreen('s-home')"><span class="material-icons-round">home</span><span class="nl">Home</span></div>
+      <div class="ni" onclick="showScreen('s-home-exhibits')"><span class="material-icons-round">format_list_bulleted</span><span class="nl">Exhibits</span></div>
+      <div class="nscan" onclick="onScanEnter()"><span class="material-icons-round">qr_code_scanner</span></div>
+      <div class="ni" onclick="showScreen('s-map')"><span class="material-icons-round">map</span><span class="nl">Map</span></div>
+      <div class="ni" onclick="showScreen('s-profile')"><span class="material-icons-round">person</span><span class="nl">Profile</span></div>
+    </nav>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 4A · SCAN — STORYLINE
+══════════════════════════════════════════ -->
+<div id="s-scan-storyline" class="screen">
+  <div style="height:100%;background:#0a1a0a;display:flex;flex-direction:column;">
+    <div style="background:linear-gradient(160deg,var(--mode-primary),var(--mode-secondary));flex-shrink:0;">
+      <div class="sb">
+        <span class="sb-time" style="color:white;" id="time-scan-sl">9:41</span>
+        <div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 20px 14px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span class="material-icons-round" style="font-size:22px;color:white;cursor:pointer;" onclick="stopScanner();showScreen('s-home')">arrow_back</span>
+          <div style="font-family:'Young Serif',serif;font-size:18px;color:white;">Scan Exhibit QR</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.2);border-radius:20px;padding:4px 12px;display:flex;align-items:center;gap:6px;">
+          <span class="material-icons-round" style="font-size:14px;color:white;">route</span>
+          <span style="font-size:11px;font-weight:700;color:white;">Storyline</span>
+        </div>
+      </div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;padding:16px;gap:14px;overflow-y:auto;">
+      <!-- Camera / QR area — square viewfinder -->
+      <div style="background:#111;border-radius:16px;overflow:hidden;padding:16px;">
+        <!-- Square outer frame with corner brackets -->
+        <div style="position:relative;width:100%;aspect-ratio:1/1;background:#000;border-radius:12px;overflow:hidden;margin-bottom:14px;">
+          <!-- Corner brackets overlay (always on top) -->
+          <div style="position:absolute;inset:0;pointer-events:none;z-index:10;">
+            <div style="position:absolute;top:14px;left:14px;width:32px;height:32px;border-top:3px solid white;border-left:3px solid white;border-radius:3px 0 0 0;"></div>
+            <div style="position:absolute;top:14px;right:14px;width:32px;height:32px;border-top:3px solid white;border-right:3px solid white;border-radius:0 3px 0 0;"></div>
+            <div style="position:absolute;bottom:14px;left:14px;width:32px;height:32px;border-bottom:3px solid white;border-left:3px solid white;border-radius:0 0 0 3px;"></div>
+            <div style="position:absolute;bottom:14px;right:14px;width:32px;height:32px;border-bottom:3px solid white;border-right:3px solid white;border-radius:0 0 3px 0;"></div>
+            <div style="position:absolute;left:14px;right:14px;height:2px;background:linear-gradient(90deg,transparent,var(--mode-light),transparent);animation:scanLine 2s ease-in-out infinite;top:20%;"></div>
+          </div>
+          <!-- Idle placeholder (hidden once camera starts) -->
+          <div id="scan-ui-sl" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#111;z-index:1;">
+            <span class="material-icons-round" style="font-size:52px;color:rgba(255,255,255,0.25);">qr_code_scanner</span>
+            <div style="color:rgba(255,255,255,0.4);font-size:12px;text-align:center;padding:0 24px;">Tap "Open Camera" or "Live Scanner" below</div>
+          </div>
+          <!-- QR reader renders here — fills the square -->
+          <div id="qr-reader" style="width:100%;height:100%;position:absolute;inset:0;z-index:2;"></div>
+          <!-- AI status pill — shown over the live feed -->
+          <div id="ai-status-sl" style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);z-index:20;background:rgba(0,0,0,0.55);border-radius:20px;padding:4px 12px;display:flex;align-items:center;gap:6px;white-space:nowrap;pointer-events:none;">
+            <span id="ai-dot-sl" style="width:7px;height:7px;border-radius:50%;background:#9ca3af;flex-shrink:0;"></span>
+            <span id="ai-label-sl" style="font-size:11px;color:rgba(255,255,255,0.8);font-weight:600;">Loading AI…</span>
+          </div>
+        </div>
+        <!-- Buttons -->
+        <div style="display:flex;gap:10px;">
+          <label style="flex:1;background:var(--mode-secondary);color:white;padding:12px;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+            <span class="material-icons-round" style="font-size:18px;">photo_camera</span>Open Camera
+            <input type="file" accept="image/*" capture="environment" style="display:none" onchange="scanFromFile(this)">
+          </label>
+          <button onclick="activateCamera('qr-reader','scan-ui-sl')" style="flex:1;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.8);border:1px solid rgba(255,255,255,0.2);padding:12px;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;">
+            Live Scanner
+          </button>
+        </div>
+      </div>
+      <div style="background:rgba(255,255,255,0.08);border-radius:14px;padding:14px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+          <span style="font-size:12px;font-weight:700;color:var(--mode-light);">Storyline Progress</span>
+          <span id="sl-progress-text" style="font-size:12px;color:rgba(255,255,255,0.7);">0 of 8</span>
+        </div>
+        <div style="height:4px;background:rgba(255,255,255,0.15);border-radius:2px;overflow:hidden;">
+          <div id="sl-progress-fill" style="width:0%;height:100%;background:var(--gl);border-radius:2px;transition:width .5s;"></div>
+        </div>
+      </div>
+      <!-- Next exhibit recommendation -->
+      <div id="sl-next-banner" style="background:rgba(255,255,255,0.12);border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:10px;border:1px solid rgba(255,255,255,0.2);">
+        <span class="material-icons-round" style="font-size:20px;color:#fbbf24;flex-shrink:0">qr_code_scanner</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:10px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Scan Next</div>
+          <div id="sl-next-name" style="font-size:13px;font-weight:700;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Siege of Baler Diorama</div>
+          <div id="sl-next-hall" style="font-size:11px;color:rgba(255,255,255,0.6)">Hall A · Step 1</div>
+        </div>
+        <span class="material-icons-round" style="font-size:18px;color:rgba(255,255,255,0.4)">chevron_right</span>
+      </div>
+      <!-- Manual code entry -->
+      <div style="background:rgba(255,255,255,0.08);border-radius:12px;padding:12px;">
+        <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-bottom:8px;text-align:center">Or enter exhibit code manually</div>
+        <div style="display:flex;gap:8px;">
+          <input id="manual-code-sl" type="text" placeholder="e.g. EXH-2026-001"
+                 style="flex:1;padding:10px 12px;border-radius:10px;border:none;background:rgba(255,255,255,0.15);color:white;font-size:13px;outline:none"
+                 onkeydown="if(event.key==='Enter')handleManualScan('sl')">
+          <button onclick="handleManualScan('sl')"
+                  style="padding:10px 14px;background:var(--gm);border:none;border-radius:10px;color:white;font-size:13px;font-weight:600;cursor:pointer">Go</button>
+        </div>
+      </div>
+    </div>
+    <nav class="bnav" style="background:#111;border-top-color:#333;">
+      <div class="ni" onclick="stopScanner();showScreen('s-home')" style="color:rgba(255,255,255,0.5);"><span class="material-icons-round" style="color:rgba(255,255,255,0.5);">home</span><span class="nl" style="color:rgba(255,255,255,0.5);">Home</span></div>
+      <div class="ni" onclick="stopScanner();showScreen('s-home-exhibits')" style="color:rgba(255,255,255,0.5);"><span class="material-icons-round" style="color:rgba(255,255,255,0.5);">format_list_bulleted</span><span class="nl" style="color:rgba(255,255,255,0.5);">Exhibits</span></div>
+      <div class="nscan on" style="background:linear-gradient(135deg,var(--gl),var(--gm));"><span class="material-icons-round">qr_code_scanner</span></div>
+      <div class="ni" onclick="stopScanner();showScreen('s-map')" style="color:rgba(255,255,255,0.5);"><span class="material-icons-round" style="color:rgba(255,255,255,0.5);">map</span><span class="nl" style="color:rgba(255,255,255,0.5);">Map</span></div>
+      <div class="ni" onclick="stopScanner();showScreen('s-profile')" style="color:rgba(255,255,255,0.5);"><span class="material-icons-round" style="color:rgba(255,255,255,0.5);">person</span><span class="nl" style="color:rgba(255,255,255,0.5);">Profile</span></div>
+    </nav>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 4B · SCAN — FREE EXPLORE
+══════════════════════════════════════════ -->
+<div id="s-scan-free" class="screen">
+  <div style="height:100%;background:#1a0e05;display:flex;flex-direction:column;">
+    <div style="background:linear-gradient(135deg,var(--bd),var(--bm));flex-shrink:0;">
+      <div class="sb">
+        <span class="sb-time" style="color:white;" id="time-scan-fr">9:41</span>
+        <div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 20px 14px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span class="material-icons-round" style="font-size:22px;color:white;cursor:pointer;" onclick="stopScanner();showScreen('s-home')">arrow_back</span>
+          <div style="font-family:'Young Serif',serif;font-size:18px;color:white;">Scan Exhibit QR</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.2);border-radius:20px;padding:4px 12px;display:flex;align-items:center;gap:6px;">
+          <span class="material-icons-round" style="font-size:14px;color:white;">explore</span>
+          <span style="font-size:11px;font-weight:700;color:white;">Free Explore</span>
+        </div>
+      </div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;padding:16px;gap:14px;overflow-y:auto;">
+      <!-- Camera / QR area — square viewfinder -->
+      <div style="background:#111;border-radius:16px;overflow:hidden;padding:16px;">
+        <div style="position:relative;width:100%;aspect-ratio:1/1;background:#000;border-radius:12px;overflow:hidden;margin-bottom:14px;">
+          <div style="position:absolute;inset:0;pointer-events:none;z-index:10;">
+            <div style="position:absolute;top:14px;left:14px;width:32px;height:32px;border-top:3px solid white;border-left:3px solid white;border-radius:3px 0 0 0;"></div>
+            <div style="position:absolute;top:14px;right:14px;width:32px;height:32px;border-top:3px solid white;border-right:3px solid white;border-radius:0 3px 0 0;"></div>
+            <div style="position:absolute;bottom:14px;left:14px;width:32px;height:32px;border-bottom:3px solid white;border-left:3px solid white;border-radius:0 0 0 3px;"></div>
+            <div style="position:absolute;bottom:14px;right:14px;width:32px;height:32px;border-bottom:3px solid white;border-right:3px solid white;border-radius:0 0 3px 0;"></div>
+            <div style="position:absolute;left:14px;right:14px;height:2px;background:linear-gradient(90deg,transparent,var(--bl),transparent);animation:scanLine 2s ease-in-out infinite;top:20%;"></div>
+          </div>
+          <div id="scan-ui-fr" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#111;z-index:1;">
+            <span class="material-icons-round" style="font-size:52px;color:rgba(255,255,255,0.25);">qr_code_scanner</span>
+            <div style="color:rgba(255,255,255,0.4);font-size:12px;text-align:center;padding:0 24px;">Tap "Open Camera" or "Live Scanner" below</div>
+          </div>
+          <div id="qr-reader-free" style="width:100%;height:100%;position:absolute;inset:0;z-index:2;"></div>
+          <!-- AI status pill -->
+          <div id="ai-status-fr" style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);z-index:20;background:rgba(0,0,0,0.55);border-radius:20px;padding:4px 12px;display:flex;align-items:center;gap:6px;white-space:nowrap;pointer-events:none;">
+            <span id="ai-dot-fr" style="width:7px;height:7px;border-radius:50%;background:#9ca3af;flex-shrink:0;"></span>
+            <span id="ai-label-fr" style="font-size:11px;color:rgba(255,255,255,0.8);font-weight:600;">Loading AI…</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <label style="flex:1;background:var(--bm);color:white;padding:12px;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+            <span class="material-icons-round" style="font-size:18px;">photo_camera</span>Open Camera
+            <input type="file" accept="image/*" capture="environment" style="display:none" onchange="scanFromFile(this)">
+          </label>
+          <button onclick="activateCamera('qr-reader-free','scan-ui-fr')" style="flex:1;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.8);border:1px solid rgba(255,255,255,0.2);padding:12px;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;">
+            Live Scanner
+          </button>
+        </div>
+      </div>
+      <div style="background:rgba(255,255,255,0.08);border-radius:12px;padding:12px;display:flex;gap:8px;align-items:flex-start;">
+        <span class="material-icons-round" style="font-size:16px;color:var(--bl);flex-shrink:0;margin-top:1px;">info_outline</span>
+        <p style="font-size:12px;color:rgba(255,255,255,0.75);line-height:1.5;">Scan any exhibit QR code to view its details. No order required — explore freely!</p>
+      </div>
+      <!-- Manual code entry -->
+      <div style="background:rgba(255,255,255,0.08);border-radius:12px;padding:12px;">
+        <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-bottom:8px;text-align:center">Or enter exhibit code manually</div>
+        <div style="display:flex;gap:8px;">
+          <input id="manual-code-fr" type="text" placeholder="e.g. EXH-2026-001"
+                 style="flex:1;padding:10px 12px;border-radius:10px;border:none;background:rgba(255,255,255,0.15);color:white;font-size:13px;outline:none"
+                 onkeydown="if(event.key==='Enter')handleManualScan('fr')">
+          <button onclick="handleManualScan('fr')"
+                  style="padding:10px 14px;background:var(--bm);border:none;border-radius:10px;color:white;font-size:13px;font-weight:600;cursor:pointer">Go</button>
+        </div>
+      </div>
+    </div>
+    <nav class="bnav" style="background:#1a0e05;border-top-color:#3a2010;">
+      <div class="ni" onclick="stopScanner();showScreen('s-home')" style="color:rgba(255,255,255,0.5);"><span class="material-icons-round" style="color:rgba(255,255,255,0.5);">home</span><span class="nl" style="color:rgba(255,255,255,0.5);">Home</span></div>
+      <div class="ni" onclick="stopScanner();showScreen('s-home-exhibits')" style="color:rgba(255,255,255,0.5);"><span class="material-icons-round" style="color:rgba(255,255,255,0.5);">format_list_bulleted</span><span class="nl" style="color:rgba(255,255,255,0.5);">Exhibits</span></div>
+      <div class="nscan on" style="background:linear-gradient(135deg,var(--bl),var(--bm));"><span class="material-icons-round">qr_code_scanner</span></div>
+      <div class="ni" onclick="stopScanner();showScreen('s-map')" style="color:rgba(255,255,255,0.5);"><span class="material-icons-round" style="color:rgba(255,255,255,0.5);">map</span><span class="nl" style="color:rgba(255,255,255,0.5);">Map</span></div>
+      <div class="ni" onclick="stopScanner();showScreen('s-profile')" style="color:rgba(255,255,255,0.5);"><span class="material-icons-round" style="color:rgba(255,255,255,0.5);">person</span><span class="nl" style="color:rgba(255,255,255,0.5);">Profile</span></div>
+    </nav>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 5 · EXHIBIT DETAIL
+══════════════════════════════════════════ -->
+<div id="s-exhibit" class="screen">
+  <div style="height:100%;background:var(--ec);display:flex;flex-direction:column;">
+    <div id="ex-hero" style="height:220px;background:linear-gradient(160deg,var(--bd),var(--bm));position:relative;flex-shrink:0;">
+      <img id="ex-hero-img" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;position:absolute;inset:0;">
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
+        <span id="ex-hero-icon" class="material-icons-round" style="font-size:72px;color:rgba(255,255,255,0.25);">history_edu</span>
+      </div>
+      <div style="position:absolute;top:0;left:0;right:0;">
+        <div class="sb">
+          <span class="sb-time" style="color:white;" id="time-exhibit">9:41</span>
+          <div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:4px 16px;">
+          <div onclick="showScreen('s-home')" style="width:36px;height:36px;border-radius:50%;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+            <span class="material-icons-round" style="font-size:20px;color:white;">arrow_back</span>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <div onclick="shareExhibit()" style="width:36px;height:36px;border-radius:50%;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <span class="material-icons-round" style="font-size:20px;color:white;">share</span>
+            </div>
+            <div style="width:36px;height:36px;border-radius:50%;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <span class="material-icons-round" style="font-size:20px;color:white;">more_vert</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="position:absolute;bottom:14px;left:16px;background:rgba(0,0,0,0.5);border-radius:20px;padding:4px 12px;display:flex;align-items:center;gap:6px;">
+        <span class="material-icons-round" style="font-size:14px;color:var(--bl);">history_edu</span>
+        <span id="ex-badge" style="font-size:11px;font-weight:700;color:white;">EXH-001 · Hall A</span>
+      </div>
+    </div>
+    <div class="sbody" style="flex:1;padding:16px 16px 90px;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">
+        <div style="flex:1;padding-right:10px;">
+          <div id="ex-title" style="font-family:'Young Serif',serif;font-size:20px;color:var(--td);line-height:1.3;">Exhibit Title</div>
+          <div id="ex-author-row" style="font-size:11px;color:var(--tl);margin-top:4px;display:flex;align-items:center;gap:6px;">
+            <span class="material-icons-round" style="font-size:13px;">person_outline</span>
+            <span id="ex-author">Museum Curator</span>
+            <span>·</span>
+            <span id="ex-date">2024</span>
+          </div>
+        </div>
+        <div id="bookmark-btn" onclick="toggleBookmark()" style="width:40px;height:40px;border-radius:12px;background:var(--ew);border:1.5px solid var(--es);display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;">
+          <span id="bookmark-icon" class="material-icons-round" style="font-size:22px;color:var(--tl);">bookmark_border</span>
+        </div>
+      </div>
+      <div id="ex-tags" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+        <div style="flex:1;background:white;border-radius:10px;padding:8px 12px;display:flex;align-items:center;gap:6px;border:1px solid var(--es);cursor:pointer;" onclick="toggleLangPicker()">
+          <span class="material-icons-round" style="font-size:16px;color:var(--tl);">language</span>
+          <span id="ex-lang-label" style="font-size:13px;color:var(--td);font-weight:600;">English</span>
+          <span class="material-icons-round" style="font-size:16px;color:var(--tl);margin-left:auto;">expand_more</span>
+        </div>
+        <div onclick="toggleAudio()" style="width:40px;height:40px;border-radius:10px;background:var(--gm);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+          <span class="material-icons-round" style="font-size:20px;color:white;">headphones</span>
+        </div>
+        <div onclick="adjustVolume()" style="width:40px;height:40px;border-radius:10px;background:var(--ew);border:1px solid var(--es);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+          <span class="material-icons-round" style="font-size:20px;color:var(--tl);">volume_up</span>
+        </div>
+      </div>
+      <div id="lang-picker" style="display:none;margin-bottom:12px;">
+        <div class="lang-chips">
+          <div class="lang-chip active" onclick="setLang('en')">English</div>
+          <div class="lang-chip" onclick="setLang('fil')">Filipino</div>
+          <div class="lang-chip" onclick="setLang('es')">Español</div>
+        </div>
+      </div>
+      <div style="background:white;border-radius:14px;padding:12px 14px;margin-bottom:12px;border:1px solid var(--es);">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <button id="audio-play-btn" onclick="toggleAudio()" class="audio-btn">
+            <span id="audio-play-icon" class="material-icons-round">play_arrow</span>
+          </button>
+          <div style="flex:1;">
+            <div class="audio-progress" onclick="seekAudio(event)">
+              <div id="audio-fill" class="audio-fill"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:4px;">
+              <span id="audio-current" class="audio-time">0:00</span>
+              <span id="audio-total" class="audio-time">0:00</span>
+            </div>
+          </div>
+          <div onclick="cycleSpeed()" style="cursor:pointer;background:var(--ew);border-radius:8px;padding:4px 8px;display:flex;align-items:center;gap:3px;">
+            <span class="material-icons-round" style="font-size:16px;color:var(--tl);">speed</span>
+            <span id="speed-label" style="font-size:11px;font-weight:700;color:var(--tl);">1×</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+        <span style="font-size:11px;color:var(--tl);">Text Size</span>
+        <div style="display:flex;gap:6px;">
+          <div onclick="setTextSize('small')" class="txt-size-btn" data-size="small" style="width:28px;height:28px;border-radius:8px;background:var(--ew);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--tl);cursor:pointer;">A</div>
+          <div onclick="setTextSize('medium')" class="txt-size-btn active" data-size="medium" style="width:28px;height:28px;border-radius:8px;background:var(--gm);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:white;cursor:pointer;">A</div>
+          <div onclick="setTextSize('large')" class="txt-size-btn" data-size="large" style="width:28px;height:28px;border-radius:8px;background:var(--ew);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:var(--tl);cursor:pointer;">A</div>
+        </div>
+      </div>
+      <div style="display:flex;border-bottom:2px solid var(--es);margin-bottom:14px;">
+        <div class="ex-tab active" onclick="switchTab('overview')" style="flex:1;text-align:center;padding:8px 0;font-size:13px;font-weight:700;color:var(--mode-secondary);border-bottom:2px solid var(--gm);margin-bottom:-2px;cursor:pointer;">Overview</div>
+        <div class="ex-tab" onclick="switchTab('gallery')" style="flex:1;text-align:center;padding:8px 0;font-size:13px;color:var(--tl);cursor:pointer;">Gallery</div>
+        <div class="ex-tab" onclick="switchTab('facts')" style="flex:1;text-align:center;padding:8px 0;font-size:13px;color:var(--tl);cursor:pointer;">Fun Facts</div>
+      </div>
+      <div id="tab-overview">
+        <div id="ex-desc" style="color:var(--tm);line-height:1.7;margin-bottom:16px;"></div>
+        <div id="next-in-storyline" style="display:none;background:white;border-radius:14px;padding:12px;margin-bottom:12px;border:1px solid var(--es);display:flex;align-items:center;gap:12px;cursor:pointer;" onclick="goToNext()">
+          <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--gd),var(--gm));display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <span class="material-icons-round" style="font-size:22px;color:white;">route</span>
+          </div>
+          <div style="flex:1;"><div style="font-size:11px;color:var(--tl);margin-bottom:2px;">Next in Storyline</div><div id="next-title" style="font-size:13px;font-weight:700;color:var(--td);">Next Exhibit</div></div>
+          <span class="material-icons-round" style="font-size:18px;color:var(--tl);">chevron_right</span>
+        </div>
+        <div style="background:white;border-radius:14px;padding:12px;margin-bottom:12px;border:1px solid var(--es);">
+          <div style="font-size:11px;font-weight:700;color:var(--tl);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Location in Museum</div>
+          <div id="ex-location-mini" style="background:var(--ew);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:8px;">
+            <span class="material-icons-round" style="font-size:18px;color:var(--mode-secondary);">location_on</span>
+            <span id="ex-location-text" style="font-size:13px;color:var(--tm);">—</span>
+          </div>
+        </div>
+      </div>
+      <div id="tab-gallery" style="display:none;">
+        <div id="ex-gallery-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">
+          <div style="height:100px;background:var(--ew);border-radius:10px;display:flex;align-items:center;justify-content:center;"><span class="material-icons-round" style="font-size:32px;color:var(--tl);">image</span></div>
+          <div style="height:100px;background:var(--ew);border-radius:10px;display:flex;align-items:center;justify-content:center;"><span class="material-icons-round" style="font-size:32px;color:var(--tl);">image</span></div>
+          <div style="height:100px;background:var(--ew);border-radius:10px;display:flex;align-items:center;justify-content:center;"><span class="material-icons-round" style="font-size:32px;color:var(--tl);">image</span></div>
+        </div>
+        <p style="font-size:12px;color:var(--tl);text-align:center">Images will appear here once uploaded by museum staff.</p>
+      </div>
+      <div id="tab-facts" style="display:none;">
+        <div id="ex-facts-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+      </div>
+      <button id="scan-another-btn" class="btn btn-brown btn-full" style="font-size:14px;padding:14px;" onclick="onScanEnter()">
+        <span class="material-icons-round" style="font-size:18px;">qr_code_scanner</span>Scan Another Exhibit
+      </button>
+    </div>
+    <nav class="bnav">
+      <div class="ni" onclick="showScreen('s-home')"><span class="material-icons-round">home</span><span class="nl">Home</span></div>
+      <div class="ni on"><span class="material-icons-round">format_list_bulleted</span><span class="nl">Exhibits</span></div>
+      <div class="nscan" onclick="onScanEnter()"><span class="material-icons-round">qr_code_scanner</span></div>
+      <div class="ni" onclick="showScreen('s-map')"><span class="material-icons-round">map</span><span class="nl">Map</span></div>
+      <div class="ni" onclick="showScreen('s-profile')"><span class="material-icons-round">person</span><span class="nl">Profile</span></div>
+    </nav>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 3B · HOME — ALL EXHIBITS
+══════════════════════════════════════════ -->
+<div id="s-home-exhibits" class="screen">
+  <div style="height:100%;background:var(--ec);display:flex;flex-direction:column;">
+    <div style="background:linear-gradient(160deg,var(--mode-primary),var(--mode-secondary));flex-shrink:0;">
+      <div class="sb">
+        <span class="sb-time" style="color:white;" id="time-exhibits">9:41</span>
+        <div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 20px 16px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span class="material-icons-round" style="font-size:22px;color:white;cursor:pointer;" onclick="showScreen('s-home')">arrow_back</span>
+          <div style="font-family:'Young Serif',serif;font-size:18px;color:white;">All Exhibits</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.2);border-radius:20px;padding:6px 12px;display:flex;align-items:center;gap:6px;">
+          <span class="material-icons-round" style="font-size:16px;color:white;">search</span>
+        </div>
+      </div>
+    </div>
+    <div class="sbody" style="flex:1;padding:16px 16px 90px;">
+      <div id="all-exhibit-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+    </div>
+    <nav class="bnav">
+      <div class="ni" onclick="showScreen('s-home')"><span class="material-icons-round">home</span><span class="nl">Home</span></div>
+      <div class="ni on"><span class="material-icons-round">format_list_bulleted</span><span class="nl">Exhibits</span></div>
+      <div class="nscan" onclick="onScanEnter()"><span class="material-icons-round">qr_code_scanner</span></div>
+      <div class="ni" onclick="showScreen('s-map')"><span class="material-icons-round">map</span><span class="nl">Map</span></div>
+      <div class="ni" onclick="showScreen('s-profile')"><span class="material-icons-round">person</span><span class="nl">Profile</span></div>
+    </nav>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 6 · MAP
+══════════════════════════════════════════ -->
+<div id="s-map" class="screen">
+  <div style="height:100%;background:var(--ec);display:flex;flex-direction:column;">
+    <div id="map-header" style="background:var(--gd);flex-shrink:0;">
+      <div class="sb">
+        <span class="sb-time" style="color:white;" id="time-map">9:41</span>
+        <div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 20px 14px;">
+        <div style="font-family:'Young Serif',serif;font-size:18px;color:white;">Museum Map</div>
+        <div id="map-mode-badge" style="background:rgba(255,255,255,0.2);border-radius:20px;padding:4px 12px;display:flex;align-items:center;gap:6px;">
+          <span class="material-icons-round" style="font-size:14px;color:white;">route</span>
+          <span id="map-mode-label" style="font-size:11px;font-weight:700;color:white;">Storyline</span>
+        </div>
+      </div>
+    </div>
+    <div style="background:white;display:flex;border-bottom:2px solid var(--es);flex-shrink:0;">
+      <div id="floor-gnd" onclick="switchVisFloor(1)" style="flex:1;text-align:center;padding:10px 0;font-size:13px;font-weight:700;color:var(--mode-secondary);border-bottom:2px solid var(--gm);margin-bottom:-2px;cursor:pointer;">1st Floor</div>
+      <div id="floor-2nd" onclick="switchVisFloor(2)" style="flex:1;text-align:center;padding:10px 0;font-size:13px;color:var(--tl);cursor:pointer;">2nd Floor</div>
+    </div>
+    <div style="background:white;padding:6px 12px;display:flex;gap:10px;flex-shrink:0;border-bottom:1px solid var(--es);flex-wrap:wrap;">
+      <span style="display:flex;align-items:center;gap:4px;font-size:9.5px;color:var(--tm);"><span style="width:10px;height:10px;border-radius:2px;background:#A8BEC5;border:1px solid #2C1810;display:inline-block"></span>Glass Case</span>
+      <span style="display:flex;align-items:center;gap:4px;font-size:9.5px;color:var(--tm);"><span style="width:10px;height:10px;border-radius:2px;background:#2B5F8E;display:inline-block"></span>Statue</span>
+      <span style="display:flex;align-items:center;gap:4px;font-size:9.5px;color:var(--tm);"><span style="width:10px;height:10px;border-radius:50%;background:#E8A020;display:inline-block"></span>Storyline Stop</span>
+      <span style="display:flex;align-items:center;gap:4px;font-size:9.5px;color:var(--tm);"><span style="width:10px;height:10px;border-radius:50%;background:#4A7C2F;display:inline-block"></span>Free Explore</span>
+    </div>
+    <div id="map-storyline-bar" style="background:var(--mode-pale);padding:8px 16px;flex-shrink:0;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+        <span style="font-size:11px;font-weight:700;color:var(--mode-primary);" id="map-sl-label">Exhibit 1 of 7</span>
+        <span style="font-size:11px;color:var(--mode-secondary);" id="map-sl-pct">14%</span>
+      </div>
+      <div style="height:4px;background:rgba(45,80,22,0.2);border-radius:2px;overflow:hidden;">
+        <div id="map-sl-fill" style="width:14%;height:100%;background:var(--gm);border-radius:2px;"></div>
+      </div>
+    </div>
+    <div style="flex:1;overflow:hidden;background:#F0EBE0;position:relative;display:flex;flex-direction:column;">
+      <div style="flex:1;overflow:auto">
+      <svg id="map-svg-ground" viewBox="0 0 438 470" width="100%" style="display:block;background:#E8D9B8;font-family:sans-serif">
+  <defs>
+    <style>
+      @keyframes dash{to{stroke-dashoffset:-20}}
+      .story-path{animation:dash 1s linear infinite}
+      @keyframes scanPulse{0%{r:14;opacity:.7}100%{r:26;opacity:0}}
+      /* Legend color overrides */
+      .glass-case{fill:#7BAFD4}
+      .statue{fill:#3A6EA5}
+      .story-node{fill:#E8A020}
+      .free-node{fill:#2E86AB}
+    </style>
+    <marker id="arr-v" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#5C1A0A"/>
+    </marker>
+  </defs>
+
+  <!-- L-shape: full rect minus top-left notch -->
+  <polygon points="120,8 430,8 430,465 8,465 8,140 120,140 120,8"
+           fill="#D9C9A3" stroke="#2C1810" stroke-width="3" stroke-linejoin="round"/>
+
+  <!-- Horizontal divider wall: separates upper section from main hall -->
+  <line x1="120" y1="148" x2="430" y2="148" stroke="#2C1810" stroke-width="2"/>
+
+  <!-- STAIRS — top center, same color as MAIN EXHIBITION HALL -->
+  <rect x="168" y="14" width="108" height="90" fill="#8B1A1A" stroke="#2C1810" stroke-width="1.5"/>
+  <line x1="168" y1="26" x2="276" y2="26" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+  <line x1="168" y1="38" x2="276" y2="38" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+  <line x1="168" y1="50" x2="276" y2="50" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+  <line x1="168" y1="62" x2="276" y2="62" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+  <line x1="168" y1="74" x2="276" y2="74" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+  <line x1="168" y1="86" x2="276" y2="86" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+  <text x="222" y="59" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="rgba(255,255,255,0.9)">STAIRS</text>
+
+  <!-- COMFORT ROOM — directly below stairs -->
+  <rect x="168" y="108" width="108" height="40" fill="#C8B89A" stroke="#2C1810" stroke-width="1.5"/>
+  <text x="222" y="123" text-anchor="middle" font-size="7.5" font-weight="700" fill="#2C1810">COMFORT</text>
+  <text x="222" y="135" text-anchor="middle" font-size="7.5" font-weight="700" fill="#2C1810">ROOM</text>
+
+  <!-- Diamond outlines left of stairs (from photo) -->
+  <polygon points="138,30 148,40 138,50 128,40" fill="none" stroke="#2C1810" stroke-width="1.5"/>
+  <polygon points="138,68 148,78 138,88 128,78" fill="none" stroke="#2C1810" stroke-width="1.5"/>
+
+  <!-- Upper-left: 2 gray glass cases left of stairs -->
+  <rect x="122" y="14" width="38" height="24" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
+  <rect x="122" y="46" width="38" height="24" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
+
+  <!-- Upper-right: 2 gray cases right of stairs -->
+  <rect x="286" y="14" width="40" height="24" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
+  <rect x="286" y="46" width="40" height="24" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
+  <!-- Far right: 3 stacked cases -->
+  <rect x="336" y="14" width="86" height="24" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
+  <rect x="336" y="46" width="86" height="24" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
+  <rect x="336" y="78" width="86" height="24" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
+
+  <!-- Left wall: 3 gray glass cases stacked -->
+  <rect x="14" y="158" width="56" height="36" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.5"/>
+  <rect x="14" y="204" width="56" height="36" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.5"/>
+  <rect x="14" y="250" width="56" height="36" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.5"/>
+
+  <!-- Center: large dark brown horizontal display case -->
+  <rect x="82" y="192" width="210" height="52" fill="#7B2D0A" stroke="#2C1810" stroke-width="2"/>
+
+  <!-- Blue statue square — below center case -->
+  <rect x="182" y="258" width="24" height="24" fill="#2B5F8E" stroke="#2C1810" stroke-width="1.5"/>
+
+  <!-- Right side: 2 columns of gray cases -->
+  <rect x="306" y="158" width="56" height="36" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.5"/>
+  <rect x="306" y="204" width="56" height="36" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.5"/>
+  <rect x="306" y="250" width="56" height="36" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.5"/>
+  <rect x="372" y="158" width="50" height="36" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.5"/>
+  <rect x="372" y="204" width="50" height="36" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.5"/>
+
+  <!-- Bottom section wall -->
+  <line x1="8" y1="306" x2="430" y2="306" stroke="#2C1810" stroke-width="2"/>
+
+  <!-- Bottom-left: 2 dark brown cases -->
+  <rect x="14" y="316" width="52" height="30" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.5"/>
+  <rect x="76" y="316" width="52" height="30" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.5"/>
+
+  <!-- INFO DESK — bottom left -->
+  <rect x="14" y="356" width="70" height="32" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.5"/>
+  <text x="49" y="370" text-anchor="middle" font-size="7" font-weight="700" fill="white">INFO</text>
+  <text x="49" y="381" text-anchor="middle" font-size="7" font-weight="700" fill="white">DESK</text>
+
+  <!-- ENTRANCE — bottom center with inward arrows -->
+  <rect x="170" y="450" width="80" height="12" fill="#2C1810"/>
+  <text x="210" y="460" text-anchor="middle" font-size="7" font-weight="700" fill="white">ENTRANCE</text>
+  <line x1="190" y1="436" x2="180" y2="449" stroke="#7B2D0A" stroke-width="1.5" marker-end="url(#arr-v)"/>
+  <line x1="230" y1="436" x2="240" y2="449" stroke="#7B2D0A" stroke-width="1.5" marker-end="url(#arr-v)"/>
+
+  <!-- EXIT — right of entrance -->
+  <rect x="260" y="450" width="50" height="12" fill="#2C1810"/>
+  <text x="285" y="460" text-anchor="middle" font-size="7" font-weight="700" fill="white">EXIT</text>
+  <line x1="285" y1="436" x2="285" y2="449" stroke="#7B2D0A" stroke-width="1.5" marker-end="url(#arr-v)"/>
+
+  <!-- FOR STAFF ONLY — bottom right with X -->
+  <rect x="322" y="314" width="100" height="96" fill="#C8B89A" stroke="#2C1810" stroke-width="1.5"/>
+  <line x1="322" y1="314" x2="422" y2="410" stroke="#2C1810" stroke-width="1" opacity="0.4"/>
+  <line x1="422" y1="314" x2="322" y2="410" stroke="#2C1810" stroke-width="1" opacity="0.4"/>
+  <text x="372" y="358" text-anchor="middle" font-size="7" font-weight="700" fill="#2C1810">For Staff</text>
+  <text x="372" y="370" text-anchor="middle" font-size="7" font-weight="700" fill="#2C1810">Only</text>
+
+  <!-- YOU ARE HERE — dynamically placed by JS after QR scan -->
+  <g id="you-are-here-marker" style="display:none">
+    <circle r="14" fill="#C0392B" stroke="white" stroke-width="2.5" opacity="0.9"/>
+    <text text-anchor="middle" dy="4" font-size="8" font-weight="700" fill="white">HERE</text>
+  </g>
+
+  <!-- Storyline path — nodes ON wooden artifact stands -->
+  <g id="map-path-overlay">
+    <!-- Path connects: E1(center case) → E2(bottom-left case1) → E3(bottom-left case2) -->
+    <polyline points="187,218 40,331 102,331"
+              fill="none" stroke="#E8A020" stroke-width="3" stroke-dasharray="8,5" class="story-path"/>
+    <!-- E1: Siege of Baler Diorama — large center display case -->
+    <circle cx="187" cy="218" r="14" fill="#E8A020" stroke="white" stroke-width="2.5"/>
+    <text x="187" y="222" text-anchor="middle" font-size="10" font-weight="700" fill="white">1</text>
+    <!-- E2: Baler Church — bottom-left case 1 -->
+    <circle cx="40" cy="331" r="14" fill="#E8A020" stroke="white" stroke-width="2.5"/>
+    <text x="40" y="335" text-anchor="middle" font-size="10" font-weight="700" fill="white">2</text>
+    <!-- E3: Aurora Province Heritage — bottom-left case 2 -->
+    <circle cx="102" cy="331" r="14" fill="#E8A020" stroke="white" stroke-width="2.5"/>
+    <text x="102" y="335" text-anchor="middle" font-size="10" font-weight="700" fill="white">3</text>
+  </g>
+
+  <!-- Free explore nodes -->
+  <g id="map-free-nodes" style="display:none">
+    <circle cx="187" cy="218" r="13" fill="#4A7C2F" stroke="white" stroke-width="2"/>
+    <text x="187" y="222" text-anchor="middle" font-size="8" font-weight="700" fill="white">E1</text>
+    <circle cx="40" cy="331" r="13" fill="#4A7C2F" stroke="white" stroke-width="2"/>
+    <text x="40" y="335" text-anchor="middle" font-size="8" font-weight="700" fill="white">E2</text>
+    <circle cx="102" cy="331" r="13" fill="#4A7C2F" stroke="white" stroke-width="2"/>
+    <text x="102" y="335" text-anchor="middle" font-size="8" font-weight="700" fill="white">E3</text>
+  </g>
+</svg>
+      <!-- 2ND FLOOR SVG — accurate to photo -->
+      <svg id="map-svg-second" viewBox="0 0 500 420" width="100%" style="display:none;background:#E8D9B8;font-family:sans-serif">
+
+  <!-- OUTER WALLS -->
+  <rect x="6" y="6" width="488" height="408" fill="#D9C9A3" stroke="#2C1810" stroke-width="3"/>
+
+  <!-- ── TOP SECTION (y=6..120) ── -->
+  <!-- Inner top wall -->
+  <line x1="6" y1="120" x2="494" y2="120" stroke="#2C1810" stroke-width="2"/>
+
+  <!-- Top-left: large wooden artifact block — no lines so it's not confused with stairs -->
+  <rect x="10" y="10" width="178" height="106" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.5"/>
+
+  <!-- Top-center: STAIRS — U-shape, same color as MAIN EXHIBITION HALL -->
+  <!-- Top bar -->
+  <rect x="196" y="10" width="118" height="26" fill="#8B1A1A" stroke="#2C1810" stroke-width="2"/>
+  <!-- Left leg -->
+  <rect x="196" y="10" width="28" height="106" fill="#8B1A1A" stroke="#2C1810" stroke-width="2"/>
+  <line x1="196" y1="38" x2="224" y2="38" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+  <line x1="196" y1="52" x2="224" y2="52" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+  <line x1="196" y1="66" x2="224" y2="66" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+  <line x1="196" y1="80" x2="224" y2="80" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+  <line x1="196" y1="94" x2="224" y2="94" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+  <!-- Right leg -->
+  <rect x="286" y="10" width="28" height="106" fill="#8B1A1A" stroke="#2C1810" stroke-width="2"/>
+  <line x1="286" y1="38" x2="314" y2="38" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+  <line x1="286" y1="52" x2="314" y2="52" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+  <line x1="286" y1="66" x2="314" y2="66" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+  <line x1="286" y1="80" x2="314" y2="80" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+  <line x1="286" y1="94" x2="314" y2="94" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+  <!-- STAIRS label centered in top bar -->
+  <text x="255" y="23" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="rgba(255,255,255,0.9)">STAIRS</text>
+
+  <!-- COMFORT ROOM — inside the U between the two legs -->
+  <rect x="224" y="36" width="62" height="80" fill="#C8B89A" stroke="#2C1810" stroke-width="1.5"/>
+  <text x="255" y="73" text-anchor="middle" font-size="7.5" font-weight="700" fill="#2C1810">COMFORT</text>
+  <text x="255" y="85" text-anchor="middle" font-size="7.5" font-weight="700" fill="#2C1810">ROOM</text>
+
+  <!-- Top-right: lighter area with glass cases (~38% width) -->
+  <rect x="322" y="10" width="168" height="106" fill="#C8B89A" stroke="#2C1810" stroke-width="1.5"/>
+  <!-- Glass cases in top-right -->
+  <rect x="332" y="18" width="68" height="28" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
+  <rect x="410" y="18" width="72" height="28" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
+  <rect x="332" y="54" width="68" height="28" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
+  <rect x="410" y="54" width="72" height="28" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
+  <rect x="332" y="88" width="150" height="24" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
+
+  <!-- ── MAIN EXHIBITION HALL (y=120..290) ── -->
+  <rect x="10" y="124" width="480" height="158" fill="#8B1A1A" stroke="#2C1810" stroke-width="2.5"/>
+  <text x="250" y="198" text-anchor="middle" font-size="15" font-weight="700" fill="rgba(255,255,255,0.95)">MAIN EXHIBITION HALL</text>
+  <text x="250" y="218" text-anchor="middle" font-size="10" fill="rgba(255,255,255,0.6)">2nd Floor Gallery</text>
+
+  <!-- Left wall wooden stands (inside hall, on left edge) -->
+  <rect x="6" y="130" width="8" height="26" fill="#7B2D0A" stroke="#2C1810" stroke-width="1"/>
+  <rect x="6" y="164" width="8" height="26" fill="#7B2D0A" stroke="#2C1810" stroke-width="1"/>
+  <rect x="6" y="198" width="8" height="26" fill="#7B2D0A" stroke="#2C1810" stroke-width="1"/>
+  <rect x="6" y="232" width="8" height="26" fill="#7B2D0A" stroke="#2C1810" stroke-width="1"/>
+
+  <!-- Right wall wooden stands -->
+  <rect x="486" y="130" width="8" height="26" fill="#7B2D0A" stroke="#2C1810" stroke-width="1"/>
+  <rect x="486" y="164" width="8" height="26" fill="#7B2D0A" stroke="#2C1810" stroke-width="1"/>
+  <rect x="486" y="198" width="8" height="26" fill="#7B2D0A" stroke="#2C1810" stroke-width="1"/>
+  <rect x="486" y="232" width="8" height="26" fill="#7B2D0A" stroke="#2C1810" stroke-width="1"/>
+
+  <!-- ── BOTTOM CORRIDOR (y=290..410) ── -->
+  <line x1="6" y1="290" x2="494" y2="290" stroke="#2C1810" stroke-width="2"/>
+
+  <!-- Bottom display cases row -->
+  <rect x="10" y="298" width="58" height="22" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
+  <rect x="76" y="298" width="58" height="22" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
+  <rect x="142" y="298" width="58" height="22" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
+  <rect x="208" y="298" width="58" height="22" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
+  <rect x="274" y="298" width="58" height="22" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
+  <rect x="340" y="298" width="58" height="22" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
+  <rect x="406" y="298" width="80" height="22" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
+
+  <!-- Bottom corner rooms -->
+  <rect x="10" y="330" width="90" height="72" fill="#C8B89A" stroke="#2C1810" stroke-width="1.5"/>
+  <rect x="396" y="330" width="90" height="72" fill="#C8B89A" stroke="#2C1810" stroke-width="1.5"/>
+
+  <!-- Bottom center display cases -->
+  <rect x="112" y="330" width="70" height="30" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
+  <rect x="194" y="330" width="110" height="30" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
+  <rect x="316" y="330" width="70" height="30" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
+
+  <!-- Storyline path overlay -->
+  <g id="map-path-overlay-2nd">
+    <polyline points="99,63 40,310 107,310 249,345 351,345"
+              fill="none" stroke="#E8A020" stroke-width="3" stroke-dasharray="8,5" class="story-path"/>
+    <circle cx="99" cy="63" r="14" fill="#E8A020" stroke="white" stroke-width="2.5"/>
+    <text x="99" y="67" text-anchor="middle" font-size="10" font-weight="700" fill="white">4</text>
+    <circle cx="40" cy="310" r="14" fill="#E8A020" stroke="white" stroke-width="2.5"/>
+    <text x="40" y="314" text-anchor="middle" font-size="10" font-weight="700" fill="white">5</text>
+    <circle cx="107" cy="310" r="14" fill="#E8A020" stroke="white" stroke-width="2.5"/>
+    <text x="107" y="314" text-anchor="middle" font-size="10" font-weight="700" fill="white">6</text>
+    <circle cx="249" cy="345" r="14" fill="#E8A020" stroke="white" stroke-width="2.5"/>
+    <text x="249" y="349" text-anchor="middle" font-size="10" font-weight="700" fill="white">7</text>
+    <circle cx="351" cy="345" r="14" fill="#E8A020" stroke="white" stroke-width="2.5"/>
+    <text x="351" y="349" text-anchor="middle" font-size="10" font-weight="700" fill="white">8</text>
+  </g>
+
+  <!-- Free explore nodes -->
+  <g id="map-free-nodes-2nd" style="display:none">
+    <circle cx="99" cy="63" r="13" fill="#4A7C2F" stroke="white" stroke-width="2"/>
+    <text x="99" y="67" text-anchor="middle" font-size="8" font-weight="700" fill="white">E4</text>
+    <circle cx="40" cy="310" r="13" fill="#4A7C2F" stroke="white" stroke-width="2"/>
+    <text x="40" y="314" text-anchor="middle" font-size="8" font-weight="700" fill="white">E5</text>
+    <circle cx="107" cy="310" r="13" fill="#4A7C2F" stroke="white" stroke-width="2"/>
+    <text x="107" y="314" text-anchor="middle" font-size="8" font-weight="700" fill="white">E6</text>
+    <circle cx="249" cy="345" r="13" fill="#4A7C2F" stroke="white" stroke-width="2"/>
+    <text x="249" y="349" text-anchor="middle" font-size="8" font-weight="700" fill="white">E7</text>
+    <circle cx="351" cy="345" r="13" fill="#4A7C2F" stroke="white" stroke-width="2"/>
+    <text x="351" y="349" text-anchor="middle" font-size="8" font-weight="700" fill="white">E8</text>
+  </g>
+</svg>
+
+      <script>
+      function switchVisFloor(n) {
+        document.getElementById('map-svg-ground').style.display = n===1 ? 'block' : 'none';
+        document.getElementById('map-svg-second').style.display = n===2 ? 'block' : 'none';
+        var b1 = document.getElementById('vis-floor-1');
+        var b2 = document.getElementById('vis-floor-2');
+        var activeColor = (typeof STATE !== 'undefined' && STATE.mode === 'free') ? 'var(--bd)' : 'var(--gm)';
+        if (b1) { b1.style.color = n===1 ? activeColor : 'var(--tl)'; b1.style.borderBottom = n===1 ? '2px solid ' + activeColor : '2px solid transparent'; b1.style.fontWeight = n===1 ? '700' : '600'; }
+        if (b2) { b2.style.color = n===2 ? activeColor : 'var(--tl)'; b2.style.borderBottom = n===2 ? '2px solid ' + activeColor : '2px solid transparent'; b2.style.fontWeight = n===2 ? '700' : '600'; }
+        var og = document.getElementById('floor-gnd');
+        var o2 = document.getElementById('floor-2nd');
+        if (og) { og.style.color = n===1 ? activeColor : 'var(--tl)'; og.style.borderBottom = n===1 ? '2px solid ' + activeColor : 'none'; og.style.fontWeight = n===1 ? '700' : '400'; }
+        if (o2) { o2.style.color = n===2 ? activeColor : 'var(--tl)'; o2.style.borderBottom = n===2 ? '2px solid ' + activeColor : 'none'; o2.style.fontWeight = n===2 ? '700' : '400'; }
+      }
+      </script>
+    </div>
+    </div>
+    <div id="map-info-bar" style="background:white;padding:10px 16px;display:flex;align-items:center;gap:8px;border-top:1px solid var(--es);flex-shrink:0;">
+      <span class="material-icons-round" style="font-size:16px;color:var(--mode-secondary);">info</span>
+      <span id="map-info-text" style="font-size:12px;color:var(--tm);">Follow the gold path to complete the storyline</span>
+    </div>
+    <nav class="bnav">
+      <div class="ni" onclick="showScreen('s-home')"><span class="material-icons-round">home</span><span class="nl">Home</span></div>
+      <div class="ni" onclick="showScreen('s-home-exhibits')"><span class="material-icons-round">format_list_bulleted</span><span class="nl">Exhibits</span></div>
+      <div class="nscan" onclick="onScanEnter()"><span class="material-icons-round">qr_code_scanner</span></div>
+      <div class="ni on"><span class="material-icons-round">map</span><span class="nl">Map</span></div>
+      <div class="ni" onclick="showScreen('s-profile')"><span class="material-icons-round">person</span><span class="nl">Profile</span></div>
+    </nav>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 7 · PROFILE
+══════════════════════════════════════════ -->
+<div id="s-profile" class="screen">
+    <div id="profile-header" style="background:linear-gradient(160deg,#2D5016,#4A7C2F);padding-bottom:28px;flex-shrink:0;">
+      <div class="sb">
+        <span class="sb-time" style="color:white;" id="time-profile">9:41</span>
+        <div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 20px 0;margin-bottom:14px;">
+        <span style="font-family:'Young Serif',serif;font-size:20px;color:white;">My Profile</span>
+        <div onclick="showScreen('s-settings')" style="width:37px;height:37px;background:rgba(255,255,255,0.15);border-radius:11px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+          <span class="material-icons-round" style="font-size:20px;color:white;">settings</span>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:9px;">
+        <div style="width:68px;height:68px;background:rgba(255,255,255,0.18);border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid rgba(255,255,255,0.38);">
+          <span class="material-icons-round" style="font-size:36px;color:white;">person</span>
+        </div>
+        <div id="profile-name" style="font-family:'Young Serif',serif;font-size:18px;color:white;">Visitor</div>
+        <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.15);border-radius:20px;padding:4px 12px;">
+          <span class="material-icons-round" style="font-size:13px;color:white;">mail_outline</span>
+          <span id="profile-provider" style="font-size:11px;color:white;font-weight:600;">Visitor Account</span>
+        </div>
+        <div id="profile-mode-badge" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.12);border-radius:20px;padding:4px 12px;border:1px solid rgba(255,255,255,0.2);">
+          <span class="material-icons-round" style="font-size:14px;color:var(--gp);">route</span>
+          <span id="profile-mode-label" style="font-size:11px;color:rgba(255,255,255,0.9);font-weight:600;">Storyline Mode</span>
+        </div>
+      </div>
+    </div>
+    <div class="sbody" style="flex:1;padding:16px 16px 90px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:18px;">
+        <div onclick="showScreen('s-profile-scanned')" style="background:white;border-radius:14px;padding:13px 10px;text-align:center;box-shadow:var(--sh);cursor:pointer;">
+          <div class="material-icons-round" style="font-size:17px;color:var(--mode-secondary);">qr_code_scanner</div>
+          <div id="stat-scanned" style="font-family:'Young Serif',serif;font-size:26px;color:var(--mode-primary);">0</div>
+          <div style="font-size:10px;color:var(--tl);font-weight:600;margin-top:3px;line-height:1.3;">Exhibits Scanned</div>
+        </div>
+        <div onclick="showScreen('s-profile-bookmarked')" style="background:white;border-radius:14px;padding:13px 10px;text-align:center;box-shadow:var(--sh);cursor:pointer;">
+          <div class="material-icons-round" style="font-size:17px;color:var(--mode-secondary);">bookmark</div>
+          <div id="stat-bookmarked" style="font-family:'Young Serif',serif;font-size:26px;color:var(--mode-primary);">0</div>
+          <div style="font-size:10px;color:var(--tl);font-weight:600;margin-top:3px;line-height:1.3;">Bookmarked</div>
+        </div>
+        <div onclick="showScreen('s-profile-halls')" style="background:white;border-radius:14px;padding:13px 10px;text-align:center;box-shadow:var(--sh);cursor:pointer;">
+          <div class="material-icons-round" style="font-size:17px;color:var(--mode-secondary);">emoji_events</div>
+          <div id="stat-halls" style="font-family:'Young Serif',serif;font-size:26px;color:var(--mode-primary);">0</div>
+          <div style="font-size:10px;color:var(--tl);font-weight:600;margin-top:3px;line-height:1.3;">Halls Completed</div>
+        </div>
+      </div>
+      <div style="background:white;border-radius:14px;padding:14px;margin-bottom:18px;box-shadow:var(--sh);">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+          <span style="font-size:13px;font-weight:700;color:var(--td);">Museum Progress</span>
+          <span id="profile-pct" style="font-size:13px;font-weight:700;color:var(--mode-secondary);">0%</span>
+        </div>
+        <div class="prog-track"><div id="profile-prog-fill" class="prog-fill" style="width:0%;"></div></div>
+        <div id="profile-prog-label" style="font-size:11px;color:var(--tl);margin-top:6px;">0 of 100 exhibits explored</div>
+      </div>
+      <div>
+        <div style="font-family:'Young Serif',serif;font-size:16px;color:var(--td);margin-bottom:10px;">Recently Viewed</div>
+        <div id="profile-recent-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+      </div>
+      <div style="margin-top:18px;display:flex;flex-direction:column;gap:10px;">
+        <button onclick="openFeedback()" class="btn btn-outline btn-full" style="font-size:14px;">
+          <span class="material-icons-round">rate_review</span>Leave Feedback
+        </button>
+        <button onclick="confirmLogout()" class="btn btn-full" style="background:#FEF2F2;color:#DC2626;border:1.5px solid #FECACA;font-size:14px;">
+          <span class="material-icons-round">logout</span>Sign Out
+        </button>
+      </div>
+    </div>
+    <nav class="bnav">
+      <div class="ni" onclick="showScreen('s-home')"><span class="material-icons-round">home</span><span class="nl">Home</span></div>
+      <div class="ni" onclick="showScreen('s-home-exhibits')"><span class="material-icons-round">format_list_bulleted</span><span class="nl">Exhibits</span></div>
+      <div class="nscan" onclick="onScanEnter()"><span class="material-icons-round">qr_code_scanner</span></div>
+      <div class="ni" onclick="showScreen('s-map')"><span class="material-icons-round">map</span><span class="nl">Map</span></div>
+      <div class="ni on"><span class="material-icons-round">person</span><span class="nl">Profile</span></div>
+    </nav>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 7B · EXHIBITS SCANNED
+══════════════════════════════════════════ -->
+<div id="s-profile-scanned" class="screen">
+  <div style="height:100%;background:var(--ec);display:flex;flex-direction:column;">
+    <div style="background:linear-gradient(160deg,var(--mode-primary),var(--mode-secondary));flex-shrink:0;">
+      <div class="sb"><span class="sb-time" style="color:white;" id="time-scanned">9:41</span><div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div></div>
+      <div style="display:flex;align-items:center;gap:12px;padding:6px 20px 16px;">
+        <span class="material-icons-round" style="font-size:22px;color:white;cursor:pointer;" onclick="showScreen('s-profile')">arrow_back</span>
+        <div style="font-family:'Young Serif',serif;font-size:18px;color:white;">Exhibits Scanned</div>
+      </div>
+    </div>
+    <div class="sbody" style="flex:1;padding:16px 16px 90px;">
+      <div id="scanned-count" style="font-size:13px;color:var(--tl);margin-bottom:14px;">0 total</div>
+      <div id="scanned-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+    </div>
+    <nav class="bnav">
+      <div class="ni" onclick="showScreen('s-home')"><span class="material-icons-round">home</span><span class="nl">Home</span></div>
+      <div class="ni" onclick="showScreen('s-home-exhibits')"><span class="material-icons-round">format_list_bulleted</span><span class="nl">Exhibits</span></div>
+      <div class="nscan" onclick="onScanEnter()"><span class="material-icons-round">qr_code_scanner</span></div>
+      <div class="ni" onclick="showScreen('s-map')"><span class="material-icons-round">map</span><span class="nl">Map</span></div>
+      <div class="ni on"><span class="material-icons-round">person</span><span class="nl">Profile</span></div>
+    </nav>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 7C · BOOKMARKED
+══════════════════════════════════════════ -->
+<div id="s-profile-bookmarked" class="screen">
+  <div style="height:100%;background:var(--ec);display:flex;flex-direction:column;">
+    <div style="background:linear-gradient(160deg,var(--mode-primary),var(--mode-secondary));flex-shrink:0;">
+      <div class="sb"><span class="sb-time" style="color:white;" id="time-bookmarked">9:41</span><div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div></div>
+      <div style="display:flex;align-items:center;gap:12px;padding:6px 20px 16px;">
+        <span class="material-icons-round" style="font-size:22px;color:white;cursor:pointer;" onclick="showScreen('s-profile')">arrow_back</span>
+        <div id="bookmarked-header-title" style="font-family:'Young Serif',serif;font-size:18px;color:white;">Bookmarked (0)</div>
+      </div>
+    </div>
+    <div class="sbody" style="flex:1;padding:16px 16px 90px;">
+      <div id="bookmarked-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+    </div>
+    <nav class="bnav">
+      <div class="ni" onclick="showScreen('s-home')"><span class="material-icons-round">home</span><span class="nl">Home</span></div>
+      <div class="ni" onclick="showScreen('s-home-exhibits')"><span class="material-icons-round">format_list_bulleted</span><span class="nl">Exhibits</span></div>
+      <div class="nscan" onclick="onScanEnter()"><span class="material-icons-round">qr_code_scanner</span></div>
+      <div class="ni" onclick="showScreen('s-map')"><span class="material-icons-round">map</span><span class="nl">Map</span></div>
+      <div class="ni on"><span class="material-icons-round">person</span><span class="nl">Profile</span></div>
+    </nav>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 7D · HALLS COMPLETED
+══════════════════════════════════════════ -->
+<div id="s-profile-halls" class="screen">
+  <div style="height:100%;background:var(--ec);display:flex;flex-direction:column;">
+    <div style="background:linear-gradient(160deg,var(--mode-primary),var(--mode-secondary));flex-shrink:0;">
+      <div class="sb"><span class="sb-time" style="color:white;" id="time-halls">9:41</span><div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div></div>
+      <div style="display:flex;align-items:center;gap:12px;padding:6px 20px 16px;">
+        <span class="material-icons-round" style="font-size:22px;color:white;cursor:pointer;" onclick="showScreen('s-profile')">arrow_back</span>
+        <div style="font-family:'Young Serif',serif;font-size:18px;color:white;">Halls Completed (3)</div>
+      </div>
+    </div>
+    <div class="sbody" style="flex:1;padding:16px 16px 90px;">
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div style="background:white;border-radius:16px;padding:16px;box-shadow:var(--sh);">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+            <div style="width:40px;height:40px;border-radius:12px;background:var(--bp);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="material-icons-round" style="font-size:22px;color:var(--bd);">emoji_events</span></div>
+            <div style="flex:1;"><div style="font-size:14px;font-weight:700;color:var(--td);">Hall A — History</div><div style="font-size:11px;color:var(--tl);">18/18 exhibits · 100%</div></div>
+            <span class="material-icons-round" style="font-size:22px;color:var(--mode-secondary);">check_circle</span>
+          </div>
+          <div class="prog-track"><div class="prog-fill" style="width:100%;"></div></div>
+        </div>
+        <div style="background:white;border-radius:16px;padding:16px;box-shadow:var(--sh);">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+            <div style="width:40px;height:40px;border-radius:12px;background:var(--gp);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="material-icons-round" style="font-size:22px;color:var(--mode-primary);">emoji_events</span></div>
+            <div style="flex:1;"><div style="font-size:14px;font-weight:700;color:var(--td);">Hall B — Nature</div><div style="font-size:11px;color:var(--tl);">14/14 exhibits · 100%</div></div>
+            <span class="material-icons-round" style="font-size:22px;color:var(--mode-secondary);">check_circle</span>
+          </div>
+          <div class="prog-track"><div class="prog-fill" style="width:100%;"></div></div>
+        </div>
+        <div style="background:white;border-radius:16px;padding:16px;box-shadow:var(--sh);">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+            <div style="width:40px;height:40px;border-radius:12px;background:#E8E0F0;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="material-icons-round" style="font-size:22px;color:#6B4FA0;">emoji_events</span></div>
+            <div style="flex:1;"><div style="font-size:14px;font-weight:700;color:var(--td);">Hall C — Culture</div><div style="font-size:11px;color:var(--tl);">11/11 exhibits · 100%</div></div>
+            <span class="material-icons-round" style="font-size:22px;color:var(--mode-secondary);">check_circle</span>
+          </div>
+          <div class="prog-track"><div class="prog-fill" style="width:100%;"></div></div>
+        </div>
+      </div>
+    </div>
+    <nav class="bnav">
+      <div class="ni" onclick="showScreen('s-home')"><span class="material-icons-round">home</span><span class="nl">Home</span></div>
+      <div class="ni" onclick="showScreen('s-home-exhibits')"><span class="material-icons-round">format_list_bulleted</span><span class="nl">Exhibits</span></div>
+      <div class="nscan" onclick="onScanEnter()"><span class="material-icons-round">qr_code_scanner</span></div>
+      <div class="ni" onclick="showScreen('s-map')"><span class="material-icons-round">map</span><span class="nl">Map</span></div>
+      <div class="ni on"><span class="material-icons-round">person</span><span class="nl">Profile</span></div>
+    </nav>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 8 · SETTINGS
+══════════════════════════════════════════ -->
+<div id="s-settings" class="screen">
+  <div style="height:100%;background:var(--ec);display:flex;flex-direction:column;">
+    <div style="background:linear-gradient(160deg,var(--mode-primary),var(--mode-secondary));flex-shrink:0;">
+      <div class="sb"><span class="sb-time" style="color:white;" id="time-settings">9:41</span><div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div></div>
+      <div style="display:flex;align-items:center;gap:12px;padding:6px 20px 16px;">
+        <span class="material-icons-round" style="font-size:22px;color:white;cursor:pointer;" onclick="showScreen('s-profile')">arrow_back</span>
+        <div style="font-family:'Young Serif',serif;font-size:18px;color:white;">Settings</div>
+      </div>
+    </div>
+    <div class="sbody" style="flex:1;padding:14px 14px 90px;">
+      <div style="font-size:11px;font-weight:700;color:var(--tl);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;padding-left:4px;">App Language</div>
+      <div style="background:white;border-radius:14px;padding:14px;margin-bottom:14px;box-shadow:var(--sh);">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span class="material-icons-round" style="font-size:20px;color:var(--mode-secondary);">language</span>
+          <span style="flex:1;font-size:14px;color:var(--td);">Language</span>
+          <select id="settings-lang" onchange="setLang(this.value)" style="background:var(--ew);border:none;border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600;color:var(--td);cursor:pointer;outline:none;">
+            <option value="en">English</option>
+            <option value="fil">Filipino</option>
+            <option value="es">Español</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- DARK MODE -->
+      <div style="font-size:11px;font-weight:700;color:var(--tl);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;padding-left:4px;">Appearance</div>
+      <div style="background:white;border-radius:14px;padding:14px;margin-bottom:14px;box-shadow:var(--sh);">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span class="material-icons-round" style="font-size:20px;color:var(--mode-secondary);">dark_mode</span>
+          <span style="flex:1;font-size:14px;color:var(--td);">Dark Mode</span>
+          <div id="toggle-darkmode" onclick="toggleDarkMode()" class="toggle" style="width:44px;height:24px;border-radius:12px;background:#D0D0D0;position:relative;flex-shrink:0;cursor:pointer;">
+            <div style="position:absolute;left:2px;top:2px;width:20px;height:20px;border-radius:50%;background:white;box-shadow:0 1px 4px rgba(0,0,0,0.2);transition:all .2s;"></div>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:var(--tl);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;padding-left:4px;">Explore Mode</div>
+      <div style="background:white;border-radius:14px;padding:14px;margin-bottom:14px;box-shadow:var(--sh);">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span class="material-icons-round" style="font-size:20px;color:var(--mode-secondary);">route</span>
+          <span style="flex:1;font-size:14px;color:var(--td);">Mode</span>
+          <select id="settings-mode" onchange="toggleExploreMode(this.value)" style="background:var(--ew);border:none;border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600;color:var(--td);cursor:pointer;outline:none;">
+            <option value="storyline">Storyline</option>
+            <option value="free">Free Explore</option>
+          </select>
+        </div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:var(--tl);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;padding-left:4px;">Audio</div>
+      <div style="background:white;border-radius:14px;margin-bottom:14px;box-shadow:var(--sh);overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:10px;padding:14px;border-bottom:1px solid var(--es);">
+          <span class="material-icons-round" style="font-size:20px;color:var(--mode-secondary);">record_voice_over</span>
+          <span style="flex:1;font-size:14px;color:var(--td);">Audio Narration</span>
+          <div id="toggle-narration" onclick="toggleNarration()" class="toggle on" style="width:44px;height:24px;border-radius:12px;background:var(--gm);position:relative;flex-shrink:0;cursor:pointer;">
+            <div style="position:absolute;right:2px;top:2px;width:20px;height:20px;border-radius:50%;background:white;box-shadow:0 1px 4px rgba(0,0,0,0.2);transition:all .2s;"></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:14px;border-bottom:1px solid var(--es);">
+          <span class="material-icons-round" style="font-size:20px;color:var(--tl);">music_note</span>
+          <span style="flex:1;font-size:14px;color:var(--td);">Background Music</span>
+          <div id="toggle-music" onclick="toggleMusic()" class="toggle" style="width:44px;height:24px;border-radius:12px;background:#D0D0D0;position:relative;flex-shrink:0;cursor:pointer;">
+            <div style="position:absolute;left:2px;top:2px;width:20px;height:20px;border-radius:50%;background:white;box-shadow:0 1px 4px rgba(0,0,0,0.2);transition:all .2s;"></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:14px;">
+          <span class="material-icons-round" style="font-size:20px;color:var(--mode-secondary);">speed</span>
+          <span style="flex:1;font-size:14px;color:var(--td);">Playback Speed</span>
+          <select id="settings-speed" onchange="setPlaybackSpeed(this.value)" style="background:var(--ew);border:none;border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600;color:var(--td);cursor:pointer;outline:none;">
+            <option value="0.75">0.75×</option>
+            <option value="1" selected>1.0×</option>
+            <option value="1.25">1.25×</option>
+            <option value="1.5">1.5×</option>
+            <option value="2">2.0×</option>
+          </select>
+        </div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:var(--tl);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;padding-left:4px;">Accessibility</div>
+      <div style="background:white;border-radius:14px;margin-bottom:14px;box-shadow:var(--sh);overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:10px;padding:14px;border-bottom:1px solid var(--es);">
+          <span class="material-icons-round" style="font-size:20px;color:var(--mode-secondary);">text_fields</span>
+          <span style="flex:1;font-size:14px;color:var(--td);">Text Size</span>
+          <select id="settings-textsize" onchange="setTextSize(this.value)" style="background:var(--ew);border:none;border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600;color:var(--td);cursor:pointer;outline:none;">
+            <option value="small">Small</option>
+            <option value="medium" selected>Medium</option>
+            <option value="large">Large</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:14px;">
+          <span class="material-icons-round" style="font-size:20px;color:var(--tl);">contrast</span>
+          <span style="flex:1;font-size:14px;color:var(--td);">High Contrast</span>
+          <div id="toggle-contrast" onclick="toggleHighContrast()" class="toggle" style="width:44px;height:24px;border-radius:12px;background:#D0D0D0;position:relative;flex-shrink:0;cursor:pointer;">
+            <div style="position:absolute;left:2px;top:2px;width:20px;height:20px;border-radius:50%;background:white;box-shadow:0 1px 4px rgba(0,0,0,0.2);transition:all .2s;"></div>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:var(--tl);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;padding-left:4px;">Offline</div>
+      <div style="background:white;border-radius:14px;padding:14px;margin-bottom:14px;box-shadow:var(--sh);">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span class="material-icons-round" style="font-size:20px;color:var(--mode-secondary);">offline_bolt</span>
+          <span style="flex:1;font-size:14px;color:var(--td);">Offline Mode</span>
+          <div id="toggle-offline" onclick="toggleOffline()" class="toggle on" style="width:44px;height:24px;border-radius:12px;background:var(--gm);position:relative;flex-shrink:0;cursor:pointer;">
+            <div style="position:absolute;right:2px;top:2px;width:20px;height:20px;border-radius:50%;background:white;box-shadow:0 1px 4px rgba(0,0,0,0.2);transition:all .2s;"></div>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:var(--tl);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;padding-left:4px;">About</div>
+      <div style="background:white;border-radius:14px;margin-bottom:14px;box-shadow:var(--sh);overflow:hidden;">
+        <div onclick="showScreen('s-about');loadMuseumInfo();" style="display:flex;align-items:center;gap:10px;padding:14px;border-bottom:1px solid var(--es);cursor:pointer;">
+          <span class="material-icons-round" style="font-size:20px;color:var(--mode-secondary);">account_balance</span>
+          <div style="flex:1;"><div style="font-size:14px;color:var(--td);">Museo de Baler</div><div style="font-size:11px;color:var(--tl);">Version 1.0.0</div></div>
+          <span class="material-icons-round" style="font-size:18px;color:var(--tl);">chevron_right</span>
+        </div>
+        <div onclick="openFeedback()" style="display:flex;align-items:center;gap:10px;padding:14px;border-bottom:1px solid var(--es);cursor:pointer;">
+          <span class="material-icons-round" style="font-size:20px;color:var(--mode-secondary);">rate_review</span>
+          <span style="flex:1;font-size:14px;color:var(--td);">Send Feedback</span>
+          <span class="material-icons-round" style="font-size:18px;color:var(--tl);">chevron_right</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:14px;border-bottom:1px solid var(--es);cursor:pointer;">
+          <span class="material-icons-round" style="font-size:20px;color:var(--mode-secondary);">privacy_tip</span>
+          <span style="flex:1;font-size:14px;color:var(--td);">Privacy Policy</span>
+          <span class="material-icons-round" style="font-size:18px;color:var(--tl);">chevron_right</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:14px;cursor:pointer;">
+          <span class="material-icons-round" style="font-size:20px;color:var(--mode-secondary);">gavel</span>
+          <span style="flex:1;font-size:14px;color:var(--td);">Terms of Service</span>
+          <span class="material-icons-round" style="font-size:18px;color:var(--tl);">chevron_right</span>
+        </div>
+      </div>
+    </div>
+    <nav class="bnav">
+      <div class="ni" onclick="showScreen('s-home')"><span class="material-icons-round">home</span><span class="nl">Home</span></div>
+      <div class="ni" onclick="showScreen('s-home-exhibits')"><span class="material-icons-round">format_list_bulleted</span><span class="nl">Exhibits</span></div>
+      <div class="nscan" onclick="onScanEnter()"><span class="material-icons-round">qr_code_scanner</span></div>
+      <div class="ni" onclick="showScreen('s-map')"><span class="material-icons-round">map</span><span class="nl">Map</span></div>
+      <div class="ni" onclick="showScreen('s-profile')"><span class="material-icons-round">person</span><span class="nl">Profile</span></div>
+    </nav>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 9 · ABOUT THE MUSEUM
+══════════════════════════════════════════ -->
+<div id="s-about" class="screen">
+  <div style="height:100%;background:var(--ec);display:flex;flex-direction:column;">
+    <div style="background:linear-gradient(160deg,var(--mode-primary),var(--mode-secondary));flex-shrink:0;">
+      <div class="sb"><span class="sb-time" style="color:white;">9:41</span><div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div></div>
+      <div style="display:flex;align-items:center;gap:12px;padding:6px 20px 16px;">
+        <span class="material-icons-round" style="font-size:22px;color:white;cursor:pointer;" onclick="showScreen('s-settings')">arrow_back</span>
+        <div style="font-family:'Young Serif',serif;font-size:18px;color:white;">About the Museum</div>
+      </div>
+    </div>
+    <div class="sbody" style="flex:1;padding:0 0 90px;">
+      <!-- Hero image -->
+      <div style="height:180px;background:linear-gradient(160deg,var(--mode-primary),var(--mode-secondary));display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;">
+        <span class="material-icons-round" style="font-size:80px;color:rgba(255,255,255,0.2);">account_balance</span>
+        <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,0.5));padding:16px;">
+          <div style="font-family:'Young Serif',serif;font-size:20px;color:white;">Museo de Baler</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.8);">Baler, Aurora, Philippines</div>
+        </div>
+      </div>
+
+      <div style="padding:16px;">
+        <!-- About card -->
+        <div style="background:white;border-radius:var(--r);padding:16px;margin-bottom:14px;box-shadow:var(--sh);">
+          <div style="font-family:'Young Serif',serif;font-size:16px;color:var(--td);margin-bottom:10px;">Our Story</div>
+          <p id="about-story" style="font-size:13px;color:var(--tm);line-height:1.7;">Museo de Baler is the official municipal museum of Baler, Aurora. It preserves and showcases the rich cultural heritage, natural history, and significant historical events of Baler and the surrounding Aurora Province.</p>
+          <p id="about-story2" style="font-size:13px;color:var(--tm);line-height:1.7;margin-top:10px;">The museum houses artifacts, dioramas, and exhibits spanning the pre-colonial era, the Spanish colonial period, the Philippine Revolution, and the modern history of Aurora Province — including the birthplace of President Manuel L. Quezon.</p>
+        </div>
+
+        <!-- Info cards -->
+        <div style="background:white;border-radius:var(--r);margin-bottom:14px;box-shadow:var(--sh);overflow:hidden;">
+          <div style="display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid var(--es);">
+            <div style="width:36px;height:36px;border-radius:10px;background:var(--gp);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="material-icons-round" style="font-size:18px;color:var(--mode-primary);">location_on</span></div>
+            <div><div style="font-size:13px;font-weight:600;color:var(--td);">Address</div><div id="about-address" style="font-size:12px;color:var(--tl);">Quezon St., Baler, Aurora 3200</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid var(--es);">
+            <div style="width:36px;height:36px;border-radius:10px;background:var(--gp);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="material-icons-round" style="font-size:18px;color:var(--mode-primary);">schedule</span></div>
+            <div><div style="font-size:13px;font-weight:600;color:var(--td);">Opening Hours</div><div id="about-hours" style="font-size:12px;color:var(--tl);">Tue–Sun: 8:00 AM – 5:00 PM</div><div id="about-closed" style="font-size:12px;color:var(--tl);">Closed on Mondays &amp; Holidays</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid var(--es);">
+            <div style="width:36px;height:36px;border-radius:10px;background:var(--gp);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="material-icons-round" style="font-size:18px;color:var(--mode-primary);">confirmation_number</span></div>
+            <div><div style="font-size:13px;font-weight:600;color:var(--td);">Admission</div><div id="about-admission" style="font-size:12px;color:var(--tl);">Free for all visitors</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:14px;">
+            <div style="width:36px;height:36px;border-radius:10px;background:var(--gp);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="material-icons-round" style="font-size:18px;color:var(--mode-primary);">phone</span></div>
+            <div><div style="font-size:13px;font-weight:600;color:var(--td);">Contact</div><div id="about-phone" style="font-size:12px;color:var(--tl);">(042) 284-5678</div><div id="about-email" style="font-size:12px;color:var(--tl);">museobaler@aurora.gov.ph</div></div>
+          </div>
+        </div>
+
+        <!-- Halls -->
+        <div style="background:white;border-radius:var(--r);padding:16px;margin-bottom:14px;box-shadow:var(--sh);">
+          <div style="font-family:'Young Serif',serif;font-size:16px;color:var(--td);margin-bottom:12px;">Museum Halls</div>
+          <div id="about-halls" style="display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--ew);border-radius:10px;">
+              <div style="width:32px;height:32px;border-radius:8px;background:var(--bp);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="material-icons-round" style="font-size:16px;color:var(--bd);">history_edu</span></div>
+              <div><div style="font-size:13px;font-weight:600;color:var(--td);">Hall A — History &amp; Religion</div><div style="font-size:11px;color:var(--tl);">Ground Floor · Colonial era to Revolution</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- App version -->
+        <div style="text-align:center;padding:16px;color:var(--tl);font-size:12px;">
+          <span class="material-icons-round" style="font-size:32px;color:var(--mode-secondary);display:block;margin-bottom:8px;">account_balance</span>
+          <div style="font-weight:600;color:var(--td);">Museo de Baler Visitor App</div>
+          <div style="margin-top:4px;">Version 1.0.0 · Museo de Baler</div>
+          <div style="margin-top:4px;">© 2026 Municipality of Baler, Aurora</div>
+        </div>
+      </div>
+    </div>
+    <nav class="bnav">
+      <div class="ni" onclick="showScreen('s-home')"><span class="material-icons-round">home</span><span class="nl">Home</span></div>
+      <div class="ni" onclick="showScreen('s-home-exhibits')"><span class="material-icons-round">format_list_bulleted</span><span class="nl">Exhibits</span></div>
+      <div class="nscan" onclick="onScanEnter()"><span class="material-icons-round">qr_code_scanner</span></div>
+      <div class="ni" onclick="showScreen('s-map')"><span class="material-icons-round">map</span><span class="nl">Map</span></div>
+      <div class="ni" onclick="showScreen('s-profile')"><span class="material-icons-round">person</span><span class="nl">Profile</span></div>
+    </nav>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     FEEDBACK SHEET
+══════════════════════════════════════════ -->
+<div id="feedback-sheet" class="sheet-overlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div style="font-family:'Young Serif',serif;font-size:18px;color:var(--td);margin-bottom:6px;">Leave Feedback</div>
+    <div style="font-size:13px;color:var(--tl);margin-bottom:16px;">How was your museum experience today?</div>
+    <div class="stars" id="star-row">
+      <span class="star" onclick="setRating(1)">★</span>
+      <span class="star" onclick="setRating(2)">★</span>
+      <span class="star" onclick="setRating(3)">★</span>
+      <span class="star" onclick="setRating(4)">★</span>
+      <span class="star" onclick="setRating(5)">★</span>
+    </div>
+    <!-- Only revealed when a guide was actually assigned to this visitor
+         today. Most visits at Museo de Baler are unguided, so asking everyone
+         about a guide they never had would just collect noise. -->
+    <div id="guide-feedback" style="display:none;margin-bottom:16px;padding-top:14px;border-top:1px solid var(--bd,#e7e5e4);">
+      <div id="guide-feedback-label" style="font-size:13px;color:var(--tl);margin-bottom:8px;">How was your guide?</div>
+      <div class="stars" id="guide-star-row">
+        <span class="star guide-star" onclick="setGuideRating(1)">★</span>
+        <span class="star guide-star" onclick="setGuideRating(2)">★</span>
+        <span class="star guide-star" onclick="setGuideRating(3)">★</span>
+        <span class="star guide-star" onclick="setGuideRating(4)">★</span>
+        <span class="star guide-star" onclick="setGuideRating(5)">★</span>
+      </div>
+    </div>
+
+    <textarea id="feedback-text" class="fi" rows="4" placeholder="Tell us about your visit..." style="resize:none;margin-bottom:14px;"></textarea>
+    <button class="btn btn-green btn-full" style="margin-bottom:10px;" onclick="submitFeedback()">
+      <span class="material-icons-round">send</span>Submit Feedback
+    </button>
+    <button class="btn btn-outline btn-full" onclick="closeFeedback()">Cancel</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     LOGOUT CONFIRM SHEET
+══════════════════════════════════════════ -->
+<div id="logout-sheet" class="sheet-overlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div style="text-align:center;margin-bottom:16px;">
+      <span class="material-icons-round" style="font-size:48px;color:#DC2626;">logout</span>
+    </div>
+    <div style="font-family:'Young Serif',serif;font-size:18px;color:var(--td);text-align:center;margin-bottom:8px;">Sign Out?</div>
+    <div style="font-size:13px;color:var(--tl);text-align:center;line-height:1.6;margin-bottom:20px;">Your visit history and bookmarks will be cleared from this device.</div>
+    <button class="btn btn-full" style="background:#DC2626;color:white;margin-bottom:10px;font-size:15px;padding:14px;" onclick="doLogout()">
+      <span class="material-icons-round">logout</span>Yes, Sign Out
+    </button>
+    <button class="btn btn-outline btn-full" style="font-size:15px;padding:14px;" onclick="document.getElementById('logout-sheet').classList.remove('open')">Cancel</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     GLOBAL UI ELEMENTS
+══════════════════════════════════════════ -->
+<div id="toast"></div>
+<div id="loading"><div class="spinner"></div></div>
+
+<!-- PWA Install Prompt -->
+<div id="pwa-install-sheet" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9990;background:white;border-radius:24px 24px 0 0;padding:20px 20px 36px;box-shadow:0 -4px 24px rgba(0,0,0,0.15);">
+  <div style="width:36px;height:4px;background:var(--es);border-radius:2px;margin:0 auto 16px;"></div>
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
+    <div style="width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,var(--gd),var(--gm));display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <span class="material-icons-round" style="font-size:28px;color:white;">account_balance</span>
+    </div>
+    <div>
+      <div style="font-family:'Young Serif',serif;font-size:16px;color:var(--td);">Install Museo de Baler</div>
+      <div style="font-size:12px;color:var(--tl);margin-top:2px;">Add to your home screen for offline access</div>
+    </div>
+  </div>
+  <div style="background:var(--ew);border-radius:12px;padding:12px 14px;margin-bottom:16px;display:flex;flex-direction:column;gap:8px;">
+    <div style="display:flex;align-items:center;gap:10px;font-size:12px;color:var(--tm);">
+      <span class="material-icons-round" style="font-size:16px;color:var(--gm);">wifi_off</span>
+      Works offline — browse exhibits without internet
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;font-size:12px;color:var(--tm);">
+      <span class="material-icons-round" style="font-size:16px;color:var(--gm);">speed</span>
+      Faster loading — cached on your device
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;font-size:12px;color:var(--tm);">
+      <span class="material-icons-round" style="font-size:16px;color:var(--gm);">home</span>
+      Quick access from your home screen
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;">
+    <button onclick="dismissInstallPrompt()" style="flex:1;padding:13px;background:var(--ew);border:none;border-radius:12px;font-size:14px;font-weight:600;color:var(--tl);cursor:pointer;">Not now</button>
+    <button onclick="triggerInstall()" style="flex:2;padding:13px;background:linear-gradient(135deg,var(--gm),var(--gd));border:none;border-radius:12px;font-size:14px;font-weight:700;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+      <span class="material-icons-round" style="font-size:18px;">download</span>Install App
+    </button>
+  </div>
+</div>
+
+</div><!-- #app -->
+
+<style>
+.radio-pill{display:flex;align-items:center;gap:7px;padding:9px 14px;border:1.5px solid #E5E7EB;border-radius:10px;background:#fafafa;cursor:pointer;font-size:13px;color:var(--tm);}
+.radio-pill input{accent-color:var(--mode-secondary);}
+.radio-pill.active{border-color:var(--mode-secondary);background:#F0FDF4;color:var(--mode-primary);font-weight:600;}
+.toggle{transition:background .2s;}
+.toggle .knob{transition:all .2s;}
+@keyframes scanLine{0%,100%{top:20%}50%{top:80%}}
+</style>
+
+<script src="./js/app.js?v=5"></script>
+<script>(function(){var p=new URLSearchParams(location.search);window.addEventListener("load",function(){setTimeout(function(){try{if(p.get("mode"))setAuthMode(p.get("mode"));if(p.has("pw")){document.getElementById("reg-first").value="Juan";document.getElementById("reg-last").value="Reyes";document.getElementById("reg-email").value="juan.reyes@gmail.com";document.getElementById("reg-password").value=p.get("pw");document.getElementById("reg-password2").value=p.get("pw");onPasswordInput();}if(p.get("screen")){STATE.name="Juan Reyes";STATE.email="juan.reyes@gmail.com";STATE.clearance=p.get("clearance")||"pending_payment";STATE.visitorType=STATE.clearance==="pending_id"?"Local":"Tourist";STATE.admissionFee=50;STATE.age=25;STATE.sex="Male";STATE.visitType="Walk-in";STATE.city="Cebu City";STATE.province="Cebu";STATE.paymentStatus=STATE.clearance==="pending_id"?"Free":"Unpaid";if(p.get("screen")==="s-pending"){showPending(null);stopClearancePolling();}else if(p.get("screen")==="s-reg-success"){finishRegistration();}else{showScreen(p.get("screen"));updateFeeBox();}}}catch(e){document.title="ERR "+e.message;}},700);});})();</script><script>window.addEventListener("load",function(){setTimeout(function(){var r={};var s=document.querySelector(".screen.active");r.screen=s&&s.id;var sh=s&&s.querySelector(".sheet-bottom");if(sh){var cs=getComputedStyle(sh);r.sheetH=sh.clientHeight;r.sheetScrollH=sh.scrollHeight;r.scrollable=sh.scrollHeight>sh.clientHeight;r.top=Math.round(sh.getBoundingClientRect().top);r.bottom=Math.round(sh.getBoundingClientRect().bottom);r.overflowY=cs.overflowY;}r.vh=window.innerHeight;r.vw=window.innerWidth;var over=[];document.querySelectorAll(".screen.active *").forEach(function(el){var b=el.getBoundingClientRect();if(b.width>0&&b.right>window.innerWidth+1)over.push(el.id||el.tagName);});r.hOverflow=over.slice(0,5);document.title="R:"+JSON.stringify(r);},1500);});</script></body>
+</html>

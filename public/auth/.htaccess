@@ -1,0 +1,6 @@
+# SECURITY: Block all direct HTTP access to files in this directory.
+# The auth/ folder contains db.php which is a PHP include file only.
+# It must never be accessible via a browser URL — doing so could expose
+# database connection errors or allow probing of the connection logic.
+Order allow,deny
+Deny from all
