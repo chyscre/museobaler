@@ -1,9 +1,9 @@
 <?php
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, ngrok-skip-browser-warning');
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+
+// SECURITY: allow-listed origins only, and preflight ends here.
+require_once '_cors.php';
+apiCors('GET, POST, OPTIONS');
 
 // SECURITY: Rate limiting — max 60 requests per minute per IP
 require_once '_rate_limit.php';

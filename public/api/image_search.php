@@ -16,22 +16,10 @@
 
 header('Content-Type: application/json');
 
-$allowedOrigins = [
-    'http://localhost',
-    'http://127.0.0.1',
-    'capacitor://localhost',
-    'ionic://localhost',
-];
-$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-if (in_array($origin, $allowedOrigins, true)) {
-    header("Access-Control-Allow-Origin: $origin");
-} else {
-    header('Access-Control-Allow-Origin: *');
-}
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, ngrok-skip-browser-warning');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+// SECURITY: allow-listed origins only (see _cors.php), and preflight ends here.
+// This used to fall through to '*' for any unrecognised origin.
+require_once '_cors.php';
+apiCors('POST, OPTIONS');
 
 // SECURITY: Rate limiting — image-search requests per minute per IP.
 // This bucket is now separate from the other endpoints, so camera sampling can
