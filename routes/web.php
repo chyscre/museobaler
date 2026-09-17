@@ -137,8 +137,13 @@ Route::middleware(['auth', 'password.rotate', 'desktop'])->group(function () use
 
         // The AI half of the exhibit form: drafts to read and listen to,
         // saved only when the form is.
-        Route::post('/exhibits/ai/translate', [ExhibitAiController::class, 'translate'])->name('exhibits.ai.translate');
-        Route::post('/exhibits/ai/narrate',   [ExhibitAiController::class, 'narrate'])->name('exhibits.ai.narrate');
+        //
+        // throttle:ai - the only routes here that spend money. See
+        // AppServiceProvider::rateLimitAiCalls() for the ceilings.
+        Route::middleware('throttle:ai')->group(function () {
+            Route::post('/exhibits/ai/translate', [ExhibitAiController::class, 'translate'])->name('exhibits.ai.translate');
+            Route::post('/exhibits/ai/narrate',   [ExhibitAiController::class, 'narrate'])->name('exhibits.ai.narrate');
+        });
 
         // QR codes for the display cases
         Route::get('/qr-codes',           [ExhibitController::class, 'qrCodes'])->name('exhibits.qr.panel');
