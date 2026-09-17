@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Services\Gemini;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -21,6 +22,23 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        /**
+         * SECURITY: production must never render a stack trace.
+         *
+         * APP_DEBUG lives in .env, which is deliberately not in version
+         * control, so nothing carries the correct value onto a server - and
+         * the template ships true for local work. Left that way in
+         * production, Laravel's error page prints file paths, config values
+         * and query bindings to whoever triggered the error.
+         *
+         * Forcing it off beats refusing to boot: a museum that cannot open
+         * its panel because of a config typo is a worse failure than one
+         * running without debug output. The log line is what tells whoever
+         * set the server up that the .env still needs correcting.
+         */
+        if ($this->app->environment('production') && config('app.debug')) {
+            config(['app.debug' => false]);
+            Log::warning('APP_DEBUG was true in production and has been forced off. Correct .env on this server.');
+        }
     }
 }
