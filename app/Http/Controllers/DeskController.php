@@ -6,6 +6,7 @@ use App\Models\Log;
 use App\Models\Staff;
 use App\Models\Visitor;
 use App\Models\VisitGroup;
+use App\Services\Qr;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -162,15 +163,10 @@ class DeskController extends Controller
         // DirectoryIndex order.
         $registerUrl = url('/visitor/index.html');
 
-        require_once public_path('phpqrcode/phpqrcode.php');
-
-        ob_start();
-        \QRcode::png($registerUrl, false, QR_ECLEVEL_H, 12, 2);
-        $png = base64_encode(ob_get_clean());
-
         return view('desk.poster', [
             'registerUrl' => $registerUrl,
-            'qr'          => 'data:image/png;base64,' . $png,
+            // 360px to match the printed size the poster stylesheet asks for.
+            'qr'          => Qr::dataUri($registerUrl, 360),
             'museum'      => \App\Models\MuseumInfo::first(),
         ]);
     }

@@ -62,36 +62,12 @@ class ExhibitQr
 
     /**
      * Generate a QR code SVG string for a given URL.
-     * Uses chillerlan/php-qrcode - pure PHP, no imagemagick required.
+     *
+     * ECC_H tolerates 30% damage, which matters for codes that end up printed
+     * and stuck to a wall visitors brush past.
      */
     public static function svg(string $url): string
     {
-        if (!class_exists(\chillerlan\QRCode\QRCode::class)) {
-            // Fallback: a placeholder SVG if the package isn't installed yet
-            return '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256">'
-                 . '<rect width="256" height="256" fill="#fff"/>'
-                 . '<text x="128" y="128" text-anchor="middle" font-size="12" fill="#999">QR package not installed</text>'
-                 . '</svg>';
-        }
-
-        $options = new \chillerlan\QRCode\QROptions([
-            'outputInterface' => \chillerlan\QRCode\Output\QRMarkupSVG::class,
-            // ECC_H tolerates 30% damage, which matters for codes that end up
-            // printed and stuck to a wall visitors brush past.
-            'eccLevel'        => \chillerlan\QRCode\Common\EccLevel::H,
-            'addQuietzone'    => true,
-            'quietzoneSize'   => 4,
-            'connectPaths'    => true,
-            // Without this the renderer hands back a data: URI rather than
-            // SVG markup.
-            'outputBase64'    => false,
-        ]);
-
-        $svg = (new \chillerlan\QRCode\QRCode($options))->render($url);
-
-        // The renderer emits only a viewBox, leaving the intrinsic size to
-        // whatever opens the file. Print dialogs and image viewers need real
-        // dimensions, so pin the rendered size to 256x256.
-        return preg_replace('/<svg /', '<svg width="256" height="256" ', $svg, 1);
+        return Qr::svg($url);
     }
 }
