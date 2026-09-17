@@ -10,7 +10,9 @@ use App\Models\StaffSchedule;
 use App\Services\AttendanceQrService;
 use App\Services\AttendanceStatusService;
 use App\Services\GeofenceService;
+use App\Services\Qr;
 use App\Support\Device;
+use chillerlan\QRCode\Common\EccLevel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -44,14 +46,11 @@ class StaffAttendanceController extends Controller
     {
         $payload = $this->qr->currentPayload(auth()->id());
 
-        require_once public_path('phpqrcode/phpqrcode.php');
-
-        ob_start();
-        \QRcode::png($payload, false, QR_ECLEVEL_M, 10, 2);
-        $png = ob_get_clean();
-
-        return response($png, 200, [
-            'Content-Type'  => 'image/png',
+        // ECC_M, not the H used on printed labels: this code is read off a
+        // clean screen a metre away, where the denser code that higher error
+        // correction produces only makes the phone work harder.
+        return response(Qr::svg($payload, 512, EccLevel::M), 200, [
+            'Content-Type'  => 'image/svg+xml',
             // The code is only valid for one window - never let a proxy or the
             // browser hand back a stale image after it has rotated.
             'Cache-Control' => 'no-store, no-cache, must-revalidate',

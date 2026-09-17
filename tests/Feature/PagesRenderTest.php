@@ -124,13 +124,19 @@ class PagesRenderTest extends TestCase
         $this->actingAs($tourism)->get("/reports/dtr/{$tourism->staff_id}")->assertNotFound();
     }
 
-    public function test_the_rotating_qr_image_is_a_png_and_is_never_cached(): void
+    public function test_the_rotating_qr_image_is_an_svg_and_is_never_cached(): void
     {
         $response = $this->actingAs(Staff::factory()->administrator()->create())
             ->get('/attendance/kiosk/qr');
 
         $response->assertOk();
-        $this->assertSame('image/png', $response->headers->get('Content-Type'));
+        $this->assertSame('image/svg+xml', $response->headers->get('Content-Type'));
+
+        // A drawn code, not the placeholder Qr falls back to when the QR
+        // package is missing - which a phone would fail to scan all day
+        // while the screen looked perfectly fine from across the staff room.
+        $this->assertStringContainsString('<svg', $response->getContent());
+        $this->assertStringNotContainsString('not installed', $response->getContent());
 
         // A cached image would keep showing a code that has already expired.
         $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
