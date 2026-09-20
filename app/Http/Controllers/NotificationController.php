@@ -115,12 +115,12 @@ class NotificationController extends Controller
                 'url'     => $records('visitors'),
             ]);
 
-        $idChecks = $window(Visitor::where('id_verified', true)->whereNotNull('verified_at'), 'verified_at')
+        $idChecks = $window(Visitor::with('verifiedBy')->where('id_verified', true)->whereNotNull('verified_at'), 'verified_at')
             ->orderByDesc('verified_at')->get()->map(fn ($v) => [
                 'id'      => 'idv_ok_' . $v->visitor_id . '_' . $v->verified_at?->timestamp,
                 'type'    => 'id_check',
                 'message' => $v->full_name . "'s residency ID was verified"
-                    . ($v->verified_by ? ' by ' . $v->verified_by : ''),
+                    . ($v->verifiedBy ? ' by ' . $v->verifiedBy->name : ''),
                 'time'    => $v->verified_at?->format('h:i A') ?? '',
                 'at'      => $v->verified_at?->timestamp ?? 0,
                 'url'     => $records('visitors'),

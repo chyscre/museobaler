@@ -21,6 +21,11 @@ class Tour extends Model
         ];
     }
 
+    public function createdBy()
+    {
+        return $this->belongsTo(Staff::class, 'created_by', 'staff_id');
+    }
+
     public function guide()
     {
         return $this->belongsTo(Staff::class, 'guide_staff_id', 'staff_id');
