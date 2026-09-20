@@ -130,17 +130,6 @@ function categoryGradient(cat) {
   return m[cat] || 'linear-gradient(135deg,#2D5016,#4A7C2F)';
 }
 
-const DEMO_EXHIBITS = [
-  { id:'EXH-001', code:'MB001', title:'Siege of Baler Diorama', category:'History', hall:'Hall A', year:'1898', storyline:1, icon:'history_edu', gradient:'linear-gradient(135deg,#5C3D1E,#8B6340)', description:'The Siege of Baler (1898–1899) was a remarkable episode during the Philippine Revolution. A small Spanish garrison held out in the church of Baler for 337 days, unaware that the war had ended. This diorama depicts the final moments of the siege with detailed figurines and period-accurate scenery.', author:'Museum Curator', date:'2024', views:1240 },
-  { id:'EXH-002', code:'MB002', title:'Baler Church Model', category:'History', hall:'Hall A', year:'1735', storyline:2, icon:'church', gradient:'linear-gradient(135deg,#2D5016,#4A7C2F)', description:'A scale model of the historic Baler Church, also known as the Parish of Saint Louis of Toulouse. The church served as a fortress during the Siege of Baler and remains a symbol of resilience and faith in the community.', author:'Museum Curator', date:'2024', views:980 },
-  { id:'EXH-003', code:'MB003', title:'Aurora Flora Collection', category:'Nature', hall:'Hall B', year:'2020', storyline:3, icon:'forest', gradient:'linear-gradient(135deg,#2a6b5a,#3d9e7a)', description:'A curated collection of pressed specimens and illustrations showcasing the rich biodiversity of Aurora Province. Features endemic plant species found only in the Sierra Madre mountain range.', author:'Dr. Maria Santos', date:'2023', views:756 },
-  { id:'EXH-004', code:'MB004', title:'Casiguran Agta Artifacts', category:'Culture', hall:'Hall C', year:'1980', storyline:4, icon:'groups', gradient:'linear-gradient(135deg,#3a5a8a,#5a7aaa)', description:'A collection of traditional tools, ornaments, and everyday objects from the Casiguran Agta, an indigenous Negrito group of Aurora Province. These artifacts reflect their hunter-gatherer lifestyle and deep connection with the forest.', author:'Dr. Jose Reyes', date:'2022', views:634 },
-  { id:'EXH-005', code:'MB005', title:'Quezon Legacy Gallery', category:'History', hall:'Hall A', year:'1935', storyline:5, icon:'account_balance', gradient:'linear-gradient(135deg,#5C3D1E,#8B6340)', description:'Manuel L. Quezon, the first President of the Philippine Commonwealth, was born in Baler. This gallery celebrates his life, political career, and enduring legacy through photographs, documents, and personal memorabilia.', author:'Museum Curator', date:'2024', views:890 },
-  { id:'EXH-006', code:'MB006', title:'Baler Bay Surfing Heritage', category:'Culture', hall:'Hall C', year:'2000', storyline:6, icon:'surfing', gradient:'linear-gradient(135deg,#1a5a8a,#2a8aaa)', description:'Baler is known as the surfing capital of the Philippines. This exhibit traces the history of surfing in Baler from its introduction during the filming of Apocalypse Now in 1979 to its current status as a world-class surf destination.', author:'Tourism Office', date:'2023', views:712 },
-  { id:'EXH-007', code:'MB007', title:'Aurora Wildlife Diorama', category:'Nature', hall:'Hall B', year:'2019', storyline:7, icon:'pets', gradient:'linear-gradient(135deg,#2a6b5a,#3d9e7a)', description:'Life-size dioramas depicting the diverse wildlife of Aurora Province, including the Philippine Eagle, cloud rats, and various endemic species found in the Sierra Madre biodiversity corridor.', author:'DENR Aurora', date:'2023', views:543 },
-  { id:'EXH-008', code:'MB008', title:'Traditional Fishing Tools', category:'Culture', hall:'Hall C', year:'1960', storyline:null, icon:'set_meal', gradient:'linear-gradient(135deg,#5C3D1E,#8B6340)', description:'A collection of traditional fishing implements used by the coastal communities of Baler and surrounding municipalities. Includes hand-woven fish traps, bamboo fish corrals, and traditional boats.', author:'Museum Curator', date:'2022', views:421 },
-];
-
 // ── STATE ────────────────────────────────────────────────────
 let STATE = {
   visitorId: null,
@@ -1259,18 +1248,20 @@ function populateHome() {
 let _exhibitCache = [];
 
 function loadExhibits(lang) {
-  return apiFetch(`${API_BASE}/exhibits.php?lang=${lang || STATE.lang}&_=${Date.now()}`, {
-    headers: { 'ngrok-skip-browser-warning': 'true' }
-  })
-    .then(r => r.json())
+  return apiFetch(`${API_BASE}/exhibits.php?lang=${lang || STATE.lang}&_=${Date.now()}`)
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(data => {
-      const raw = Array.isArray(data) ? data : (data.exhibits || DEMO_EXHIBITS);
-      _exhibitCache = raw.map(ex => normalizeExhibit(ex));
+      const raw = Array.isArray(data) ? data : (data.exhibits || []);
+      _exhibitCache = raw.map(normalizeExhibit);
+      hideOfflineNotice();
       return _exhibitCache;
     })
     .catch(() => {
-      if (_exhibitCache.length) return _exhibitCache;
-      return DEMO_EXHIBITS.map(ex => normalizeExhibit(ex));
+      // Whatever was loaded earlier this session is still good. Nothing at
+      // all means the visitor sees the notice, not an invented museum: the
+      // demo exhibits this used to fall back on were never in the database.
+      if (!_exhibitCache.length) showOfflineNotice(() => loadExhibits(lang));
+      return _exhibitCache;
     });
 }
 
@@ -2049,30 +2040,17 @@ function handleScan(code, scanType = 'qr', alreadyLogged = false) {
   showToast('Looking up exhibit…', 1500);
 
   // Always fetch from API so admin changes (translations, audio) are reflected
-  apiFetch(`${API_BASE}/exhibits.php?code=${encodeURIComponent(code)}&lang=${STATE.lang}&_=${Date.now()}`, {
-    headers: { 'ngrok-skip-browser-warning': 'true' }
-  })
-    .then(r => r.json())
+  apiFetch(`${API_BASE}/exhibits.php?code=${encodeURIComponent(code)}&lang=${STATE.lang}&_=${Date.now()}`)
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(data => {
-      if (data.error) {
-        const demo = DEMO_EXHIBITS.find(e =>
-          e.code === code || e.id === code ||
-          e.code === code.replace('EXH-2026-', 'MB0') ||
-          ('EXH-2026-00' + e.code.replace('MB00','')) === code
-        );
-        if (demo) { logScan(demo, scanType, !alreadyLogged); renderExhibit(demo, { autoplay: true }); }
-        else showToast('Exhibit not found: ' + code);
-        return;
-      }
+      // A 200 with {error} is the API's "no such code" - a wrong label, not
+      // a lost connection, so it gets a toast rather than the offline notice.
+      if (data.error) { showToast('Exhibit not found: ' + code); return; }
       const ex = normalizeExhibit(data);
       logScan(ex, scanType, !alreadyLogged);
       renderExhibit(ex, { autoplay: true });
     })
-    .catch(() => {
-      const demo = DEMO_EXHIBITS.find(e => e.code === code || e.id === code);
-      if (demo) { logScan(demo, scanType, !alreadyLogged); renderExhibit(demo, { autoplay: true }); }
-      else showToast('Could not load exhibit. Check your connection.');
-    });
+    .catch(() => showOfflineNotice(() => handleScan(code, scanType, alreadyLogged)));
 }
 
 // postToServer is false when the record already exists server-side; the local
@@ -2129,7 +2107,7 @@ function mapFloorOf(ex) {
 
 // Every active exhibit with a resolved {floor, svgId, x, y} in SVG units.
 function mapNodes() {
-  const src = _exhibitCache.length ? _exhibitCache : DEMO_EXHIBITS.map(normalizeExhibit);
+  const src = _exhibitCache;
   const counters = { ground: 0, second: 0 };
   return src.map(ex => {
     const floor = mapFloorOf(ex);
@@ -2209,7 +2187,7 @@ function updateMapAfterScan(exhibit) {
 
   const infoText = document.getElementById('map-info-text');
   if (!infoText) return;
-  const src = _exhibitCache.length ? _exhibitCache : DEMO_EXHIBITS.map(normalizeExhibit);
+  const src = _exhibitCache;
   const scannedOrders = getScannedStorylineOrders(src);
   const storylineExhibits = src.filter(e => e.storyline > 0).sort((a,b) => a.storyline - b.storyline);
   const nextEx = storylineExhibits.find(e => !scannedOrders.includes(e.storyline));
@@ -2383,17 +2361,20 @@ function renderExhibit(ex, opts) {
   const factsList = document.getElementById('ex-facts-list');
   if (factsList) {
     const facts = generateFunFacts(ex);
-    factsList.innerHTML = facts.map((f, i) => `
+    factsList.innerHTML = facts.length ? facts.map((f, i) => `
       <div style="background:var(--ew);border-radius:12px;padding:14px;display:flex;gap:12px;align-items:flex-start">
         <div style="width:28px;height:28px;border-radius:50%;background:${STATE.mode==='free'?'var(--bm)':'var(--gm)'};color:#fff;font-size:calc(12px * var(--fs));font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
         <p style="font-size:calc(13px * var(--fs));color:var(--tm);line-height:1.6">${f}</p>
-      </div>`).join('');
+      </div>`).join('')
+      // Same wording style as the empty gallery tab: honest, and it tells
+      // staff where the content comes from.
+      : `<p style="font-size:calc(12px * var(--fs));color:var(--tl);text-align:center;padding:20px 0">Fun facts will appear here once added by museum staff.</p>`;
   }
 
   // Next in storyline — only show in storyline mode
   const nextCard = document.getElementById('next-in-storyline');
   if (nextCard && STATE.mode === 'storyline' && ex.storyline) {
-    const nextEx = DEMO_EXHIBITS.find(e => e.storyline === ex.storyline + 1);
+    const nextEx = _exhibitCache.find(e => e.storyline === ex.storyline + 1);
     if (nextEx) {
       document.getElementById('next-title').textContent = nextEx.title;
       nextCard.style.display = 'flex';
@@ -2436,7 +2417,7 @@ function renderExhibit(ex, opts) {
   // Related
   const relatedList = document.getElementById('related-list');
   if (relatedList) {
-    const related = DEMO_EXHIBITS.filter(e => e.id !== ex.id && e.category === ex.category).slice(0, 3);
+    const related = _exhibitCache.filter(e => e.id !== ex.id && e.category === ex.category).slice(0, 3);
     relatedList.innerHTML = related.map(r => exhibitListItem(r)).join('');
   }
 
@@ -2561,7 +2542,7 @@ function switchTab(tab) {
 
 function goToNext() {
   if (!currentExhibit || !currentExhibit.storyline) return;
-  const src = _exhibitCache.length ? _exhibitCache : DEMO_EXHIBITS.map(normalizeExhibit);
+  const src = _exhibitCache;
   const next = src.find(e => e.storyline === currentExhibit.storyline + 1);
   if (!next) { showToast('You\'ve reached the end of the storyline!'); return; }
   stopAudio();
@@ -2611,68 +2592,12 @@ function showNextExhibitMapHint(exhibit) {
   setTimeout(() => hint.remove(), 8000);
 }
 
-// Generate fun facts from exhibit data — uses admin-entered facts if available
+// Fun facts come from the admin's exhibit form (exhibits.fun_facts) and
+// nowhere else. The tab used to pad an exhibit that had none with a hardcoded
+// list keyed by demo codes - trivia nobody at the museum had written or could
+// correct. None entered now means the tab says so.
 function generateFunFacts(ex) {
-  // Use facts from the API/admin if they exist
-  if (ex.fun_facts && ex.fun_facts.length > 0) {
-    return ex.fun_facts;
-  }
-  // Fallback: hardcoded facts keyed by exhibit_code
-  const factMap = {
-    'EXH-001': [
-      'The 57 Spanish soldiers held out for exactly 337 days — the longest siege of the Philippine Revolution.',
-      'Lieutenant Martín Cerezo refused to surrender even after receiving news that Spain had lost the war, believing it was enemy propaganda.',
-      'When they finally surrendered on June 2, 1899, the soldiers were given full military honors by the American forces.',
-      'The event inspired a Spanish film called "Los últimos de Filipinas" (1945), later remade in 2016.',
-    ],
-    'EXH-002': [
-      'The Baler Church was built in 1735 and is dedicated to Saint Louis of Toulouse.',
-      'The church walls are over a meter thick — which is why it could withstand months of siege.',
-      'It is one of the few Spanish-era churches in the Philippines that still holds regular masses today.',
-      'The church bell tower served as a lookout post during the siege.',
-    ],
-    'EXH-003': [
-      'Aurora Province was only officially created in 1951, named after First Lady Aurora Aragon Quezon.',
-      'The province has 8 municipalities, all facing the Pacific Ocean.',
-      'Aurora is one of the least densely populated provinces in Luzon.',
-      'The province is known for producing some of the finest rattan furniture in the Philippines.',
-    ],
-    'EXH-004': [
-      'The Casiguran Agta are one of the few remaining hunter-gatherer groups in Southeast Asia.',
-      'They have their own distinct language, Casiguran Agta, which belongs to the Austronesian family.',
-      'Agta women are among the rare examples of female hunters in any human society.',
-      'They have lived in the Sierra Madre forests for at least 30,000 years.',
-    ],
-    'EXH-005': [
-      'Baler Bay was put on the international surfing map when the crew of Apocalypse Now left their surfboards behind in 1979.',
-      'The bay faces the Pacific Ocean directly, receiving swells from as far as Japan.',
-      'Baler is home to the "Cemetery Break" — one of the most famous surf spots in the Philippines.',
-      'Sea turtles nest on the beaches of Baler Bay every year.',
-    ],
-    'EXH-006': [
-      'Manuel L. Quezon was born in Baler on August 19, 1878.',
-      'He became the first President of the Philippine Commonwealth in 1935.',
-      'Quezon City, the most populous city in the Philippines, is named after him.',
-      'He signed the Women\'s Suffrage Act in 1937, giving Filipino women the right to vote.',
-    ],
-    'EXH-007': [
-      'The Sierra Madre is 540 km long — the longest mountain range in the Philippines.',
-      'It is home to over 700 species of birds, including the critically endangered Philippine Eagle.',
-      'The range acts as a natural shield, protecting Central Luzon from Pacific typhoons.',
-      'It contains one of the last remaining old-growth forests in the Philippines.',
-    ],
-    'EXH-008': [
-      'The bubo (fish trap) used in Baler has remained virtually unchanged for over 500 years.',
-      'Traditional fishermen in Baler can read the tides and currents without any instruments.',
-      'The baklad (fish corral) can span hundreds of meters and catch thousands of fish in a single tide.',
-      'Baler Bay supports over 200 species of fish, many of which are endemic to the Pacific coast.',
-    ],
-  };
-  return factMap[ex.id] || factMap[ex.code] || [
-    `${ex.title} is located in ${ex.hall}, ${ex.floor}.`,
-    `This exhibit belongs to the ${ex.category} collection.`,
-    `Curated by ${ex.author || 'the museum team'}.`,
-  ];
+  return Array.isArray(ex.fun_facts) ? ex.fun_facts : [];
 }
 
 function toggleLangPicker() {
@@ -3038,10 +2963,10 @@ function onProfileEnter() {
   // cached in memory after the first load, so this is normally synchronous.
   const paintStats = (all) => {
     if (hallsEl) hallsEl.textContent = hallProgress(all).filter(h => h.done).length;
-    paintMuseumProgress(all.length || DEMO_EXHIBITS.length);
+    paintMuseumProgress(all.length);
   };
   if (_exhibitCache.length) paintStats(_exhibitCache);
-  else loadExhibits().then(paintStats).catch(() => paintStats(DEMO_EXHIBITS.map(normalizeExhibit)));
+  else loadExhibits().then(paintStats);
 
   const recentEl = document.getElementById('profile-recent-list');
   if (recentEl) {
@@ -3209,7 +3134,7 @@ function updateMap() {
   if (isStoryline) {
     refreshStorylineMapOverlay();
 
-    const src = _exhibitCache.length ? _exhibitCache : DEMO_EXHIBITS.map(normalizeExhibit);
+    const src = _exhibitCache;
     const storylineExhibits = src.filter(e => e.storyline > 0).sort((a,b) => a.storyline - b.storyline);
     const scannedOrders = getScannedStorylineOrders(src);
     const nextEx = storylineExhibits.find(e => !scannedOrders.includes(e.storyline));
@@ -3657,12 +3582,13 @@ function openFeedback() {
       showSurveyStep(1);
     })
     .catch(() => {
-      // Offline or an old server: fall back to the plain star rating.
+      // No survey without the server. This used to drop to a star-only form,
+      // but submitting that needs the same server, so the visitor filled in a
+      // form that could not be sent. Say so and offer to try again instead.
       SURVEY.questions = [];
       document.getElementById('survey-loading').style.display = 'none';
-      document.getElementById('survey-nav').style.display = 'block';
-      document.getElementById('survey-app-questions').innerHTML = '';
-      showSurveyStep(3);
+      closeFeedback();
+      showOfflineNotice(openFeedback);
     });
 }
 
@@ -4020,6 +3946,34 @@ function dismissInstallPrompt() {
 // ═══════════════════════════════════════════════════════════
 // UI HELPERS
 // ═══════════════════════════════════════════════════════════
+
+// ── OFFLINE NOTICE ───────────────────────────────────────────
+// One banner, one pending retry. A loader that fails with nothing cached
+// hands in the call to repeat; "Try again" or the network coming back runs
+// it. This replaced a set of hardcoded demo exhibits and fun facts that used
+// to stand in for the museum whenever the API was unreachable.
+let _offlineRetry = null;
+
+function showOfflineNotice(retry) {
+  _offlineRetry = retry || _offlineRetry;
+  const el = document.getElementById('offline-notice');
+  if (el) el.hidden = false;
+}
+
+function hideOfflineNotice() {
+  const el = document.getElementById('offline-notice');
+  if (el) el.hidden = true;
+}
+
+function retryOffline() {
+  hideOfflineNotice();
+  const fn = _offlineRetry;
+  _offlineRetry = null;
+  if (fn) fn();
+}
+
+window.addEventListener('online', retryOffline);
+
 function showToast(msg, duration = 2500) {
   const el = document.getElementById('toast');
   if (!el) return;
@@ -4038,10 +3992,9 @@ let _museumInfoLoaded = false;
 
 function loadMuseumInfo() {
   if (_museumInfoLoaded) return;
-  // BUGFIX: this used to point at /controller/museumController.php, which
-  // doesn't exist (only qrController.php lives in that folder) — every call
-  // 404'd and silently failed via the catch below, so the About screen never
-  // actually loaded story/hours/contact/halls from the database.
+  // The About screen's story/hours/contact/halls. This used to point at a
+  // /controller/ path that never existed, so it 404'd silently and the screen
+  // showed its built-in text forever.
   apiFetch(`${API_BASE}/museum.php`)
     .then(r => r.json())
     .then(data => {
