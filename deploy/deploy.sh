@@ -36,10 +36,8 @@ git clone --quiet --depth 1 --branch "$REF" "$REPO" "$NEW" 2>/dev/null \
   || { git clone --quiet "$REPO" "$NEW" && git -C "$NEW" checkout --quiet "$REF"; }
 git -C "$NEW" rev-parse --short HEAD > "$NEW/RELEASE"
 
-# Development-only pages that live in the repo because they are useful on the
-# build machine, and nowhere else. Anything under public/ is world-readable
-# once deployed, so they do not travel.
-rm -f "$NEW/public/visitor/preview.html" "$NEW/public/visitor/_uidebug"*.html
+# The release has no use for its own history once RELEASE is written, and a
+# misconfigured docroot must not be able to serve it.
 rm -rf "$NEW/.git"
 
 # ── 2. Shared state: .env and storage are never inside a release ───────────

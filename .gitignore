@@ -22,3 +22,15 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Uploaded media. On a server these are shared directories that outlive a
+# release (deploy.sh); the seeded exhibits' files come from
+# database/seeders/media. QR labels are regenerated on demand.
+/public/images/exhibits/*
+/public/images/training/*
+/public/images/qr/*
+/public/audio/*
+!/public/images/exhibits/.gitkeep
+!/public/images/training/.gitkeep
+!/public/images/qr/.gitkeep
+!/public/audio/.gitkeep

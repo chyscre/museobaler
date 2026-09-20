@@ -76,8 +76,8 @@
   // ── 3 · DEBUG BADGE — ?debug=1 ──────────────────────────────
   // The numbers you cannot read off a phone any other way: what the
   // device reports, what the CSS resolved to, and whether the safe-area
-  // insets are actually arriving. Used by preview.html and when testing
-  // on a real handset over the tunnel.
+  // insets are actually arriving. Used when testing on a real
+  // handset over the tunnel.
   if (/[?&]debug=1\b/.test(location.search)) {
     var badge = document.createElement('div');
     badge.id = 'vp-debug';
