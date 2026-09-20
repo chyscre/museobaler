@@ -59,6 +59,10 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            // NOW() and CURRENT_TIMESTAMP defaults follow the session zone, not
+            // PHP's, so pin it to the app's or a UTC host dates late-night
+            // rows a day early. Manila has no DST; the offset is exact.
+            'timezone' => (new DateTime('now', new DateTimeZone(env('APP_TIMEZONE', 'Asia/Manila'))))->format('P'),
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],

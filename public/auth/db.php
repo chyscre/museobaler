@@ -48,3 +48,13 @@ if (!$con) {
 
 // SECURITY: Set charset to utf8mb4 to prevent charset-based injection attacks
 mysqli_set_charset($con, 'utf8mb4');
+
+// Clocks. The whole app runs on APP_TIMEZONE (Manila), but PHP here defaults
+// to UTC and MySQL's NOW() follows whatever the server's OS clock is set to.
+// Pin both, or a survey filed at 1 AM lands on yesterday's ARTA report and
+// the "new visit day" check flips eight hours early on a UTC server. Manila
+// has no daylight saving, so a fixed offset is exact and needs no tz tables.
+$tz = getenv('APP_TIMEZONE') ?: 'Asia/Manila';
+date_default_timezone_set($tz);
+$offset = (new DateTime('now', new DateTimeZone($tz)))->format('P');
+mysqli_query($con, "SET time_zone = '" . mysqli_real_escape_string($con, $offset) . "'");
