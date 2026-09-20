@@ -29,6 +29,18 @@ class StaffAttendance extends Model
         ];
     }
 
+    /**
+     * Stamp scanned_at in the app's own clock rather than leaning on the
+     * column default: the database's CURRENT_TIMESTAMP follows its own zone,
+     * and a clock-in written a day early is a missing day on the sheet.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (StaffAttendance $record) {
+            $record->scanned_at ??= now();
+        });
+    }
+
     public function staff()
     {
         return $this->belongsTo(Staff::class, 'staff_id', 'staff_id');

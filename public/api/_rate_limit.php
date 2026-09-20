@@ -17,7 +17,7 @@
  *      to pollute the visitor records database.
  *
  * HOW IT WORKS:
- * Uses a simple file-based counter stored in the system temp directory.
+ * Uses a simple file-based counter stored under storage/app/api-cache.
  * Each IP gets one file PER ENDPOINT that tracks request count and window
  * start time. If the count exceeds the limit within the window, the request
  * is rejected with HTTP 429 Too Many Requests.
@@ -42,6 +42,8 @@
  * USAGE: include this file at the top of each API endpoint.
  */
 
+require_once __DIR__ . '/_env.php';
+
 function apiRateLimit(int $maxRequests = 60, int $windowSeconds = 60, ?string $bucket = null): void
 {
     $ip      = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
@@ -53,7 +55,7 @@ function apiRateLimit(int $maxRequests = 60, int $windowSeconds = 60, ?string $b
     $bucket     = $bucket ?? basename($_SERVER['SCRIPT_NAME'] ?? 'api', '.php');
     $safeBucket = preg_replace('/[^a-zA-Z0-9_-]/', '_', $bucket);
 
-    $file = sys_get_temp_dir() . '/rl_museobaler_' . $safeBucket . '_' . md5($safeIp) . '.json';
+    $file = apiStoragePath('api-cache/rate-limit') . '/' . $safeBucket . '_' . md5($safeIp) . '.json';
 
     $now  = time();
     $data = ['count' => 0, 'start' => $now];

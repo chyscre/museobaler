@@ -4134,34 +4134,38 @@ function _loadMuseumConfig() {
       if (info.geofence_radius_m != null) {
         GEOFENCE_RADIUS = parseInt(info.geofence_radius_m, 10);
       }
+      // The server, not the hostname, says whether the fence is relaxed for
+      // testing. Until it answers (or if it never does) the fence is enforced.
+      _geoServerRelaxed = info.geofence_enforced === false;
     })
     .catch(() => {}); // silently fail — hardcoded defaults stay in effect
 }
 
-const _isTestingHost = window.location.hostname === 'localhost' ||
-  /^(\d{1,3}\.){3}\d{1,3}$/.test(window.location.hostname) ||
-  window.location.hostname.endsWith('.trycloudflare.com') ||
-  window.location.hostname.endsWith('.ngrok-free.app') ||
-  window.location.hostname.endsWith('.ngrok.io');
+// True only when the server said so: VISITOR_GEOFENCE=false on a non-
+// production install (see api/museum.php). Used to be a hostname sniff —
+// localhost, any IP address, tunnel domains — which would have switched the
+// fence off for every visitor the day the museum served the app on its LAN.
+let _geoServerRelaxed = false;
 
-// On a testing host the fence is ignored so the entry/exit flow can be
+// While the server has relaxed the fence, the entry/exit flow can be
 // exercised from a desk instead of the museum grounds. That is the wrong
 // behavior when demoing the real geofence over a tunnel — everyone standing
 // anywhere gets the welcome toast — so it can be overridden: load the app
 // once with ?geo=strict to enforce the true radius on this device, or
 // ?geo=relax to go back. The choice sticks in localStorage so the query
-// string does not have to be reapplied on every navigation.
+// string does not have to be reapplied on every navigation. It can only
+// tighten the fence, never loosen it: on production the server never relaxes.
 let _geoStrict = false;
 try {
   const _geoParam = new URLSearchParams(window.location.search).get('geo');
   if (_geoParam === 'strict') localStorage.setItem('mb_geo_strict', '1');
   if (_geoParam === 'relax')  localStorage.removeItem('mb_geo_strict');
   _geoStrict = localStorage.getItem('mb_geo_strict') === '1';
-} catch (e) { /* private mode — fall through to host-based behavior */ }
+} catch (e) { /* private mode — fall through to the server's answer */ }
 
 // True only while the fence should be bypassed entirely.
 function _geoRelaxed() {
-  return _isTestingHost && !_geoStrict;
+  return _geoServerRelaxed && !_geoStrict;
 }
 
 // NOTE: read fresh inside initGeofence()'s watchPosition callback, not

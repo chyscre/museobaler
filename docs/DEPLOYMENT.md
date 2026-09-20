@@ -38,6 +38,12 @@ the switch between them is one atomic rename.
    - `BACKUP_ENCRYPTION_KEY` from `php artisan db:backup:key`, with a copy of
      the key kept off the machine
    - `BACKUP_COPY_TO` pointing at a different disk or a synced folder
+   - `APP_TIMEZONE=Asia/Manila` (the default). Both database connections
+     pin MySQL's session `time_zone` to this offset, so a server whose MySQL
+     runs in UTC still dates a survey filed at 1 AM on the right day. Nothing
+     to configure on the MySQL side.
+   - `ATTENDANCE_GEOFENCE` and `VISITOR_GEOFENCE` are ignored in production;
+     both fences always run. Leave them unset.
 4. Point the web server's docroot at `/var/www/museobaler/current/public`,
    with TLS. Behind Cloudflare, the proxy IP ranges in `bootstrap/app.php`
    are already trusted.
