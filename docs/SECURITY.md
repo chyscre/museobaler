@@ -124,11 +124,16 @@ record saves as `alert(1)`, nothing executes anywhere.
 
 - `php artisan db:backup` nightly at 02:30 (`routes/console.php`):
   `mysqldump --single-transaction`, gzipped, encrypted, 14 kept, copied to
-  `BACKUP_COPY_TO` on a second disk, with an alert on any failure.
+  `BACKUP_COPY_TO` on a second disk, with an alert on any failure. The same
+  run writes `<stamp>-media.tar.gz` beside the dump: every uploaded picture,
+  training photo and audio guide (`config/backup.php`, `media`), encrypted
+  with the same key and kept for the same fortnight.
 - Requires the OS to wake the scheduler every minute:
   `deploy/windows/install-scheduler-task.ps1` on Windows, one cron line on
   Linux (`docs/DEPLOYMENT.md`).
-- Restore: `php artisan db:backup:decrypt <file>` → `gunzip -c … | mysql`.
+- Restore: `php artisan db:backup:decrypt <file>` → `gunzip -c … | mysql`,
+  then `db:backup:decrypt <file>-media.tar.gz.enc` → `tar -xzf … -C public`.
+  Step by step, for whoever is holding the drive: `docs/RESTORE.md`.
 
 ## Dependencies and delivery
 

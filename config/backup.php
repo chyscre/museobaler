@@ -48,6 +48,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Uploaded media
+    |--------------------------------------------------------------------------
+    |
+    | Folders under public/ that go into the nightly media tarball beside the
+    | dump: exhibit and gallery pictures, recognition training photos, audio
+    | guides. QR labels are left out - ExhibitQr redraws them on demand.
+    |
+    */
+
+    'media' => ['images/exhibits', 'images/training', 'audio'],
+
+    /*
+    |--------------------------------------------------------------------------
     | Encryption at rest
     |--------------------------------------------------------------------------
     |

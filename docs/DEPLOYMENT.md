@@ -90,7 +90,9 @@ add columns and tables, so the previous code runs fine against the newer
 schema. If a migration itself did damage, the dump taken in step 4 is in
 `shared/storage/app/backups` — decrypt it with `php artisan db:backup:decrypt`
 and restore it with `mysql`. That is a decision a person makes, not
-something a script should do on its own.
+something a script should do on its own. The uploaded pictures and audio
+are in the `-media.tar.gz` beside each dump; `docs/RESTORE.md` walks
+through both, in the order to do them.
 
 ## What CI guarantees before any of this
 

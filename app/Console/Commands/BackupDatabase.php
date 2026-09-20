@@ -4,11 +4,13 @@ namespace App\Console\Commands;
 
 use App\Support\Alerts;
 use App\Support\BackupCipher;
+use App\Support\MediaArchive;
 use Illuminate\Console\Command;
 use Symfony\Component\Process\Process;
 
 /**
- * A compressed dump of the museum database, written to storage/app/backups.
+ * A compressed dump of the museum database, written to storage/app/backups,
+ * with the uploaded pictures and audio guides in a tarball beside it.
  *
  * Until this existed there was no backup at all: one bad migration, one
  * mistaken delete, one failed disk, and every visitor record, attendance row
@@ -82,20 +84,68 @@ class BackupDatabase extends Command
         // Encrypted when a key is configured. The plain archive is removed
         // once the encrypted one exists, so the only readable copy of the
         // data on disk is the database itself.
-        if (($key = BackupCipher::key()) !== null) {
-            $encrypted = BackupCipher::encrypt($archive, "{$archive}.enc", $key);
-            @unlink($archive);
-            $archive = $encrypted;
+        $key = BackupCipher::key();
+
+        if ($key !== null) {
+            $archive = $this->encrypt($archive, $key);
         } else {
             $this->warn('BACKUP_ENCRYPTION_KEY is not set: this dump is readable by anyone who can open the file.');
         }
 
         $this->info('Wrote ' . basename($archive) . ' (' . $this->humanSize(filesize($archive)) . ')');
 
+        // The uploads, as a second file with the same stamp. Its failure is
+        // reported but does not fail the run: the records are the half that
+        // cannot be recreated, and they are already on disk by this point.
+        $media = $this->packMedia($stem, $key);
+
+        if ($media !== null) {
+            $this->info('Wrote ' . basename($media) . ' (' . $this->humanSize(filesize($media)) . ')');
+        }
+
         $this->prune($directory);
         $this->copyOffMachine($archive);
 
+        if ($media !== null) {
+            $this->copyOffMachine($media);
+        }
+
         return self::SUCCESS;
+    }
+
+    /**
+     * The pictures and audio guides, beside the dump.
+     *
+     * A separate file rather than one archive holding both: the dump's
+     * restore path (decrypt, gunzip, mysql) is documented and unchanged, the
+     * stale-backup watchdog keeps reading the dump as its heartbeat, and the
+     * media restores with a single tar command into public/.
+     */
+    private function packMedia(string $stem, ?string $key): ?string
+    {
+        try {
+            $archive = MediaArchive::pack(config('backup.media', []), public_path(), "{$stem}-media.tar");
+        } catch (\Throwable $e) {
+            $this->warn('Media backup failed: ' . $e->getMessage());
+            Alerts::send('Nightly media backup failed', $e->getMessage(), 'backup-media');
+            return null;
+        }
+
+        if ($archive === null) {
+            $this->line('No uploaded media to back up.');
+            return null;
+        }
+
+        return $key !== null ? $this->encrypt($archive, $key) : $archive;
+    }
+
+    /** Encrypt in place: the plain file is gone once the .enc exists. */
+    private function encrypt(string $archive, string $key): string
+    {
+        $encrypted = BackupCipher::encrypt($archive, "{$archive}.enc", $key);
+        @unlink($archive);
+
+        return $encrypted;
     }
 
     /**
@@ -275,15 +325,19 @@ class BackupDatabase extends Command
             return;
         }
 
-        // Plain (.sql.gz) and encrypted (.sql.gz.enc) alike.
-        $dumps = glob($directory . '/*.sql.gz*') ?: [];
+        // Dumps and media tarballs are counted separately, so a fortnight of
+        // backups is fourteen of each, not seven nights' worth of pairs.
+        // Plain and encrypted (.enc) alike.
+        foreach (['*.sql.gz*', '*-media.tar.gz*'] as $pattern) {
+            $files = glob("{$directory}/{$pattern}") ?: [];
 
-        // Names are timestamped, so newest sorts last.
-        rsort($dumps);
+            // Names are timestamped, so newest sorts last.
+            rsort($files);
 
-        foreach (array_slice($dumps, $keep) as $old) {
-            @unlink($old);
-            $this->line('Removed old backup ' . basename($old));
+            foreach (array_slice($files, $keep) as $old) {
+                @unlink($old);
+                $this->line('Removed old backup ' . basename($old));
+            }
         }
     }
 
