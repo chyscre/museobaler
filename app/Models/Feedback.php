@@ -21,6 +21,18 @@ class Feedback extends Model
         ];
     }
 
+    /**
+     * Stamp submitted_at in the app's own clock rather than leaning on the
+     * column default: SQLite's CURRENT_TIMESTAMP is UTC, so a survey filed
+     * after midnight Manila time would otherwise fall off today's report.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (Feedback $feedback) {
+            $feedback->submitted_at ??= now();
+        });
+    }
+
     public function visitor()
     {
         return $this->belongsTo(Visitor::class, 'visitor_id', 'visitor_id');
