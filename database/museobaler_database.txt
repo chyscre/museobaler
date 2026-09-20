@@ -1,6 +1,6 @@
 ==============================================================================
  MUSEOBALER MUSEUM SYSTEM - DATABASE SCHEMA
- Source: MySQL database `museobaler` (live dump, generated 2026-09-20 14:39)
+ Source: MySQL database `museobaler` (live dump, generated 2026-09-20 16:15)
  Purpose: reference for ERD, DFD, use-case and other system diagrams
  Note: Laravel framework tables (jobs, failed_jobs, job_batches, cache, cache_locks,
        sessions, password_reset_tokens, users, migrations) are excluded - they are not
@@ -34,12 +34,12 @@ CONTENTS
     staff_schedules                9 columns       21 rows
 
   [MUSEUM CONTENT]
-    exhibits                      20 columns        9 rows
+    exhibits                      19 columns        9 rows
     exhibit_images                 7 columns        6 rows
     exhibit_translations          10 columns        6 rows
     exhibit_training_images        5 columns        9 rows
     categories                     5 columns       12 rows
-    museum_halls                   8 columns        0 rows
+    museum_halls                   8 columns        5 rows
     museum_info                   17 columns        1 rows
 
   [ENGAGEMENT & LOGGING]
@@ -71,7 +71,7 @@ VISITORS
   paid_at                    timestamp                          nullable
   id_verified                tinyint(1)                         NOT NULL, default 0
   verified_at                timestamp                          nullable
-  verified_by                varchar(255)                       nullable
+  verified_by                bigint unsigned                    nullable, FK -> staff.staff_id (on delete SET NULL)
   visit_type                 enum('Solo','Group','School','Family','Walk-in')
                                                                 NOT NULL, default Solo
   city                       varchar(255)                       nullable
@@ -85,7 +85,7 @@ VISITORS
   auth_provider              varchar(255)                       NOT NULL, default manual
   source                     enum('app','kiosk','desk','recovered')
                                                                 NOT NULL, default app
-  registered_by              bigint unsigned                    nullable
+  registered_by              bigint unsigned                    nullable, FK -> staff.staff_id (on delete SET NULL)
   explore_mode               varchar(255)                       NOT NULL, default Storyline
   last_visit                 timestamp                          nullable
   created_at                 timestamp                          nullable
@@ -97,6 +97,8 @@ VISITORS
     visitors_group_id_foreign                (group_id)
     visitors_last_visit_index                (last_visit)
     visitors_payment_status_index            (payment_status)
+    visitors_registered_by_foreign           (registered_by)
+    visitors_verified_by_foreign             (verified_by)
     visitors_visitor_type_index              (visitor_type)
 
 VISIT_GROUPS
@@ -120,15 +122,17 @@ VISIT_GROUPS
   paid_at                    timestamp                          nullable
   refunded_amount            decimal(10,2)                      NOT NULL, default 0.00
   refunded_at                timestamp                          nullable
-  refunded_by                bigint unsigned                    nullable
+  refunded_by                bigint unsigned                    nullable, FK -> staff.staff_id (on delete SET NULL)
   visit_date                 date                               NOT NULL
-  registered_by              bigint unsigned                    nullable
+  registered_by              bigint unsigned                    nullable, FK -> staff.staff_id (on delete SET NULL)
   notes                      text                               nullable
   created_at                 timestamp                          nullable
   updated_at                 timestamp                          nullable
   Indexes:
     visit_groups_join_code_visit_date_index  (join_code,visit_date)
     visit_groups_payment_status_index        (payment_status)
+    visit_groups_refunded_by_foreign         (refunded_by)
+    visit_groups_registered_by_foreign       (registered_by)
     visit_groups_visit_date_index            (visit_date)
 
 ATTENDANCES
@@ -157,16 +161,18 @@ ATTENDANCE_CORRECTIONS
   type                       enum('in','out')                   NOT NULL
   requested_time             time                               NOT NULL
   reason                     text                               NOT NULL
-  requested_by               bigint unsigned                    NOT NULL
+  requested_by               bigint unsigned                    nullable, FK -> staff.staff_id (on delete SET NULL)
   requested_at               timestamp                          NOT NULL, default CURRENT_TIMESTAMP
   status                     enum('Pending','Approved','Rejected')
                                                                 NOT NULL, default Pending
-  reviewed_by                bigint unsigned                    nullable
+  reviewed_by                bigint unsigned                    nullable, FK -> staff.staff_id (on delete SET NULL)
   reviewed_at                timestamp                          nullable
   review_note                text                               nullable
   created_at                 timestamp                          nullable
   updated_at                 timestamp                          nullable
   Indexes:
+    attendance_corrections_requested_by_foreign (requested_by)
+    attendance_corrections_reviewed_by_foreign (reviewed_by)
     attendance_corrections_staff_id_foreign  (staff_id)
     attendance_corrections_status_work_date_index (status,work_date)
 
@@ -197,10 +203,11 @@ TOURS
   started_at                 timestamp                          nullable
   ended_at                   timestamp                          nullable
   notes                      text                               nullable
-  created_by                 bigint unsigned                    nullable
+  created_by                 bigint unsigned                    nullable, FK -> staff.staff_id (on delete SET NULL)
   created_at                 timestamp                          nullable
   updated_at                 timestamp                          nullable
   Indexes:
+    tours_created_by_foreign                 (created_by)
     tours_group_id_foreign                   (group_id)
     tours_guide_staff_id_foreign             (guide_staff_id)
     tours_started_at_index                   (started_at)
@@ -248,12 +255,13 @@ STAFF_ATTENDANCES
   accuracy                   int                                nullable
   distance_m                 int                                nullable
   method                     enum('qr','manual')                NOT NULL, default qr
-  recorded_by                bigint unsigned                    nullable
+  recorded_by                bigint unsigned                    nullable, FK -> staff.staff_id (on delete SET NULL)
   ip_address                 varchar(255)                       nullable
   user_agent                 varchar(512)                       nullable
   created_at                 timestamp                          nullable
   updated_at                 timestamp                          nullable
   Indexes:
+    staff_attendances_recorded_by_foreign    (recorded_by)
     staff_attendances_staff_id_work_date_type_unique (staff_id,work_date,type)  UNIQUE
     staff_attendances_work_date_index        (work_date)
 
@@ -261,9 +269,11 @@ STAFF_ATTENDANCE_DAYS
 ------------------------------------------------------------------------------
   work_date                  date                               PRIMARY KEY, NOT NULL
   day_secret                 varchar(64)                        NOT NULL
-  opened_by                  bigint unsigned                    nullable
+  opened_by                  bigint unsigned                    nullable, FK -> staff.staff_id (on delete SET NULL)
   created_at                 timestamp                          nullable
   updated_at                 timestamp                          nullable
+  Indexes:
+    staff_attendance_days_opened_by_foreign  (opened_by)
 
 STAFF_SCHEDULES
 ------------------------------------------------------------------------------
@@ -289,9 +299,7 @@ EXHIBITS
   description                text                               nullable
   fun_facts                  text                               nullable
   category_id                bigint unsigned                    nullable, FK -> categories.category_id (on delete SET NULL)
-  floor                      enum('Ground Floor','2nd Floor')   NOT NULL, default Ground Floor
-  hall                       enum('Hall A','Hall B','Hall C','Hall D','Hall E')
-                                                                nullable
+  hall_id                    bigint unsigned                    nullable, FK -> museum_halls.hall_id (on delete SET NULL)
   map_x                      decimal(5,2)                       nullable
   map_y                      decimal(5,2)                       nullable
   authors                    varchar(255)                       nullable
@@ -307,6 +315,7 @@ EXHIBITS
   Indexes:
     exhibits_category_id_foreign             (category_id)
     exhibits_exhibit_code_unique             (exhibit_code)  UNIQUE
+    exhibits_hall_id_foreign                 (hall_id)
     exhibits_status_storyline_order_index    (status,storyline_order)
 
 EXHIBIT_IMAGES
@@ -392,7 +401,7 @@ FEEDBACK
   feedback_id                bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
   visitor_id                 bigint unsigned                    nullable, FK -> visitors.visitor_id (on delete SET NULL)
   tour_id                    bigint unsigned                    nullable, FK -> tours.tour_id (on delete SET NULL)
-  staff_id                   bigint unsigned                    nullable
+  staff_id                   bigint unsigned                    nullable, FK -> staff.staff_id (on delete SET NULL)
   first_name                 varchar(255)                       nullable
   last_name                  varchar(255)                       nullable
   middle_name                varchar(255)                       nullable
@@ -483,6 +492,8 @@ LOGS
 ==============================================================================
   CHILD TABLE                COLUMN                        PARENT TABLE.COLUMN        ON DELETE      ON UPDATE
   --------------------------------------------------------------------------------------------------------------
+  attendance_corrections     requested_by              ->  staff.staff_id             SET NULL       NO ACTION
+  attendance_corrections     reviewed_by               ->  staff.staff_id             SET NULL       NO ACTION
   attendance_corrections     staff_id                  ->  staff.staff_id             CASCADE        NO ACTION
   attendances                visitor_id                ->  visitors.visitor_id        SET NULL       NO ACTION
   bookmarks                  exhibit_id                ->  exhibits.exhibit_id        CASCADE        NO ACTION
@@ -491,18 +502,27 @@ LOGS
   exhibit_training_images    exhibit_id                ->  exhibits.exhibit_id        CASCADE        NO ACTION
   exhibit_translations       exhibit_id                ->  exhibits.exhibit_id        CASCADE        NO ACTION
   exhibits                   category_id               ->  categories.category_id     SET NULL       NO ACTION
+  exhibits                   hall_id                   ->  museum_halls.hall_id       SET NULL       NO ACTION
+  feedback                   staff_id                  ->  staff.staff_id             SET NULL       NO ACTION
   feedback                   tour_id                   ->  tours.tour_id              SET NULL       NO ACTION
   feedback                   visitor_id                ->  visitors.visitor_id        SET NULL       NO ACTION
   feedback_answers           feedback_id               ->  feedback.feedback_id       CASCADE        NO ACTION
   feedback_answers           question_id               ->  survey_questions.question_id SET NULL       NO ACTION
   scans                      exhibit_id                ->  exhibits.exhibit_id        CASCADE        NO ACTION
   scans                      visitor_id                ->  visitors.visitor_id        SET NULL       NO ACTION
+  staff_attendance_days      opened_by                 ->  staff.staff_id             SET NULL       NO ACTION
+  staff_attendances          recorded_by               ->  staff.staff_id             SET NULL       NO ACTION
   staff_attendances          staff_id                  ->  staff.staff_id             CASCADE        NO ACTION
   staff_schedules            staff_id                  ->  staff.staff_id             CASCADE        NO ACTION
+  tours                      created_by                ->  staff.staff_id             SET NULL       NO ACTION
   tours                      group_id                  ->  visit_groups.group_id      SET NULL       NO ACTION
   tours                      guide_staff_id            ->  staff.staff_id             SET NULL       NO ACTION
   tours                      visitor_id                ->  visitors.visitor_id        SET NULL       NO ACTION
+  visit_groups               refunded_by               ->  staff.staff_id             SET NULL       NO ACTION
+  visit_groups               registered_by             ->  staff.staff_id             SET NULL       NO ACTION
   visitors                   group_id                  ->  visit_groups.group_id      SET NULL       NO ACTION
+  visitors                   registered_by             ->  staff.staff_id             SET NULL       NO ACTION
+  visitors                   verified_by               ->  staff.staff_id             SET NULL       NO ACTION
 
 ==============================================================================
  4. RELATIONSHIP SUMMARY (for ERD cardinality)
@@ -523,11 +543,24 @@ LOGS
   FEEDBACK
     --< feedback_answers.feedback_id             one-to-many, mandatory (NOT NULL FK)
 
+  MUSEUM_HALLS
+    --< exhibits.hall_id                         one-to-many, optional (nullable FK)
+
   STAFF
+    --< attendance_corrections.requested_by      one-to-many, optional (nullable FK)
+    --< attendance_corrections.reviewed_by       one-to-many, optional (nullable FK)
     --< attendance_corrections.staff_id          one-to-many, mandatory (NOT NULL FK)
+    --< feedback.staff_id                        one-to-many, optional (nullable FK)
+    --< staff_attendance_days.opened_by          one-to-many, optional (nullable FK)
+    --< staff_attendances.recorded_by            one-to-many, optional (nullable FK)
     --< staff_attendances.staff_id               one-to-many, mandatory (NOT NULL FK)
     --< staff_schedules.staff_id                 one-to-many, mandatory (NOT NULL FK)
+    --< tours.created_by                         one-to-many, optional (nullable FK)
     --< tours.guide_staff_id                     one-to-many, optional (nullable FK)
+    --< visit_groups.refunded_by                 one-to-many, optional (nullable FK)
+    --< visit_groups.registered_by               one-to-many, optional (nullable FK)
+    --< visitors.registered_by                   one-to-many, optional (nullable FK)
+    --< visitors.verified_by                     one-to-many, optional (nullable FK)
 
   SURVEY_QUESTIONS
     --< feedback_answers.question_id             one-to-many, optional (nullable FK)
@@ -548,10 +581,8 @@ LOGS
 
   Tables with no foreign keys (standalone):
     - logs
-    - museum_halls
     - museum_info
     - notifications
-    - staff_attendance_days
 
 ==============================================================================
  5. RAW CREATE TABLE STATEMENTS (DDL)
@@ -565,7 +596,7 @@ CREATE TABLE `attendance_corrections` (
   `type` enum('in','out') COLLATE utf8mb4_unicode_ci NOT NULL,
   `requested_time` time NOT NULL,
   `reason` text COLLATE utf8mb4_unicode_ci NOT NULL,
-  `requested_by` bigint unsigned NOT NULL,
+  `requested_by` bigint unsigned DEFAULT NULL,
   `requested_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `status` enum('Pending','Approved','Rejected') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Pending',
   `reviewed_by` bigint unsigned DEFAULT NULL,
@@ -576,6 +607,10 @@ CREATE TABLE `attendance_corrections` (
   PRIMARY KEY (`correction_id`),
   KEY `attendance_corrections_staff_id_foreign` (`staff_id`),
   KEY `attendance_corrections_status_work_date_index` (`status`,`work_date`),
+  KEY `attendance_corrections_requested_by_foreign` (`requested_by`),
+  KEY `attendance_corrections_reviewed_by_foreign` (`reviewed_by`),
+  CONSTRAINT `attendance_corrections_requested_by_foreign` FOREIGN KEY (`requested_by`) REFERENCES `staff` (`staff_id`) ON DELETE SET NULL,
+  CONSTRAINT `attendance_corrections_reviewed_by_foreign` FOREIGN KEY (`reviewed_by`) REFERENCES `staff` (`staff_id`) ON DELETE SET NULL,
   CONSTRAINT `attendance_corrections_staff_id_foreign` FOREIGN KEY (`staff_id`) REFERENCES `staff` (`staff_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -674,8 +709,7 @@ CREATE TABLE `exhibits` (
   `description` text COLLATE utf8mb4_unicode_ci,
   `fun_facts` text COLLATE utf8mb4_unicode_ci,
   `category_id` bigint unsigned DEFAULT NULL,
-  `floor` enum('Ground Floor','2nd Floor') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Ground Floor',
-  `hall` enum('Hall A','Hall B','Hall C','Hall D','Hall E') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `hall_id` bigint unsigned DEFAULT NULL,
   `map_x` decimal(5,2) DEFAULT NULL,
   `map_y` decimal(5,2) DEFAULT NULL,
   `authors` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -692,7 +726,9 @@ CREATE TABLE `exhibits` (
   UNIQUE KEY `exhibits_exhibit_code_unique` (`exhibit_code`),
   KEY `exhibits_category_id_foreign` (`category_id`),
   KEY `exhibits_status_storyline_order_index` (`status`,`storyline_order`),
-  CONSTRAINT `exhibits_category_id_foreign` FOREIGN KEY (`category_id`) REFERENCES `categories` (`category_id`) ON DELETE SET NULL
+  KEY `exhibits_hall_id_foreign` (`hall_id`),
+  CONSTRAINT `exhibits_category_id_foreign` FOREIGN KEY (`category_id`) REFERENCES `categories` (`category_id`) ON DELETE SET NULL,
+  CONSTRAINT `exhibits_hall_id_foreign` FOREIGN KEY (`hall_id`) REFERENCES `museum_halls` (`hall_id`) ON DELETE SET NULL
 ) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- feedback
@@ -720,6 +756,7 @@ CREATE TABLE `feedback` (
   KEY `feedback_submitted_at_index` (`submitted_at`),
   KEY `feedback_created_at_index` (`created_at`),
   KEY `feedback_rating_index` (`rating`),
+  CONSTRAINT `feedback_staff_id_foreign` FOREIGN KEY (`staff_id`) REFERENCES `staff` (`staff_id`) ON DELETE SET NULL,
   CONSTRAINT `feedback_tour_id_foreign` FOREIGN KEY (`tour_id`) REFERENCES `tours` (`tour_id`) ON DELETE SET NULL,
   CONSTRAINT `feedback_visitor_id_foreign` FOREIGN KEY (`visitor_id`) REFERENCES `visitors` (`visitor_id`) ON DELETE SET NULL
 ) ENGINE=InnoDB AUTO_INCREMENT=126 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -768,7 +805,7 @@ CREATE TABLE `museum_halls` (
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`hall_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=16 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- museum_info
 CREATE TABLE `museum_info` (
@@ -847,7 +884,9 @@ CREATE TABLE `staff_attendance_days` (
   `opened_by` bigint unsigned DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
-  PRIMARY KEY (`work_date`)
+  PRIMARY KEY (`work_date`),
+  KEY `staff_attendance_days_opened_by_foreign` (`opened_by`),
+  CONSTRAINT `staff_attendance_days_opened_by_foreign` FOREIGN KEY (`opened_by`) REFERENCES `staff` (`staff_id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- staff_attendances
@@ -870,6 +909,8 @@ CREATE TABLE `staff_attendances` (
   PRIMARY KEY (`staff_attendance_id`),
   UNIQUE KEY `staff_attendances_staff_id_work_date_type_unique` (`staff_id`,`work_date`,`type`),
   KEY `staff_attendances_work_date_index` (`work_date`),
+  KEY `staff_attendances_recorded_by_foreign` (`recorded_by`),
+  CONSTRAINT `staff_attendances_recorded_by_foreign` FOREIGN KEY (`recorded_by`) REFERENCES `staff` (`staff_id`) ON DELETE SET NULL,
   CONSTRAINT `staff_attendances_staff_id_foreign` FOREIGN KEY (`staff_id`) REFERENCES `staff` (`staff_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=434 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -932,6 +973,8 @@ CREATE TABLE `tours` (
   KEY `tours_visitor_id_foreign` (`visitor_id`),
   KEY `tours_group_id_foreign` (`group_id`),
   KEY `tours_started_at_index` (`started_at`),
+  KEY `tours_created_by_foreign` (`created_by`),
+  CONSTRAINT `tours_created_by_foreign` FOREIGN KEY (`created_by`) REFERENCES `staff` (`staff_id`) ON DELETE SET NULL,
   CONSTRAINT `tours_group_id_foreign` FOREIGN KEY (`group_id`) REFERENCES `visit_groups` (`group_id`) ON DELETE SET NULL,
   CONSTRAINT `tours_guide_staff_id_foreign` FOREIGN KEY (`guide_staff_id`) REFERENCES `staff` (`staff_id`) ON DELETE SET NULL,
   CONSTRAINT `tours_visitor_id_foreign` FOREIGN KEY (`visitor_id`) REFERENCES `visitors` (`visitor_id`) ON DELETE SET NULL
@@ -966,7 +1009,11 @@ CREATE TABLE `visit_groups` (
   PRIMARY KEY (`group_id`),
   KEY `visit_groups_visit_date_index` (`visit_date`),
   KEY `visit_groups_payment_status_index` (`payment_status`),
-  KEY `visit_groups_join_code_visit_date_index` (`join_code`,`visit_date`)
+  KEY `visit_groups_join_code_visit_date_index` (`join_code`,`visit_date`),
+  KEY `visit_groups_registered_by_foreign` (`registered_by`),
+  KEY `visit_groups_refunded_by_foreign` (`refunded_by`),
+  CONSTRAINT `visit_groups_refunded_by_foreign` FOREIGN KEY (`refunded_by`) REFERENCES `staff` (`staff_id`) ON DELETE SET NULL,
+  CONSTRAINT `visit_groups_registered_by_foreign` FOREIGN KEY (`registered_by`) REFERENCES `staff` (`staff_id`) ON DELETE SET NULL
 ) ENGINE=InnoDB AUTO_INCREMENT=182 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- visitors
@@ -984,7 +1031,7 @@ CREATE TABLE `visitors` (
   `paid_at` timestamp NULL DEFAULT NULL,
   `id_verified` tinyint(1) NOT NULL DEFAULT '0',
   `verified_at` timestamp NULL DEFAULT NULL,
-  `verified_by` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `verified_by` bigint unsigned DEFAULT NULL,
   `visit_type` enum('Solo','Group','School','Family','Walk-in') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Solo',
   `city` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `barangay` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -1009,7 +1056,11 @@ CREATE TABLE `visitors` (
   KEY `visitors_visitor_type_index` (`visitor_type`),
   KEY `visitors_payment_status_index` (`payment_status`),
   KEY `visitors_last_visit_index` (`last_visit`),
-  CONSTRAINT `visitors_group_id_foreign` FOREIGN KEY (`group_id`) REFERENCES `visit_groups` (`group_id`) ON DELETE SET NULL
+  KEY `visitors_verified_by_foreign` (`verified_by`),
+  KEY `visitors_registered_by_foreign` (`registered_by`),
+  CONSTRAINT `visitors_group_id_foreign` FOREIGN KEY (`group_id`) REFERENCES `visit_groups` (`group_id`) ON DELETE SET NULL,
+  CONSTRAINT `visitors_registered_by_foreign` FOREIGN KEY (`registered_by`) REFERENCES `staff` (`staff_id`) ON DELETE SET NULL,
+  CONSTRAINT `visitors_verified_by_foreign` FOREIGN KEY (`verified_by`) REFERENCES `staff` (`staff_id`) ON DELETE SET NULL
 ) ENGINE=InnoDB AUTO_INCREMENT=234 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- END OF FILE
