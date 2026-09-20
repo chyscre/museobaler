@@ -26,17 +26,11 @@
     {{-- Location --}}
     <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin:16px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--border)">Location & Order</div>
     <div class="fi-row">
-      <div class="fg"><label class="fl">Floor</label>
-        <select class="fi" name="floor">
-          @foreach(['Ground Floor','2nd Floor'] as $f)
-          <option {{ $exhibit->floor === $f ? 'selected' : '' }}>{{ $f }}</option>
-          @endforeach
-        </select>
-      </div>
       <div class="fg"><label class="fl">Hall</label>
-        <select class="fi" name="hall">
-          @foreach(['Hall A','Hall B','Hall C','Hall D','Hall E'] as $h)
-          <option {{ $exhibit->hall === $h ? 'selected' : '' }}>{{ $h }}</option>
+        <select class="fi" name="hall_id">
+          <option value="">No hall yet</option>
+          @foreach($halls as $h)
+          <option value="{{ $h->hall_id }}" {{ $exhibit->hall_id === $h->hall_id ? 'selected' : '' }}>{{ $h->name }} · {{ $h->floor }}</option>
           @endforeach
         </select>
       </div>

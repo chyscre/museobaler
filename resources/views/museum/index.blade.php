@@ -208,7 +208,7 @@
             <div class="hall-edit" style="display:none">
               <div class="fi-row" style="margin-bottom:8px">
                 <div class="fg"><label class="fl">Hall Name</label><input class="fi hall-name" value="{{ $hall->name }}"></div>
-                <div class="fg"><label class="fl">Floor</label><input class="fi hall-floor" value="{{ $hall->floor }}"></div>
+                <div class="fg"><label class="fl">Floor</label><select class="fi hall-floor">@foreach(\App\Models\MuseumHall::FLOORS as $f)<option @selected($hall->floor === $f)>{{ $f }}</option>@endforeach</select></div>
               </div>
               <div class="fi-row" style="margin-bottom:8px">
                 <div class="fg"><label class="fl">Description</label><input class="fi hall-desc" value="{{ $hall->description }}"></div>
@@ -411,7 +411,7 @@ function addHall(){
       <div class="hall-edit">
         <div class="fi-row" style="margin-bottom:8px">
           <div class="fg"><label class="fl">Hall Name</label><input class="fi hall-name" placeholder="e.g. Hall A"></div>
-          <div class="fg"><label class="fl">Floor</label><input class="fi hall-floor" placeholder="Ground Floor"></div>
+          <div class="fg"><label class="fl">Floor</label><select class="fi hall-floor">@foreach(\App\Models\MuseumHall::FLOORS as $f)<option>{{ $f }}</option>@endforeach</select></div>
         </div>
         <div class="fi-row" style="margin-bottom:8px">
           <div class="fg"><label class="fl">Description</label><input class="fi hall-desc" placeholder="Short description"></div>

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Exhibit;
+use App\Models\MuseumHall;
 use App\Models\Staff;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -17,8 +18,11 @@ class MuseumMapTest extends TestCase
 
     public function test_map_page_hands_the_pins_to_the_script(): void
     {
-        Exhibit::create(['exhibit_code' => 'EXH-001', 'name' => 'Cannon', 'floor' => 'Ground Floor', 'map_x' => 12.5, 'map_y' => 40, 'status' => true]);
-        Exhibit::create(['exhibit_code' => 'EXH-002', 'name' => 'Loom',   'floor' => '2nd Floor', 'status' => true]);
+        // The floor comes from the hall, so the map keys off the hall row.
+        $ground = MuseumHall::create(['name' => 'Hall A', 'floor' => 'Ground Floor', 'sort_order' => 1]);
+        $upper  = MuseumHall::create(['name' => 'Hall D', 'floor' => '2nd Floor', 'sort_order' => 2]);
+        Exhibit::create(['exhibit_code' => 'EXH-001', 'name' => 'Cannon', 'hall_id' => $ground->hall_id, 'map_x' => 12.5, 'map_y' => 40, 'status' => true]);
+        Exhibit::create(['exhibit_code' => 'EXH-002', 'name' => 'Loom',   'hall_id' => $upper->hall_id, 'status' => true]);
 
         $response = $this->actingAs(Staff::factory()->administrator()->create())->get('/map');
 

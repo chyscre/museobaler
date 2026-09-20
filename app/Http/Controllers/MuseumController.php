@@ -61,7 +61,9 @@ class MuseumController extends Controller
                 $record = $id ? MuseumHall::find($id) : new MuseumHall();
                 $record->fill([
                     'name'        => $h['name']  ?? '',
-                    'floor'       => $h['floor'] ?? '',
+                    // The floor map picks a plan by this exact label, so anything
+                    // else (a typo, an old free-text value) falls back to the ground.
+                    'floor'       => in_array($h['floor'] ?? null, MuseumHall::FLOORS, true) ? $h['floor'] : MuseumHall::FLOORS[0],
                     'description' => $h['desc']  ?? '',
                     'icon'        => $h['icon']  ?? '',
                     'sort_order'  => (int) ($h['sort'] ?? 0),
@@ -69,7 +71,9 @@ class MuseumController extends Controller
                 $record->save();
                 $kept[] = $record->hall_id;
             }
-            // Remove halls not in the submitted list
+            // Remove halls not in the submitted list. Exhibits that were in a
+            // removed hall keep everything else and simply have no hall until
+            // staff pick one (hall_id is set null by the database).
             MuseumHall::whereNotIn('hall_id', $kept)->delete();
         }
 
@@ -83,12 +87,14 @@ class MuseumController extends Controller
         $storyline = Exhibit::where('status', true)
             ->where('storyline_order', '>', 0)
             ->orderBy('storyline_order')
-            ->get(['exhibit_id', 'name', 'hall', 'storyline_order']);
+            ->with('museumHall')
+            ->get(['exhibit_id', 'name', 'hall_id', 'storyline_order']);
 
         $allExhibits = Exhibit::where('status', true)
             ->orderBy('storyline_order')
             ->orderBy('name')
-            ->get(['exhibit_id', 'name', 'hall', 'floor', 'exhibit_code', 'storyline_order', 'map_x', 'map_y']);
+            ->with('museumHall')
+            ->get(['exhibit_id', 'name', 'hall_id', 'exhibit_code', 'storyline_order', 'map_x', 'map_y']);
 
         // What the map draws its pins from. Positions are percentages of the
         // floor plan; null ones get a spot picked by the page until saved.

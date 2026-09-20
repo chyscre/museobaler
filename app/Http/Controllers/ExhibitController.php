@@ -7,6 +7,7 @@ use App\Models\Exhibit;
 use App\Models\ExhibitImage;
 use App\Models\ExhibitTranslation;
 use App\Models\Log;
+use App\Models\MuseumHall;
 use App\Services\ExhibitQr;
 use App\Support\ExhibitLanguages;
 use Illuminate\Http\Request;
@@ -18,7 +19,7 @@ class ExhibitController extends Controller
 {
     public function index()
     {
-        $exhibits   = Exhibit::with('category')
+        $exhibits   = Exhibit::with('category', 'museumHall')
             ->withCount('scans')
             // Storyline first, then the code. Newest-first as the tiebreaker
             // put a freshly added exhibit at the top of its order group, which
@@ -27,11 +28,12 @@ class ExhibitController extends Controller
             ->orderBy('exhibit_code')
             ->get();
         $categories = Category::orderBy('name')->get();
+        $halls      = MuseumHall::orderBy('sort_order')->get();
 
         // Shown as the placeholder on the add form: what a blank order becomes.
         $nextOrder  = (int) Exhibit::max('storyline_order') + 1;
 
-        return view('exhibits.index', compact('exhibits', 'categories', 'nextOrder'));
+        return view('exhibits.index', compact('exhibits', 'categories', 'halls', 'nextOrder'));
     }
 
     /**
@@ -78,8 +80,7 @@ class ExhibitController extends Controller
             'description'  => 'nullable|string|max:5000',
             'fun_facts'    => 'nullable|string|max:3000',
             'category_id'  => 'nullable|exists:categories,category_id',
-            'floor'        => 'nullable|string|max:50',
-            'hall'         => 'nullable|string|max:100',
+            'hall_id'      => 'nullable|exists:museum_halls,hall_id',
             'authors'      => 'nullable|string|max:300',
             'storyline_order' => 'nullable|integer|min:0',
             'image'        => self::IMAGE_RULE,
@@ -88,7 +89,7 @@ class ExhibitController extends Controller
 
         $data = $request->only([
             'exhibit_code', 'name', 'description', 'fun_facts',
-            'category_id', 'floor', 'hall', 'authors',
+            'category_id', 'hall_id', 'authors',
             'languages', 'storyline_order',
         ]);
         $data['date_published'] = now()->toDateString();
@@ -128,7 +129,8 @@ class ExhibitController extends Controller
     {
         $exhibit->load('translations', 'images');
         $categories = Category::orderBy('name')->get();
-        return view('exhibits.edit', compact('exhibit', 'categories'));
+        $halls      = MuseumHall::orderBy('sort_order')->get();
+        return view('exhibits.edit', compact('exhibit', 'categories', 'halls'));
     }
 
     public function update(Request $request, Exhibit $exhibit)
@@ -138,8 +140,7 @@ class ExhibitController extends Controller
             'name'         => 'required|string|max:200',
             'description'  => 'nullable|string|max:5000',
             'fun_facts'    => 'nullable|string|max:3000',
-            'floor'        => 'nullable|string|max:50',
-            'hall'         => 'nullable|string|max:100',
+            'hall_id'      => 'nullable|exists:museum_halls,hall_id',
             'authors'      => 'nullable|string|max:300',
             'storyline_order' => 'nullable|integer|min:0',
             'category_id'  => 'nullable|exists:categories,category_id',
@@ -149,7 +150,7 @@ class ExhibitController extends Controller
 
         $data = $request->only([
             'exhibit_code', 'name', 'description', 'fun_facts',
-            'category_id', 'floor', 'hall', 'authors',
+            'category_id', 'hall_id', 'authors',
             'languages', 'storyline_order',
         ]);
         if ($request->filled('source_language')) {
@@ -187,6 +188,7 @@ class ExhibitController extends Controller
             'name'            => $exhibit->name,
             'description'     => $exhibit->description,
             'fun_facts'       => $exhibit->fun_facts,
+            'hall_id'         => $exhibit->hall_id,
             'floor'           => $exhibit->floor,
             'hall'            => $exhibit->hall,
             'authors'         => $exhibit->authors,
@@ -217,7 +219,8 @@ class ExhibitController extends Controller
     {
         $exhibit->load('translations', 'images');
         $categories = Category::orderBy('name')->get();
-        return view('exhibits.partials.edit-form', compact('exhibit', 'categories'));
+        $halls      = MuseumHall::orderBy('sort_order')->get();
+        return view('exhibits.partials.edit-form', compact('exhibit', 'categories', 'halls'));
     }
 
     public function archive(Exhibit $exhibit)
