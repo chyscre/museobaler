@@ -1,4 +1,0 @@
-Options -Indexes
-<FilesMatch "\.(mp3|wav|ogg|m4a)$">
-    Require all granted
-</FilesMatch>

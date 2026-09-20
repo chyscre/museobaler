@@ -134,6 +134,10 @@ class DatabaseSeeder extends Seeder
         $artId   = DB::table('categories')->where('name', 'Artifacts')->value('category_id');
 
         // ── Exhibits ──────────────────────────────────────────────────────────
+        // Their pictures and audio guides first, so a fresh install does not
+        // seed rows that point at files it does not have.
+        $this->copySeedMedia();
+
         $exhibits = [
             [
                 'exhibit_id'      => 1,
@@ -355,5 +359,34 @@ class DatabaseSeeder extends Seeder
     private function generatePassword(): string
     {
         return PasswordPolicy::generateTemporary();
+    }
+
+    /**
+     * The seeded exhibits' pictures and audio guides.
+     *
+     * They travel with the code, in database/seeders/media, so a fresh
+     * install has them. Everything staff upload afterwards lands in
+     * public/images/exhibits and public/audio, which are not in git - on a
+     * server they are a shared directory that outlives releases. The copy
+     * only fills gaps: a file already there, seeded or uploaded, is left alone.
+     */
+    private function copySeedMedia(): void
+    {
+        foreach (['images' => 'images/exhibits', 'audio' => 'audio'] as $from => $to) {
+            $source = database_path("seeders/media/{$from}");
+            $target = public_path($to);
+
+            if (!is_dir($target) && !@mkdir($target, 0775, true) && !is_dir($target)) {
+                $this->command?->warn("Could not create {$target}; seeded exhibits will have no {$from}.");
+                continue;
+            }
+
+            foreach (glob("{$source}/*") ?: [] as $file) {
+                $dest = $target . '/' . basename($file);
+                if (!is_file($dest)) {
+                    copy($file, $dest);
+                }
+            }
+        }
     }
 }
