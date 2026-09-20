@@ -10,7 +10,7 @@ class Exhibit extends Model
 
     protected $fillable = [
         'exhibit_code', 'name', 'description', 'fun_facts',
-        'category_id', 'floor', 'hall', 'authors',
+        'category_id', 'floor', 'hall', 'map_x', 'map_y', 'authors',
         'languages', 'source_language', 'storyline_order', 'image', 'qr_file',
         'status', 'date_published',
     ];
@@ -21,6 +21,8 @@ class Exhibit extends Model
             'status'          => 'boolean',
             'date_published'  => 'date',
             'storyline_order' => 'integer',
+            'map_x'           => 'float',
+            'map_y'           => 'float',
         ];
     }
 

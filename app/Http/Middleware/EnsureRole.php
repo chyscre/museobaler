@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -24,6 +25,17 @@ class EnsureRole
         $user = $request->user();
 
         if (!$user || !in_array($user->role, $roles, true)) {
+            // A signed-in account reaching for a screen its role does not
+            // have is either a bookmark from an old role or somebody probing.
+            // Either way it is the line an incident review wants to find.
+            Log::channel('security')->warning('Role denied', [
+                'staff_id' => $user?->getAuthIdentifier(),
+                'role'     => $user?->role,
+                'needed'   => $roles,
+                'path'     => $request->path(),
+                'ip'       => $request->ip(),
+            ]);
+
             abort(403, 'You do not have permission to perform this action.');
         }
 

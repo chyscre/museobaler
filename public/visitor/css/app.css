@@ -288,6 +288,43 @@ body.dark-mode .hall-ico .material-icons-round{color:var(--accent-text)}
 body.dark-mode .pick-row.on{background:var(--ok-bg);color:var(--accent-text)}
 body.dark-mode .pick-row.on .material-icons-round{color:var(--accent-text)}
 
+/* ── VISITOR SURVEY (ARTA CSM) ── */
+.survey-dots{display:flex;gap:5px}
+.survey-dots i{width:7px;height:7px;border-radius:50%;background:var(--es);display:block}
+.survey-dots i.on{background:var(--mode-secondary);width:18px;border-radius:4px}
+.survey-q{padding:12px 0;border-bottom:1px solid var(--es)}
+.survey-q:last-child{border-bottom:none}
+.survey-q-code{font-size:calc(10.5px * var(--fs));font-weight:700;letter-spacing:.06em;color:var(--mode-secondary);margin-bottom:3px}
+.survey-q-text{font-size:calc(13.5px * var(--fs));color:var(--td);line-height:1.45;font-weight:500}
+.survey-q-sub{font-size:calc(11.5px * var(--fs));color:var(--tl);line-height:1.4;margin-top:2px}
+.survey-q-hint{font-size:calc(11px * var(--fs));color:var(--tl);font-style:italic;margin-top:3px}
+.survey-q.missing .survey-q-text{color:#b91c1c}
+/* five faces + N/A in one row */
+.survey-scale{display:flex;gap:4px;margin-top:10px}
+.survey-scale button{
+  flex:1;min-width:0;padding:7px 0 5px;border:1.5px solid var(--es);border-radius:10px;
+  background:var(--field-bg);color:var(--tl);cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  font-family:'Instrument Sans',sans-serif;
+}
+.survey-scale button .material-icons-round{font-size:24px;color:var(--tl)}
+.survey-scale button small{font-size:calc(9px * var(--fs));line-height:1.1;text-align:center;font-weight:600}
+.survey-scale button.na .material-icons-round{font-size:18px;margin:3px 0}
+.survey-scale button.on{border-color:var(--mode-secondary);background:var(--mode-pale);color:var(--mode-primary)}
+.survey-scale button.on .material-icons-round{color:var(--mode-primary)}
+.survey-scale button.on[data-v="1"] .material-icons-round{color:#b91c1c}
+.survey-scale button.on[data-v="2"] .material-icons-round{color:#d97706}
+.survey-scale button.on[data-v="5"] .material-icons-round{color:var(--gm)}
+/* single choice list */
+.survey-choices{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.survey-choices .radio-pill{width:100%;text-align:left}
+.survey-choices .radio-pill .material-icons-round{font-size:18px;color:var(--tl);flex-shrink:0}
+.survey-choices .radio-pill.active .material-icons-round{color:var(--mode-secondary)}
+.survey-header{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}
+.survey-header select{width:100%}
+body.dark-mode .survey-scale button.on,body.dark-mode .survey-choices .radio-pill.active{background:var(--ok-bg);color:var(--accent-text)}
+body.dark-mode .survey-scale button.on .material-icons-round{color:var(--accent-text)}
+
 /* ── RADIO PILLS ── */
 .radio-pill{display:flex;align-items:center;gap:7px;padding:9px 14px;border:1.5px solid var(--es);border-radius:10px;background:var(--field-bg);cursor:pointer;font-size:calc(13px * var(--fs));color:var(--tm);}
 .radio-pill input{accent-color:var(--mode-secondary);}

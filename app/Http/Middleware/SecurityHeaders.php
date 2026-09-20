@@ -45,11 +45,12 @@ class SecurityHeaders
             // html5-qrcode's fallback for older ones goes through a blob: URL
             // on the element, which default-src 'self' would refuse.
             "media-src 'self' blob:; " .
-            // storage.googleapis.com is where the recognition trainer fetches
-            // the MobileNet base it builds on (see recognition/index.blade.php).
-            // Only the admin's browser talks to it, only while training; the
-            // visitor app loads the finished model from this server.
-            "connect-src 'self' http://localhost http://127.0.0.1 https://unpkg.com https://cdn.jsdelivr.net https://storage.googleapis.com; " .
+            // storage.googleapis.com was here for the recognition trainer's
+            // MobileNet base; that is now served from public/js/vendor/, so
+            // the trainer, the visitor app and the staff scanner all work
+            // without internet. unpkg and jsDelivr remain only for the admin
+            // layout's Lucide icons and Chart.js.
+            "connect-src 'self' http://localhost http://127.0.0.1 https://unpkg.com https://cdn.jsdelivr.net; " .
             "frame-ancestors 'none';"
         );
 

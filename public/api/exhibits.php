@@ -53,7 +53,7 @@ if (isset($_GET['id']) || isset($_GET['code'])) {
 
     $stmt = mysqli_prepare($con,
         "SELECT e.exhibit_id, e.exhibit_code, e.name, e.description, e.fun_facts, e.floor, e.hall,
-                e.authors, e.languages, e.storyline_order, e.image, e.status,
+                e.authors, e.languages, e.storyline_order, e.map_x, e.map_y, e.image, e.status,
                 e.date_published,
                 c.name as category,
                 t.title as t_title, t.description as t_desc, t.fun_facts as t_fun_facts, t.audio_file,
@@ -74,14 +74,12 @@ if (isset($_GET['id']) || isset($_GET['code'])) {
 
     if (!$row) { echo json_encode(['error' => 'not_found']); exit; }
 
-    // Log scan if visitor_id provided
-    if (isset($_POST['visitor_id']) || isset($_GET['visitor_id'])) {
-        $vid = (int)($_POST['visitor_id'] ?? $_GET['visitor_id']);
-        $eid = (int)$row['exhibit_id'];
-        $ins = mysqli_prepare($con, "INSERT INTO scans (exhibit_id, visitor_id) VALUES (?,?)");
-        mysqli_stmt_bind_param($ins, 'ii', $eid, $vid);
-        mysqli_stmt_execute($ins);
-    }
+    // SECURITY: no scan is logged here. This used to insert a scans row for
+    // whatever visitor_id the request named, which let any caller write
+    // history onto another visitor's record. The app has never used it -
+    // it logs a scan through visitor.php?action=scan, where the visitor is
+    // whoever the bearer token belongs to - so the only callers this path
+    // had left were forged ones.
 
     // Fetch gallery images (safe if table doesn't exist yet)
     $gallery = [];
@@ -111,6 +109,8 @@ if (isset($_GET['id']) || isset($_GET['code'])) {
         'authors'         => $row['authors'],
         'languages'       => explode(',', $row['languages']),
         'storyline_order' => (int)$row['storyline_order'],
+        'map_x'           => $row['map_x'] === null ? null : (float)$row['map_x'],
+        'map_y'           => $row['map_y'] === null ? null : (float)$row['map_y'],
         'year'            => $row['date_published'] ? substr($row['date_published'], 0, 4) : '',
         'image'           => $imageUrl($row['image']),
         'gallery'         => $gallery,
@@ -125,7 +125,7 @@ if (isset($_GET['id']) || isset($_GET['code'])) {
 // All exhibits (for home/browse + offline cache)
 $stmt = mysqli_prepare($con,
     "SELECT e.exhibit_id, e.exhibit_code, e.name, e.description, e.fun_facts, e.floor, e.hall,
-            e.authors, e.languages, e.storyline_order, e.image, e.date_published,
+            e.authors, e.languages, e.storyline_order, e.map_x, e.map_y, e.image, e.date_published,
             c.name as category,
             t.title as t_title, t.description as t_desc, t.fun_facts as t_fun_facts, t.audio_file
      FROM exhibits e
@@ -152,6 +152,8 @@ while ($row = mysqli_fetch_assoc($result)) {
         'authors'         => $row['authors'],
         'languages'       => explode(',', $row['languages']),
         'storyline_order' => (int)$row['storyline_order'],
+        'map_x'           => $row['map_x'] === null ? null : (float)$row['map_x'],
+        'map_y'           => $row['map_y'] === null ? null : (float)$row['map_y'],
         'year'            => $row['date_published'] ? substr($row['date_published'], 0, 4) : '',
         'image'           => $imageUrl($row['image']),
         'audio_file'      => $row['audio_file'],

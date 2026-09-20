@@ -3,8 +3,12 @@
 namespace App\Providers;
 
 use App\Services\Gemini;
+use Illuminate\Auth\Events\Failed;
+use Illuminate\Auth\Events\Login;
+use Illuminate\Auth\Events\Logout;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
@@ -45,6 +49,67 @@ class AppServiceProvider extends ServiceProvider
         }
 
         $this->rateLimitAiCalls();
+        $this->rateLimitPanel();
+        $this->logSecurityEvents();
+    }
+
+    /**
+     * A ceiling on the admin panel as a whole.
+     *
+     * Not a defence against a person - nobody clicks 300 times a minute -
+     * but against a script that has a session cookie, or a browser tab gone
+     * wrong. The busiest legitimate client is a signed-in tab polling the
+     * notification bell every ten seconds beside a kiosk syncing once a
+     * minute, which is under ten requests a minute. Three hundred leaves
+     * room for a spreadsheet of visitors being registered in a hurry and
+     * still stops a scraper walking the records pages in seconds.
+     *
+     * Keyed on the account, falling back to the address for the sign-in
+     * pages that have no account yet.
+     */
+    private function rateLimitPanel(): void
+    {
+        RateLimiter::for('panel', function (Request $request) {
+            $who = $request->user()?->getAuthIdentifier() ?: $request->ip();
+
+            return Limit::perMinute(300)->by("panel:$who");
+        });
+    }
+
+    /**
+     * SECURITY: the events an incident review starts from, on their own
+     * channel.
+     *
+     * The audit log records what signed-in staff did. This records the
+     * attempts that never became a sign-in: the wrong password, the locked
+     * account, the role that tried a door it has no key to. Those are the
+     * lines that tell a brute-force attempt apart from a forgotten password,
+     * and they belong in a file that ordinary application noise does not
+     * scroll off the end of. See config/logging.php, channel 'security'.
+     */
+    private function logSecurityEvents(): void
+    {
+        Event::listen(Failed::class, function (Failed $event) {
+            Log::channel('security')->warning('Login failed', [
+                'email' => $event->credentials['email'] ?? null,
+                'ip'    => request()->ip(),
+            ]);
+        });
+
+        Event::listen(Login::class, function (Login $event) {
+            Log::channel('security')->info('Login', [
+                'staff_id' => $event->user->getAuthIdentifier(),
+                'role'     => $event->user->role ?? null,
+                'ip'       => request()->ip(),
+            ]);
+        });
+
+        Event::listen(Logout::class, function (Logout $event) {
+            Log::channel('security')->info('Logout', [
+                'staff_id' => $event->user?->getAuthIdentifier(),
+                'ip'       => request()->ip(),
+            ]);
+        });
     }
 
     /**

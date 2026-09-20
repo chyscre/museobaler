@@ -36,8 +36,11 @@ include '../auth/db.php';
 // Password rules and the bearer-token / admission gate live in their own files
 // so the content endpoints can enforce exactly the same checks.
 require_once '_password_policy.php';
+require_once '_sanitize.php';
 require_once '_visitor_auth.php';
 require_once '_museum.php';
+require_once '_baler.php';
+require_once '_survey.php';
 
 /**
  * SECURITY: Input Validation Helper
@@ -54,9 +57,42 @@ function validateString(string $value, int $maxLen = 255, array $allowed = []): 
     return true;
 }
 
+/**
+ * Does the email's domain actually receive mail?
+ *
+ * FILTER_VALIDATE_EMAIL only checks the shape, so "asdf@asdf.com" sails
+ * through. An MX lookup on the domain catches that kind of junk without
+ * making the visitor wait for a verification email at the entrance desk —
+ * a real cost for a school party of forty, for very little gain, since the
+ * fee and the ID are checked face to face anyway. This does NOT prove the
+ * mailbox exists or that the visitor owns it; it proves the domain is real.
+ *
+ * Fails OPEN. If DNS itself is unreachable (the museum's connection drops),
+ * every domain would look dead and nobody could register at all. A second
+ * lookup against a domain that certainly has mail servers tells "this domain
+ * is bogus" apart from "we cannot resolve anything right now".
+ */
+function emailDomainAcceptsMail(string $email): bool
+{
+    $at = strrchr($email, '@');
+    if ($at === false) return false;
+    $domain = strtolower(substr($at, 1));
+    if ($domain === '') return false;
+
+    // An A record alone is enough: RFC 5321 lets mail fall back to it.
+    $receivesMail = fn(string $d): bool => checkdnsrr($d, 'MX') || checkdnsrr($d, 'A');
+
+    if ($receivesMail($domain)) return true;
+
+    // Domain looked dead — but was it the domain, or is DNS down?
+    return !$receivesMail('gmail.com');
+}
+
 // ── POST: Register / Scan / Feedback / Bookmark / Set Mode ───────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $data   = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+    // SECURITY: tags and control characters stripped from every field
+    // before any action reads it (passwords excepted) - see _sanitize.php.
+    $data   = apiSanitize(json_decode(file_get_contents('php://input'), true) ?: $_POST);
     $action = $data['action'] ?? '';
 
     /**
@@ -80,6 +116,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         return $visitorType === 'Local'
             ? ['fee' => 0.00,          'status' => 'Free']
             : ['fee' => ADMISSION_FEE, 'status' => 'Unpaid'];
+    }
+
+    /**
+     * The group behind a join code, if a member may still join it.
+     *
+     * The desk registers a party as one record - a headcount and one payment -
+     * and hands the party a six-letter code. A member who types it here is
+     * counted inside that headcount instead of as an extra visitor owing a
+     * second fee, and is unlocked when the group is.
+     *
+     * SECURITY: a code that grants free entry needs limits. It only matches
+     * a group whose visit_date is today, so yesterday's code admits nobody;
+     * and it stops working once as many members have joined as the desk
+     * counted and charged for, so a leaked code cannot let in a sixth person
+     * on a party of five. Codes use no 0/O or 1/I, and are compared upper-case
+     * so what the desk read out matches what was typed.
+     *
+     * Returns [group row, null] or [null, error code].
+     */
+    function resolveJoinableGroup($con, string $code): array
+    {
+        $code = strtoupper(trim($code));
+
+        if ($code === '' || !preg_match('/^[A-Z2-9]{4,8}$/', $code)) {
+            return [null, 'group_not_found'];
+        }
+
+        $stmt = mysqli_prepare($con,
+            "SELECT g.*, (SELECT COUNT(*) FROM visitors m WHERE m.group_id = g.group_id) AS joined
+               FROM visit_groups g
+              WHERE g.join_code = ? AND g.visit_date = CURDATE()
+              LIMIT 1"
+        );
+        mysqli_stmt_bind_param($stmt, 's', $code);
+        mysqli_stmt_execute($stmt);
+        $g = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+
+        if (!$g) {
+            return [null, 'group_not_found'];
+        }
+        if ((int)$g['joined'] >= (int)$g['headcount']) {
+            return [null, 'group_full'];
+        }
+
+        return [$g, null];
+    }
+
+    /** The visit_type a member inherits from the kind of party they joined. */
+    function visitTypeForGroup(array $g): string
+    {
+        return match ($g['group_type']) {
+            'School' => 'School',
+            'Family' => 'Family',
+            default  => 'Group',
+        };
+    }
+
+    function groupErrorMessage(string $code): string
+    {
+        return match ($code) {
+            'group_full' => 'Everyone in that group has already joined. Ask the person who signed you in to check the headcount at the desk.',
+            default      => 'That group code was not found for today. Check it with the person who signed you in at the desk.',
+        };
     }
 
     /**
@@ -127,7 +226,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         throttleSignIn($email);
 
         // SECURITY: prepared statement — the email is bound as data, not SQL.
-        $stmt = mysqli_prepare($con, "SELECT * FROM visitors WHERE email = ? LIMIT 1");
+        // Loaded with today's group so the clearance in the reply follows the
+        // group's payment for a member who is signing back in.
+        $stmt = mysqli_prepare($con, VISITOR_WITH_GROUP_SQL . " WHERE v.email = ? LIMIT 1");
         mysqli_stmt_bind_param($stmt, 's', $email);
         mysqli_stmt_execute($stmt);
         $v = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
@@ -175,6 +276,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    // ── Join a group after signing in ────────────────────────────────────────
+    // For the member who registered on their own before the desk had signed
+    // the party in, or a returning visitor who is with a group today. They
+    // stop being a separate visitor owing a separate fee and become one of
+    // the group's headcount, unlocked when the group is.
+    if ($action === 'join_group') {
+        $v = visitorFromToken($con, $data);
+        if (!$v) {
+            http_response_code(401);
+            echo json_encode(['error' => 'unauthenticated']);
+            exit;
+        }
+
+        // Somebody who already paid on their own has nothing to gain here and
+        // the museum has a fee to refund if they switch, so that is a desk
+        // conversation rather than a button.
+        if ($v['payment_status'] === 'Paid' && !visitorInGroupToday($v)) {
+            echo json_encode([
+                'error'   => 'already_paid',
+                'message' => 'You have already paid your own admission. Speak to the desk if you should have been part of a group.',
+            ]);
+            exit;
+        }
+
+        [$group, $groupError] = resolveJoinableGroup($con, (string)($data['group_code'] ?? ''));
+        if ($groupError) {
+            echo json_encode(['error' => $groupError, 'message' => groupErrorMessage($groupError)]);
+            exit;
+        }
+
+        // Rejoining the same group is a no-op rather than a second seat.
+        if ((int)($v['g_group_id'] ?? 0) !== (int)$group['group_id']) {
+            $gid   = (int)$group['group_id'];
+            $vtype = visitTypeForGroup($group);
+            $zero  = 0.00;
+            $free  = 'Free';
+            $vid   = (int)$v['visitor_id'];
+
+            $upd = mysqli_prepare($con,
+                "UPDATE visitors
+                    SET group_id = ?, visit_type = ?, admission_fee = ?, payment_status = ?, paid_at = NULL, last_visit = NOW()
+                  WHERE visitor_id = ?"
+            );
+            mysqli_stmt_bind_param($upd, 'isdsi', $gid, $vtype, $zero, $free, $vid);
+            mysqli_stmt_execute($upd);
+        }
+
+        echo json_encode(clearancePayload(loadVisitor($con, (int)$v['visitor_id'])) + ['joined' => true]);
+        exit;
+    }
+
     // ── Current admission status ─────────────────────────────────────────────
     // The waiting screen polls this while the visitor stands at the desk, so it
     // flips to the museum the moment staff records the payment or the ID check.
@@ -213,6 +365,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $country = trim($data['country'] ?? 'Philippines');
         $city    = trim($data['city'] ?? '');
         $prov    = trim($data['province'] ?? '');
+        $brgy    = trim($data['barangay'] ?? '');
         $email   = trim($data['email'] ?? '');
         $password = (string)($data['password'] ?? '');
         $confirm  = (string)($data['password_confirm'] ?? '');
@@ -248,12 +401,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (mb_strlen($email) > 150) {
             echo json_encode(['error' => 'email_too_long']); exit;
         }
+        // Shape is not enough: the domain has to be one that can receive mail.
+        if (!emailDomainAcceptsMail($email)) {
+            echo json_encode([
+                'error'   => 'email_domain_invalid',
+                'message' => 'That email address does not look real — please check the part after the @.',
+            ]);
+            exit;
+        }
 
-        // Locals claim free admission, so the municipality must be on record.
+        // Locals claim free admission, which is for Baler residents only, so
+        // the barangay must be on record - and be one of Baler's. The town
+        // and province follow from that; nothing the app sends overrides them.
         if ($vistype === 'Local') {
-            if ($city === '') { echo json_encode(['error' => 'missing_municipality']); exit; }
+            if (!isBalerBarangay($brgy)) { echo json_encode(['error' => 'missing_barangay']); exit; }
+            $city    = 'Baler';
+            $prov    = 'Aurora';
             $country = 'Philippines';
-            if ($prov === '') $prov = 'Aurora';
+        } else {
+            $brgy = '';
         }
         // Foreign visitors must say which country they are from.
         if ($vistype === 'Foreign' && ($country === '' || strcasecmp($country, 'Philippines') === 0)) {
@@ -310,6 +476,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $fee    = $adm['fee'];
         $status = $adm['status'];
 
+        // Arriving with a party the desk already registered. The member is
+        // counted inside that group's headcount, owes nothing personally -
+        // the group's one payment covers them - and takes the visit type of
+        // the kind of party it is. Resolved before the insert so a bad code
+        // costs the visitor a retype, not a half-made account.
+        $groupId   = null;
+        $groupCode = trim((string)($data['group_code'] ?? ''));
+        if ($groupCode !== '') {
+            [$group, $groupError] = resolveJoinableGroup($con, $groupCode);
+            if ($groupError) {
+                echo json_encode(['error' => $groupError, 'message' => groupErrorMessage($groupError)]);
+                exit;
+            }
+            $groupId = (int)$group['group_id'];
+            $vtype   = visitTypeForGroup($group);
+            $fee     = 0.00;
+            $status  = 'Free';
+        }
+
         $stmt = mysqli_prepare($con,
             // created_at/updated_at are set explicitly: this table has no
             // DEFAULT CURRENT_TIMESTAMP, so omitting them leaves NULL, which
@@ -319,30 +504,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // it has never visited, so the first sign-in of the same day would
             // treat this as a new visit and put the fee back to Unpaid —
             // re-locking a visitor who had already paid minutes earlier.
-            "INSERT INTO visitors (first_name,last_name,middle_name,age,sex,visit_type,visitor_type,country,city,province,email,password,auth_provider,explore_mode,admission_fee,payment_status,id_verified,last_visit,created_at,updated_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,NOW(),NOW(),NOW())"
+            "INSERT INTO visitors (first_name,last_name,middle_name,age,sex,visit_type,visitor_type,country,city,barangay,province,email,password,auth_provider,explore_mode,admission_fee,payment_status,group_id,source,id_verified,last_visit,created_at,updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'app',0,NOW(),NOW(),NOW())"
         );
-        mysqli_stmt_bind_param($stmt, 'sssissssssssssds',
-            $first, $last, $mid, $age, $sex, $vtype, $vistype, $country, $city, $prov, $email, $passwordHash, $provider, $mode, $fee, $status
+        $brgyOrNull = $brgy !== '' ? $brgy : null;
+        mysqli_stmt_bind_param($stmt, 'sssisssssssssssdsi',
+            $first, $last, $mid, $age, $sex, $vtype, $vistype, $country, $city, $brgyOrNull, $prov, $email, $passwordHash, $provider, $mode, $fee, $status, $groupId
         );
         if (mysqli_stmt_execute($stmt)) {
             $vid   = mysqli_insert_id($con);
             $token = issueVisitorToken($con, $vid);
 
-            // A brand-new visitor is never cleared: staff must collect the fee
+            // Read back with the group joined so the clearance in the reply
+            // is the real one: a member of a paid (or Local) group walks
+            // straight in; everyone else waits on staff to collect the fee
             // or sight the residency ID before museum content unlocks.
-            echo json_encode([
-                'visitor_id'     => $vid,
-                'explore_mode'   => $mode,
-                'admission_fee'  => $fee,
-                'payment_status' => $status,
-                'id_verified'    => false,
-                'visitor_type'   => $vistype,
-                'clearance'      => $vistype === 'Local' ? 'pending_id' : 'pending_payment',
-                'cleared'        => false,
-                'returning'      => false,
-                'token'          => $token['token'],
-                'expires_at'     => $token['expires_at'],
+            $v = loadVisitor($con, $vid);
+
+            echo json_encode(clearancePayload($v) + [
+                'returning'  => false,
+                'token'      => $token['token'],
+                'expires_at' => $token['expires_at'],
             ]);
         } else {
             error_log('Visitor insert error: ' . mysqli_error($con));
@@ -401,6 +583,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    // ── The survey form ──────────────────────────────────────────────────────
+    // Everything the feedback sheet needs in one call: the active questions
+    // (edited by the Tourism office, see SurveyQuestionController), whether
+    // this visit was guided, and the header defaults the paper form asks for
+    // that the visitor's record can already answer.
+    if ($action === 'survey') {
+        $viewer = requireClearedVisitor($con, $data);
+        $vid    = (int)$viewer['visitor_id'];
+
+        $stmt = mysqli_prepare($con,
+            "SELECT s.name
+             FROM tours t
+             JOIN staff s ON s.staff_id = t.guide_staff_id
+             WHERE t.visitor_id = ? AND DATE(t.started_at) = CURDATE()
+             ORDER BY t.started_at DESC LIMIT 1"
+        );
+        mysqli_stmt_bind_param($stmt, 'i', $vid);
+        mysqli_stmt_execute($stmt);
+        $guide = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+
+        // Region: Baler is Region III. A foreign visitor is "outside PH"; a
+        // domestic tourist can correct the default on the sheet.
+        $region = ($viewer['visitor_type'] ?? 'Local') === 'Foreign'
+            ? 'Outside the Philippines'
+            : 'III – Central Luzon';
+
+        echo json_encode([
+            'questions'  => surveyQuestions($con),
+            'guided'     => (bool)$guide,
+            'guide_name' => $guide['name'] ?? null,
+            'defaults'   => [
+                'client_type' => 'citizen',
+                'region'      => $region,
+            ],
+            'regions'    => SURVEY_REGIONS,
+        ]);
+        exit;
+    }
+
     // ── Submit feedback ──────────────────────────────────────────────────────
     if ($action === 'feedback') {
         /**
@@ -450,6 +671,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode(['error' => 'name_too_long']); exit;
         }
 
+        /**
+         * The ARTA survey. `answers` is {CODE: value|null}; every active,
+         * required question must be answered (or legitimately skipped by its
+         * show_if rule) and every value must be one of that question's own
+         * options. A sheet built from an older question list is tolerated —
+         * unknown codes are dropped — but a missing required answer is not.
+         *
+         * Older app builds that post only a star rating still work: with no
+         * `answers` key at all the survey is simply not filed for that row.
+         */
+        $hasSurvey  = array_key_exists('answers', $data) && is_array($data['answers']);
+        $answerRows = [];
+        if ($hasSurvey) {
+            $check = surveyValidate(surveyQuestions($con), $data['answers']);
+            if (!$check['ok']) {
+                echo json_encode(['error' => $check['error'], 'code' => $check['code']]); exit;
+            }
+            $answerRows = $check['answers'];
+        }
+
+        $clientType = $data['client_type'] ?? null;
+        if ($clientType !== null && !in_array($clientType, ['citizen', 'business', 'government'], true)) {
+            echo json_encode(['error' => 'invalid_client_type']); exit;
+        }
+        $region = trim((string)($data['region'] ?? '')) ?: null;
+        if ($region !== null && !in_array($region, SURVEY_REGIONS, true)) {
+            echo json_encode(['error' => 'invalid_region']); exit;
+        }
+
         // The token already proved this row exists, so no FK re-check is needed.
         $vid = $vidParam = (int)$author['visitor_id'];
 
@@ -487,21 +737,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // No tour means no guide rating to store, whatever the app sent.
         $guideParam = ($staffParam !== null && $guideRating > 0) ? $guideRating : null;
 
+        // One transaction: a feedback row with half its answers would count
+        // in the ARTA totals as if the visitor had skipped the rest.
+        mysqli_begin_transaction($con);
+
         $stmt = mysqli_prepare($con,
             "INSERT INTO feedback
                 (visitor_id, tour_id, staff_id, first_name, last_name, middle_name,
-                 rating, guide_rating, attributed_by, comment)
-             VALUES (?,?,?,?,?,?,?,?,?,?)"
+                 rating, guide_rating, attributed_by, comment, client_type, region)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
         );
         mysqli_stmt_bind_param(
-            $stmt, 'iiissssiss',
+            $stmt, 'iiissssissss',
             $vidParam, $tourParam, $staffParam, $first, $last, $mid,
-            $rating, $guideParam, $attributed, $comment
+            $rating, $guideParam, $attributed, $comment, $clientType, $region
         );
-        if (mysqli_stmt_execute($stmt)) {
+        $ok = mysqli_stmt_execute($stmt);
+        $feedbackId = $ok ? (int)mysqli_insert_id($con) : 0;
+
+        if ($ok && $answerRows) {
+            $ins = mysqli_prepare($con,
+                "INSERT INTO feedback_answers (feedback_id, question_id, code, value, created_at, updated_at)
+                 VALUES (?,?,?,?,NOW(),NOW())"
+            );
+            foreach ($answerRows as [$qid, $code, $value]) {
+                mysqli_stmt_bind_param($ins, 'iisi', $feedbackId, $qid, $code, $value);
+                if (!mysqli_stmt_execute($ins)) { $ok = false; break; }
+            }
+        }
+
+        if ($ok) {
+            mysqli_commit($con);
             echo json_encode(['ok' => true]);
         } else {
             error_log('Feedback insert error: ' . mysqli_error($con));
+            mysqli_rollback($con);
             echo json_encode(['error' => 'submission_failed']);
         }
         exit;

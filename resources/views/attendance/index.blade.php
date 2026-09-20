@@ -64,16 +64,25 @@
         <td style="padding:10px;font-size:13px;color:var(--text-3)">{{ $attendances->firstItem() + $i }}</td>
         <td style="padding:10px">
           <div style="font-size:13px;font-weight:600;color:var(--text)">
-            {{ $a->visitor_name ?: ($a->visitor ? $a->visitor->first_name . ' ' . $a->visitor->last_name : 'Anonymous') }}
+            {{ $a->visitor_name ?: ($a->visitor ? $a->visitor->full_name : 'Anonymous') }}
           </div>
           @if($a->visitor)
           <div style="font-size:11px;color:var(--text-3)">{{ $a->visitor->visitor_type }} · {{ $a->visitor->city ?? 'Unknown' }}</div>
           @endif
         </td>
         <td style="padding:10px">
-          <span class="badge {{ $a->method === 'geofence' ? 'b-green' : 'b-blue' }}">
-            {{ $a->method === 'geofence' ? '📍 Geofence' : '✋ Manual' }}
-          </span>
+          {{-- Label the method that is actually stored. The old two-way
+               check called anything that wasn't 'geofence' "Manual", which
+               swept up the 'registered' value the claim endpoint used to
+               write and mislabelled every signed-in visitor. --}}
+          @php
+            [$badgeClass, $badgeText] = match ($a->method) {
+                'geofence', 'registered' => ['b-green', '📍 Geofence'],
+                'manual'                 => ['b-blue',  '✋ Manual'],
+                default                  => ['b-blue',  ucfirst($a->method ?? 'Unknown')],
+            };
+          @endphp
+          <span class="badge {{ $badgeClass }}">{{ $badgeText }}</span>
         </td>
         <td style="padding:10px;font-size:13px;color:var(--text-3)">
           {{ $a->accuracy ? '±' . $a->accuracy . 'm' : '—' }}

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Log;
 use App\Models\Staff;
 use App\Models\Visitor;
+use App\Support\BalerBarangays;
 use App\Models\VisitGroup;
 use App\Services\Qr;
 use Illuminate\Http\Request;
@@ -44,6 +45,7 @@ class DeskController extends Controller
         'age'         => 'nullable|integer|min:1|max:120',
         'sex'         => 'nullable|in:Male,Female,Other,Prefer not to say',
         'city'        => 'nullable|string|max:100',
+        'barangay'    => 'nullable|string|max:100',
         'province'    => 'nullable|string|max:100',
         'country'     => 'nullable|string|max:100',
         'email'       => 'nullable|email|max:150',
@@ -54,10 +56,16 @@ class DeskController extends Controller
     public function create()
     {
         return view('desk.register', [
-            'todayCount' => Visitor::whereDate('created_at', today())->count(),
-            'todayHeads' => $this->headcountToday(),
-            'recent'     => Visitor::whereDate('created_at', today())
-                                ->latest('created_at')->limit(8)->get(),
+            'todayCount'   => Visitor::whereDate('created_at', today())->count(),
+            'todayHeads'   => $this->headcountToday(),
+            'recent'       => Visitor::with('group')->whereDate('created_at', today())
+                                  ->latest('created_at')->limit(8)->get(),
+            // Today's groups sit above the individuals: the desk needs the
+            // join code in front of it while the party is still standing
+            // there, and needs Mark Paid the moment the money changes hands.
+            'recentGroups' => VisitGroup::withCount('visitors')
+                                  ->whereDate('visit_date', today())
+                                  ->latest('created_at')->limit(8)->get(),
         ]);
     }
 
@@ -91,6 +99,10 @@ class DeskController extends Controller
             'contact_phone' => 'nullable|string|max:40',
             'visitor_type'  => 'required|in:Local,Tourist,Foreign',
             'headcount'     => 'required|integer|min:1|max:500',
+            'local_count'   => 'nullable|integer|min:0|max:500',
+            // Still accepted for anything that posts the old shape; the form
+            // no longer asks it. "Paying heads" is not a question a party
+            // can answer at a counter - "anyone from Baler?" is.
             'paying_count'  => 'nullable|integer|min:0|max:500',
             'city'          => 'nullable|string|max:100',
             'province'      => 'nullable|string|max:100',
@@ -98,35 +110,114 @@ class DeskController extends Controller
             'notes'         => 'nullable|string|max:500',
         ]);
 
-        // Locals enter free; everyone else pays per head unless the desk says
-        // otherwise (a mixed party of locals and out-of-town relatives).
-        $payingCount = $data['visitor_type'] === 'Local'
-            ? 0
-            : (int) ($data['paying_count'] ?? $data['headcount']);
+        $headcount = (int) $data['headcount'];
 
-        if ($payingCount > $data['headcount']) {
-            return back()->withInput()->with('error', 'Paying count cannot exceed the headcount.');
+        // Locals enter free. The desk says how many of the party are from
+        // Baler and the paying count follows; a Local group is all of them.
+        if ($data['visitor_type'] === 'Local') {
+            $localCount = $headcount;
+        } elseif (isset($data['local_count'])) {
+            $localCount = (int) $data['local_count'];
+        } elseif (isset($data['paying_count'])) {
+            $localCount = $headcount - (int) $data['paying_count'];
+        } else {
+            $localCount = 0;
         }
 
-        $fee = VisitGroup::feeFor($data['visitor_type'], $payingCount);
+        if ($localCount > $headcount || $localCount < 0) {
+            return back()->withInput()->with('error', 'The number from Baler cannot exceed the headcount.');
+        }
 
-        $group = VisitGroup::create($data + [
+        $payingCount = VisitGroup::payingFor($data['visitor_type'], $headcount, $localCount);
+        $fee         = VisitGroup::feeFor($data['visitor_type'], $payingCount);
+
+        // array_merge, not `$data + [...]`: with the union operator the FORM
+        // wins on any key present in both. The browser always posts the
+        // "Paying heads" box, and left blank - which is the default - it
+        // arrives as null, which then beat the computed count and MySQL
+        // refused the row. The values worked out above must be the ones
+        // that are written.
+        $group = VisitGroup::create(array_merge($data, [
+            // The code the members type into the app to be counted as part of
+            // this party rather than as a sixth visitor owing a second fee.
+            'join_code'      => VisitGroup::freshJoinCode(),
+            'local_count'    => $localCount,
             'paying_count'   => $payingCount,
             'total_fee'      => $fee,
             'payment_status' => $fee > 0 ? 'Unpaid' : 'Free',
             'visit_date'     => today(),
             'registered_by'  => auth()->id(),
-        ]);
+        ]));
 
         $this->log('Group Registered',
-            "Registered group '{$group->contact_name}' ({$group->headcount} pax, {$group->visitor_type})");
+            "Registered group '{$group->contact_name}' ({$group->headcount} pax, {$localCount} local, {$group->visitor_type}, code {$group->join_code})");
 
         $message = "Group of {$group->headcount} registered.";
         if ($fee > 0) {
             $message .= ' Collect PHP ' . number_format($fee, 2) . " for {$payingCount} paying.";
         }
+        if ($localCount > 0 && $data['visitor_type'] !== 'Local') {
+            $message .= " Check {$localCount} Baler " . ($localCount === 1 ? 'ID' : 'IDs') . '.';
+        }
 
-        return redirect()->route('desk.register')->with('success', $message);
+        // Flashed separately so the view can set it in large type: this is
+        // the thing the desk reads out to the party.
+        return redirect()->route('desk.register')
+            ->with('success', $message)
+            ->with('join_code', ['code' => $group->join_code, 'label' => $group->label]);
+    }
+
+    /**
+     * A local turned up in a party that was charged for everyone - or the
+     * other way round.
+     *
+     * The desk changes how many of the party are from Baler; the model
+     * re-prices the group and settles the difference. If the group had
+     * already paid and the fee drops, the money goes back across the counter
+     * and is recorded as a refund, so the logbook stops counting it as
+     * revenue. No second signature: the person is standing there waiting for
+     * their ₱50, and the audit entry is the record.
+     */
+    public function correctGroup(Request $request, VisitGroup $group)
+    {
+        $data = $request->validate([
+            'local_count' => 'required|integer|min:0|max:500',
+        ]);
+
+        if ((int) $data['local_count'] > (int) $group->headcount) {
+            return back()->with('error', 'The number from Baler cannot exceed the headcount.');
+        }
+
+        if (!$group->visit_date->isToday()) {
+            // Yesterday's money has been counted and banked. Correcting it
+            // from the desk would quietly change a report somebody has
+            // already read; that is a conversation with the Tourism office.
+            return back()->with('error', 'Only today\'s groups can be corrected at the desk.');
+        }
+
+        $before = $group->local_count;
+        $change = $group->correctLocals((int) $data['local_count'], auth()->id());
+
+        $summary = "{$group->label}: {$before} → {$group->local_count} from Baler, fee PHP "
+                 . number_format($change['was_fee'], 2) . ' → PHP ' . number_format($change['fee'], 2);
+
+        if ($change['refund'] > 0) {
+            $this->log('Group Refund', $summary . ' — refunded PHP ' . number_format($change['refund'], 2));
+
+            return back()->with('success',
+                'Corrected. Hand back PHP ' . number_format($change['refund'], 2) . " to {$group->contact_name} — it is recorded as a refund.");
+        }
+
+        $this->log('Group Corrected', $summary . ($change['owed'] > 0 ? ' — PHP ' . number_format($change['owed'], 2) . ' now owed' : ''));
+
+        if ($change['owed'] > 0) {
+            return back()->with('success',
+                'Corrected. Collect a further PHP ' . number_format($change['owed'], 2) . ', then mark the group paid.');
+        }
+
+        return back()->with('success', 'Corrected. ' . ($change['fee'] > 0
+            ? 'The group now owes PHP ' . number_format($change['fee'], 2) . '.'
+            : 'The group enters free.'));
     }
 
     public function markGroupPaid(VisitGroup $group)
@@ -173,21 +264,42 @@ class DeskController extends Controller
 
     // -- Shared -----------------------------------------------------------
 
-    private function createVisitor(array $data, string $source, ?int $staffId, ?int $groupId = null): Visitor
+    /**
+     * A single walk-in typed by the desk.
+     *
+     * Deliberately never a group member: the desk registers a party as a
+     * headcount, not as people, and members who want to be in the system as
+     * people join from their own phone with the group's code. Typing a
+     * member's details here would make them a second, separately-charged
+     * visitor - the exact double count the join code exists to prevent.
+     */
+    private function createVisitor(array $data, string $source, ?int $staffId): Visitor
     {
         $fee = Visitor::feeFor($data['visitor_type']);
 
+        // A local is a Baler resident by definition; the barangay is theirs
+        // to state, the town is not. Nobody else has a barangay here.
+        if ($data['visitor_type'] === 'Local') {
+            $data['city']     = 'Baler';
+            $data['province'] = 'Aurora';
+            $data['country']  = 'Philippines';
+            if (!BalerBarangays::isOne($data['barangay'] ?? null)) {
+                unset($data['barangay']);
+            }
+        } else {
+            unset($data['barangay']);
+        }
+
         return DB::transaction(fn () => Visitor::create($data + [
-            'visit_type'    => $data['visit_type'] ?? ($groupId ? 'Group' : 'Walk-in'),
+            'visit_type'    => $data['visit_type'] ?? 'Walk-in',
             'country'       => $data['country'] ?? 'Philippines',
             'auth_provider' => 'manual',
             'source'        => $source,
             'registered_by' => $staffId,
-            'group_id'      => $groupId,
-            'admission_fee' => $groupId ? 0 : $fee,
+            'admission_fee' => $fee,
             // A local owes nothing but still has to show proof of residency,
             // which is a separate check the desk makes in Records.
-            'payment_status'=> $groupId ? 'Free' : ($fee > 0 ? 'Unpaid' : 'Free'),
+            'payment_status'=> $fee > 0 ? 'Unpaid' : 'Free',
             'id_verified'   => false,
             'last_visit'    => now(),
         ]));

@@ -1,6 +1,6 @@
 ==============================================================================
  MUSEOBALER MUSEUM SYSTEM - DATABASE SCHEMA
- Source: MySQL database `museobaler` (live dump, generated 2026-09-16 14:38)
+ Source: MySQL database `museobaler` (live dump, generated 2026-09-20 14:39)
  Purpose: reference for ERD, DFD, use-case and other system diagrams
  Note: Laravel framework tables (jobs, failed_jobs, job_batches, cache, cache_locks,
        sessions, password_reset_tokens, users, migrations) are excluded - they are not
@@ -19,33 +19,35 @@ CONTENTS
 ==============================================================================
 
   [VISITORS & ATTENDANCE]
-    visitors                      29 columns        6 rows
-    visit_groups                  19 columns        0 rows
-    attendances                   12 columns       12 rows
+    visitors                      30 columns       10 rows
+    visit_groups                  24 columns        1 rows
+    attendances                   12 columns       19 rows
     attendance_corrections        14 columns        0 rows
-    scans                          8 columns        7 rows
+    scans                          8 columns        9 rows
     tours                         12 columns        0 rows
     bookmarks                      5 columns        0 rows
 
   [STAFF]
     staff                         11 columns        4 rows
-    staff_attendances             15 columns        1 rows
-    staff_attendance_days          5 columns        4 rows
+    staff_attendances             15 columns        3 rows
+    staff_attendance_days          5 columns        7 rows
     staff_schedules                9 columns       21 rows
 
   [MUSEUM CONTENT]
-    exhibits                      18 columns        9 rows
+    exhibits                      20 columns        9 rows
     exhibit_images                 7 columns        6 rows
     exhibit_translations          10 columns        6 rows
-    exhibit_training_images        5 columns        0 rows
+    exhibit_training_images        5 columns        9 rows
     categories                     5 columns       12 rows
-    museum_halls                   8 columns       10 rows
+    museum_halls                   8 columns        0 rows
     museum_info                   17 columns        1 rows
 
   [ENGAGEMENT & LOGGING]
-    feedback                      14 columns        2 rows
+    feedback                      16 columns        3 rows
+    survey_questions              18 columns       15 rows
+    feedback_answers               7 columns       15 rows
     notifications                  7 columns        4 rows
-    logs                           9 columns       70 rows
+    logs                           9 columns      148 rows
 
 ==============================================================================
  2. TABLE-BY-TABLE COLUMN REFERENCE
@@ -73,6 +75,7 @@ VISITORS
   visit_type                 enum('Solo','Group','School','Family','Walk-in')
                                                                 NOT NULL, default Solo
   city                       varchar(255)                       nullable
+  barangay                   varchar(100)                       nullable
   province                   varchar(255)                       nullable
   country                    varchar(255)                       nullable, default Philippines
   email                      varchar(255)                       nullable
@@ -90,11 +93,16 @@ VISITORS
   Indexes:
     visitors_api_token_index                 (api_token)
     visitors_created_at_index                (created_at)
+    visitors_email_index                     (email)
     visitors_group_id_foreign                (group_id)
+    visitors_last_visit_index                (last_visit)
+    visitors_payment_status_index            (payment_status)
+    visitors_visitor_type_index              (visitor_type)
 
 VISIT_GROUPS
 ------------------------------------------------------------------------------
   group_id                   bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  join_code                  varchar(8)                         nullable
   group_name                 varchar(255)                       nullable
   group_type                 enum('Family','Group','School','Tour')
                                                                 NOT NULL, default Group
@@ -105,16 +113,21 @@ VISIT_GROUPS
   province                   varchar(255)                       nullable
   country                    varchar(255)                       nullable, default Philippines
   headcount                  int unsigned                       NOT NULL, default 1
+  local_count                int unsigned                       NOT NULL, default 0
   paying_count               int unsigned                       NOT NULL, default 0
   total_fee                  decimal(10,2)                      NOT NULL, default 0.00
   payment_status             enum('Free','Unpaid','Paid')       NOT NULL, default Unpaid
   paid_at                    timestamp                          nullable
+  refunded_amount            decimal(10,2)                      NOT NULL, default 0.00
+  refunded_at                timestamp                          nullable
+  refunded_by                bigint unsigned                    nullable
   visit_date                 date                               NOT NULL
   registered_by              bigint unsigned                    nullable
   notes                      text                               nullable
   created_at                 timestamp                          nullable
   updated_at                 timestamp                          nullable
   Indexes:
+    visit_groups_join_code_visit_date_index  (join_code,visit_date)
     visit_groups_payment_status_index        (payment_status)
     visit_groups_visit_date_index            (visit_date)
 
@@ -133,6 +146,7 @@ ATTENDANCES
   exited_at                  timestamp                          nullable
   duration_mins              int                                nullable
   Indexes:
+    attendances_visit_date_index             (visit_date)
     attendances_visitor_id_visit_date_unique (visitor_id,visit_date)  UNIQUE
 
 ATTENDANCE_CORRECTIONS
@@ -167,7 +181,8 @@ SCANS
   created_at                 timestamp                          nullable
   updated_at                 timestamp                          nullable
   Indexes:
-    scans_exhibit_id_foreign                 (exhibit_id)
+    scans_exhibit_id_scanned_at_index        (exhibit_id,scanned_at)
+    scans_scanned_at_index                   (scanned_at)
     scans_visitor_id_foreign                 (visitor_id)
 
 TOURS
@@ -277,6 +292,8 @@ EXHIBITS
   floor                      enum('Ground Floor','2nd Floor')   NOT NULL, default Ground Floor
   hall                       enum('Hall A','Hall B','Hall C','Hall D','Hall E')
                                                                 nullable
+  map_x                      decimal(5,2)                       nullable
+  map_y                      decimal(5,2)                       nullable
   authors                    varchar(255)                       nullable
   languages                  varchar(255)                       NOT NULL, default Filipino,English
   source_language            varchar(10)                        NOT NULL, default en
@@ -290,6 +307,7 @@ EXHIBITS
   Indexes:
     exhibits_category_id_foreign             (category_id)
     exhibits_exhibit_code_unique             (exhibit_code)  UNIQUE
+    exhibits_status_storyline_order_index    (status,storyline_order)
 
 EXHIBIT_IMAGES
 ------------------------------------------------------------------------------
@@ -382,13 +400,56 @@ FEEDBACK
   guide_rating               tinyint                            nullable
   attributed_by              enum('none','visitor','duty')      NOT NULL, default none
   comment                    text                               nullable
+  client_type                enum('citizen','business','government')
+                                                                nullable
+  region                     varchar(60)                        nullable
   submitted_at               timestamp                          NOT NULL, default CURRENT_TIMESTAMP
   created_at                 timestamp                          nullable
   updated_at                 timestamp                          nullable
   Indexes:
+    feedback_created_at_index                (created_at)
+    feedback_rating_index                    (rating)
     feedback_staff_id_index                  (staff_id)
+    feedback_submitted_at_index              (submitted_at)
     feedback_tour_id_foreign                 (tour_id)
     feedback_visitor_id_foreign              (visitor_id)
+
+SURVEY_QUESTIONS
+------------------------------------------------------------------------------
+  question_id                bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  code                       varchar(32)                        UNIQUE, NOT NULL
+  section                    enum('cc','sqd','app')             NOT NULL, default app
+  scale                      enum('agree5','choice')            NOT NULL, default agree5
+  text_fil                   text                               NOT NULL
+  text_en                    text                               NOT NULL
+  hint_fil                   varchar(255)                       nullable
+  hint_en                    varchar(255)                       nullable
+  options                    json                               nullable
+  show_if                    json                               nullable
+  allow_na                   tinyint(1)                         NOT NULL, default 1
+  default_na                 tinyint(1)                         NOT NULL, default 0
+  required                   tinyint(1)                         NOT NULL, default 1
+  locked                     tinyint(1)                         NOT NULL, default 0
+  is_active                  tinyint(1)                         NOT NULL, default 1
+  sort_order                 int unsigned                       NOT NULL, default 0
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+  Indexes:
+    survey_questions_code_unique             (code)  UNIQUE
+
+FEEDBACK_ANSWERS
+------------------------------------------------------------------------------
+  answer_id                  bigint unsigned                    PRIMARY KEY, auto_increment, NOT NULL
+  feedback_id                bigint unsigned                    NOT NULL, FK -> feedback.feedback_id (on delete CASCADE)
+  question_id                bigint unsigned                    nullable, FK -> survey_questions.question_id (on delete SET NULL)
+  code                       varchar(32)                        NOT NULL
+  value                      tinyint                            nullable
+  created_at                 timestamp                          nullable
+  updated_at                 timestamp                          nullable
+  Indexes:
+    feedback_answers_code_index              (code)
+    feedback_answers_feedback_id_code_unique (feedback_id,code)  UNIQUE
+    feedback_answers_question_id_foreign     (question_id)
 
 NOTIFICATIONS
 ------------------------------------------------------------------------------
@@ -399,6 +460,8 @@ NOTIFICATIONS
   is_active                  tinyint(1)                         NOT NULL, default 1
   created_at                 timestamp                          nullable
   updated_at                 timestamp                          nullable
+  Indexes:
+    notifications_is_active_created_at_index (is_active,created_at)
 
 LOGS
 ------------------------------------------------------------------------------
@@ -411,6 +474,9 @@ LOGS
   ip_address                 varchar(255)                       nullable
   created_at                 timestamp                          nullable
   updated_at                 timestamp                          nullable
+  Indexes:
+    logs_created_at_index                    (created_at)
+    logs_user_id_created_at_index            (user_id,created_at)
 
 ==============================================================================
  3. FOREIGN KEY RELATIONSHIPS (ERD EDGES)
@@ -427,6 +493,8 @@ LOGS
   exhibits                   category_id               ->  categories.category_id     SET NULL       NO ACTION
   feedback                   tour_id                   ->  tours.tour_id              SET NULL       NO ACTION
   feedback                   visitor_id                ->  visitors.visitor_id        SET NULL       NO ACTION
+  feedback_answers           feedback_id               ->  feedback.feedback_id       CASCADE        NO ACTION
+  feedback_answers           question_id               ->  survey_questions.question_id SET NULL       NO ACTION
   scans                      exhibit_id                ->  exhibits.exhibit_id        CASCADE        NO ACTION
   scans                      visitor_id                ->  visitors.visitor_id        SET NULL       NO ACTION
   staff_attendances          staff_id                  ->  staff.staff_id             CASCADE        NO ACTION
@@ -452,11 +520,17 @@ LOGS
     --< exhibit_translations.exhibit_id          one-to-many, mandatory (NOT NULL FK)
     --< scans.exhibit_id                         one-to-many, mandatory (NOT NULL FK)
 
+  FEEDBACK
+    --< feedback_answers.feedback_id             one-to-many, mandatory (NOT NULL FK)
+
   STAFF
     --< attendance_corrections.staff_id          one-to-many, mandatory (NOT NULL FK)
     --< staff_attendances.staff_id               one-to-many, mandatory (NOT NULL FK)
     --< staff_schedules.staff_id                 one-to-many, mandatory (NOT NULL FK)
     --< tours.guide_staff_id                     one-to-many, optional (nullable FK)
+
+  SURVEY_QUESTIONS
+    --< feedback_answers.question_id             one-to-many, optional (nullable FK)
 
   TOURS
     --< feedback.tour_id                         one-to-many, optional (nullable FK)
@@ -503,7 +577,7 @@ CREATE TABLE `attendance_corrections` (
   KEY `attendance_corrections_staff_id_foreign` (`staff_id`),
   KEY `attendance_corrections_status_work_date_index` (`status`,`work_date`),
   CONSTRAINT `attendance_corrections_staff_id_foreign` FOREIGN KEY (`staff_id`) REFERENCES `staff` (`staff_id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- attendances
 CREATE TABLE `attendances` (
@@ -521,8 +595,9 @@ CREATE TABLE `attendances` (
   `duration_mins` int DEFAULT NULL,
   PRIMARY KEY (`attendance_id`),
   UNIQUE KEY `attendances_visitor_id_visit_date_unique` (`visitor_id`,`visit_date`),
+  KEY `attendances_visit_date_index` (`visit_date`),
   CONSTRAINT `attendances_visitor_id_foreign` FOREIGN KEY (`visitor_id`) REFERENCES `visitors` (`visitor_id`) ON DELETE SET NULL
-) ENGINE=InnoDB AUTO_INCREMENT=24 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=32 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- bookmarks
 CREATE TABLE `bookmarks` (
@@ -572,7 +647,7 @@ CREATE TABLE `exhibit_training_images` (
   PRIMARY KEY (`training_image_id`),
   KEY `exhibit_training_images_exhibit_id_foreign` (`exhibit_id`),
   CONSTRAINT `exhibit_training_images_exhibit_id_foreign` FOREIGN KEY (`exhibit_id`) REFERENCES `exhibits` (`exhibit_id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- exhibit_translations
 CREATE TABLE `exhibit_translations` (
@@ -601,6 +676,8 @@ CREATE TABLE `exhibits` (
   `category_id` bigint unsigned DEFAULT NULL,
   `floor` enum('Ground Floor','2nd Floor') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Ground Floor',
   `hall` enum('Hall A','Hall B','Hall C','Hall D','Hall E') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `map_x` decimal(5,2) DEFAULT NULL,
+  `map_y` decimal(5,2) DEFAULT NULL,
   `authors` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `languages` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Filipino,English',
   `source_language` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'en',
@@ -614,6 +691,7 @@ CREATE TABLE `exhibits` (
   PRIMARY KEY (`exhibit_id`),
   UNIQUE KEY `exhibits_exhibit_code_unique` (`exhibit_code`),
   KEY `exhibits_category_id_foreign` (`category_id`),
+  KEY `exhibits_status_storyline_order_index` (`status`,`storyline_order`),
   CONSTRAINT `exhibits_category_id_foreign` FOREIGN KEY (`category_id`) REFERENCES `categories` (`category_id`) ON DELETE SET NULL
 ) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -630,6 +708,8 @@ CREATE TABLE `feedback` (
   `guide_rating` tinyint DEFAULT NULL,
   `attributed_by` enum('none','visitor','duty') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'none',
   `comment` text COLLATE utf8mb4_unicode_ci,
+  `client_type` enum('citizen','business','government') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `region` varchar(60) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `submitted_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
@@ -637,9 +717,29 @@ CREATE TABLE `feedback` (
   KEY `feedback_visitor_id_foreign` (`visitor_id`),
   KEY `feedback_tour_id_foreign` (`tour_id`),
   KEY `feedback_staff_id_index` (`staff_id`),
+  KEY `feedback_submitted_at_index` (`submitted_at`),
+  KEY `feedback_created_at_index` (`created_at`),
+  KEY `feedback_rating_index` (`rating`),
   CONSTRAINT `feedback_tour_id_foreign` FOREIGN KEY (`tour_id`) REFERENCES `tours` (`tour_id`) ON DELETE SET NULL,
   CONSTRAINT `feedback_visitor_id_foreign` FOREIGN KEY (`visitor_id`) REFERENCES `visitors` (`visitor_id`) ON DELETE SET NULL
-) ENGINE=InnoDB AUTO_INCREMENT=120 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=126 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- feedback_answers
+CREATE TABLE `feedback_answers` (
+  `answer_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `feedback_id` bigint unsigned NOT NULL,
+  `question_id` bigint unsigned DEFAULT NULL,
+  `code` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `value` tinyint DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`answer_id`),
+  UNIQUE KEY `feedback_answers_feedback_id_code_unique` (`feedback_id`,`code`),
+  KEY `feedback_answers_question_id_foreign` (`question_id`),
+  KEY `feedback_answers_code_index` (`code`),
+  CONSTRAINT `feedback_answers_feedback_id_foreign` FOREIGN KEY (`feedback_id`) REFERENCES `feedback` (`feedback_id`) ON DELETE CASCADE,
+  CONSTRAINT `feedback_answers_question_id_foreign` FOREIGN KEY (`question_id`) REFERENCES `survey_questions` (`question_id`) ON DELETE SET NULL
+) ENGINE=InnoDB AUTO_INCREMENT=61 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- logs
 CREATE TABLE `logs` (
@@ -652,8 +752,10 @@ CREATE TABLE `logs` (
   `ip_address` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
-  PRIMARY KEY (`log_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=122 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  PRIMARY KEY (`log_id`),
+  KEY `logs_created_at_index` (`created_at`),
+  KEY `logs_user_id_created_at_index` (`user_id`,`created_at`)
+) ENGINE=InnoDB AUTO_INCREMENT=205 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- museum_halls
 CREATE TABLE `museum_halls` (
@@ -699,7 +801,8 @@ CREATE TABLE `notifications` (
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
-  PRIMARY KEY (`notif_id`)
+  PRIMARY KEY (`notif_id`),
+  KEY `notifications_is_active_created_at_index` (`is_active`,`created_at`)
 ) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- scans
@@ -713,11 +816,12 @@ CREATE TABLE `scans` (
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`scan_id`),
-  KEY `scans_exhibit_id_foreign` (`exhibit_id`),
   KEY `scans_visitor_id_foreign` (`visitor_id`),
+  KEY `scans_scanned_at_index` (`scanned_at`),
+  KEY `scans_exhibit_id_scanned_at_index` (`exhibit_id`,`scanned_at`),
   CONSTRAINT `scans_exhibit_id_foreign` FOREIGN KEY (`exhibit_id`) REFERENCES `exhibits` (`exhibit_id`) ON DELETE CASCADE,
   CONSTRAINT `scans_visitor_id_foreign` FOREIGN KEY (`visitor_id`) REFERENCES `visitors` (`visitor_id`) ON DELETE SET NULL
-) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=15 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- staff
 CREATE TABLE `staff` (
@@ -767,7 +871,7 @@ CREATE TABLE `staff_attendances` (
   UNIQUE KEY `staff_attendances_staff_id_work_date_type_unique` (`staff_id`,`work_date`,`type`),
   KEY `staff_attendances_work_date_index` (`work_date`),
   CONSTRAINT `staff_attendances_staff_id_foreign` FOREIGN KEY (`staff_id`) REFERENCES `staff` (`staff_id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=432 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=434 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- staff_schedules
 CREATE TABLE `staff_schedules` (
@@ -784,6 +888,30 @@ CREATE TABLE `staff_schedules` (
   UNIQUE KEY `staff_schedules_staff_id_weekday_unique` (`staff_id`,`weekday`),
   CONSTRAINT `staff_schedules_staff_id_foreign` FOREIGN KEY (`staff_id`) REFERENCES `staff` (`staff_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=71 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- survey_questions
+CREATE TABLE `survey_questions` (
+  `question_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `code` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `section` enum('cc','sqd','app') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'app',
+  `scale` enum('agree5','choice') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'agree5',
+  `text_fil` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `text_en` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `hint_fil` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `hint_en` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `options` json DEFAULT NULL,
+  `show_if` json DEFAULT NULL,
+  `allow_na` tinyint(1) NOT NULL DEFAULT '1',
+  `default_na` tinyint(1) NOT NULL DEFAULT '0',
+  `required` tinyint(1) NOT NULL DEFAULT '1',
+  `locked` tinyint(1) NOT NULL DEFAULT '0',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `sort_order` int unsigned NOT NULL DEFAULT '0',
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`question_id`),
+  UNIQUE KEY `survey_questions_code_unique` (`code`)
+) ENGINE=InnoDB AUTO_INCREMENT=16 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- tours
 CREATE TABLE `tours` (
@@ -812,6 +940,7 @@ CREATE TABLE `tours` (
 -- visit_groups
 CREATE TABLE `visit_groups` (
   `group_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `join_code` varchar(8) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `group_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `group_type` enum('Family','Group','School','Tour') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Group',
   `contact_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -821,10 +950,14 @@ CREATE TABLE `visit_groups` (
   `province` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `country` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT 'Philippines',
   `headcount` int unsigned NOT NULL DEFAULT '1',
+  `local_count` int unsigned NOT NULL DEFAULT '0',
   `paying_count` int unsigned NOT NULL DEFAULT '0',
   `total_fee` decimal(10,2) NOT NULL DEFAULT '0.00',
   `payment_status` enum('Free','Unpaid','Paid') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Unpaid',
   `paid_at` timestamp NULL DEFAULT NULL,
+  `refunded_amount` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `refunded_at` timestamp NULL DEFAULT NULL,
+  `refunded_by` bigint unsigned DEFAULT NULL,
   `visit_date` date NOT NULL,
   `registered_by` bigint unsigned DEFAULT NULL,
   `notes` text COLLATE utf8mb4_unicode_ci,
@@ -832,8 +965,9 @@ CREATE TABLE `visit_groups` (
   `updated_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`group_id`),
   KEY `visit_groups_visit_date_index` (`visit_date`),
-  KEY `visit_groups_payment_status_index` (`payment_status`)
-) ENGINE=InnoDB AUTO_INCREMENT=177 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  KEY `visit_groups_payment_status_index` (`payment_status`),
+  KEY `visit_groups_join_code_visit_date_index` (`join_code`,`visit_date`)
+) ENGINE=InnoDB AUTO_INCREMENT=182 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- visitors
 CREATE TABLE `visitors` (
@@ -853,6 +987,7 @@ CREATE TABLE `visitors` (
   `verified_by` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `visit_type` enum('Solo','Group','School','Family','Walk-in') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Solo',
   `city` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `barangay` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `province` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `country` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT 'Philippines',
   `email` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -870,7 +1005,11 @@ CREATE TABLE `visitors` (
   KEY `visitors_group_id_foreign` (`group_id`),
   KEY `visitors_created_at_index` (`created_at`),
   KEY `visitors_api_token_index` (`api_token`),
+  KEY `visitors_email_index` (`email`),
+  KEY `visitors_visitor_type_index` (`visitor_type`),
+  KEY `visitors_payment_status_index` (`payment_status`),
+  KEY `visitors_last_visit_index` (`last_visit`),
   CONSTRAINT `visitors_group_id_foreign` FOREIGN KEY (`group_id`) REFERENCES `visit_groups` (`group_id`) ON DELETE SET NULL
-) ENGINE=InnoDB AUTO_INCREMENT=226 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=234 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- END OF FILE

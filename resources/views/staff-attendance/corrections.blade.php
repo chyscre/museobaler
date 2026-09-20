@@ -19,7 +19,19 @@
   </div>
 </div>
 
-{{-- File a request --}}
+{{-- File a request — museum staff only. The Tourism head reviews what the
+     museum files; she does not file, or one person would hold both halves
+     of the two-signature rule. --}}
+@if(auth()->user()->isTourismHead())
+<div class="card card-p" style="margin-bottom:22px;display:flex;align-items:center;gap:12px">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;color:var(--text-3);flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <div style="font-size:13px;color:var(--text-2);line-height:1.55">
+    Corrections are filed by museum staff for a colleague who worked but could not scan.
+    Your part is to <strong>approve or reject</strong> them below — each approved one becomes an
+    attendance row carrying both your name and the filer's.
+  </div>
+</div>
+@else
 <div class="card card-p-lg" style="margin-bottom:22px">
   <h3 class="sec-title">File a correction</h3>
   <p class="sec-sub">
@@ -71,6 +83,7 @@
     <button type="submit" class="btn btn-green" style="margin-top:14px">File correction</button>
   </form>
 </div>
+@endif
 
 {{-- List --}}
 <div class="card card-p-lg">

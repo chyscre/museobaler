@@ -62,6 +62,15 @@
   <div id="result" style="display:none;margin-top:16px;padding:14px;border-radius:10px;font-size:14px;font-weight:600;text-align:center"></div>
 </div>
 
+{{-- The museum pin, set from here rather than the desktop: this is the one
+     screen a phone reaches, and a phone is the only thing with a GPS. --}}
+<div class="card card-p-lg" style="margin-bottom:16px">
+  <h3 class="sec-title">Museum pin</h3>
+  <p class="sec-sub">If check-in says you are hundreds of metres away while you are standing at the door, the pin is wrong. Stand at the entrance and set it from this phone.</p>
+  <button type="button" id="setPinBtn" class="btn btn-outline btn-sm">Set museum pin to my location</button>
+  <div id="pinResult" style="display:none;margin-top:12px;padding:12px;border-radius:10px;font-size:13px;font-weight:600"></div>
+</div>
+
 {{-- This month --}}
 <div class="card card-p-lg">
   <h3 class="sec-title">{{ $monthFrom->format('F Y') }}</h3>
@@ -103,7 +112,9 @@
 </div>
 
 @push('scripts')
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+{{-- Served locally: the museum network could not reach unpkg, and a scanner
+     that fails to load means nobody can check in. html5-qrcode 2.3.8. --}}
+<script src="{{ asset('js/vendor/html5-qrcode.min.js') }}"></script>
 <script>
 (function () {
   const scanBtn   = document.getElementById('scanBtn');
@@ -252,6 +263,35 @@
   });
 
   cancelBtn.addEventListener('click', stop);
+
+  // Museum pin
+  const pinBtn = document.getElementById('setPinBtn');
+  const pinOut = document.getElementById('pinResult');
+  function pinSay(text, ok) {
+    pinOut.style.display    = 'block';
+    pinOut.textContent      = text;
+    pinOut.style.background = ok ? 'var(--green-pale)' : '#fef2f2';
+    pinOut.style.color      = ok ? 'var(--green-dark)' : '#991b1b';
+  }
+  pinBtn.addEventListener('click', async () => {
+    if (!confirm('Move the museum pin to where this phone is right now? Do this standing at the museum entrance.')) return;
+    pinBtn.disabled = true;
+    pinSay('Getting a GPS fix…', true);
+    const pos = await position();
+    if (!pos) { pinSay('Could not get a location. Allow location access and try again outdoors.', false); pinBtn.disabled = false; return; }
+    try {
+      const res = await fetch('{{ route('my.attendance.pin') }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+        body: JSON.stringify({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: Math.round(pos.coords.accuracy) }),
+      });
+      const data = await res.json();
+      pinSay(data.message || 'Something went wrong.', data.ok === true);
+    } catch (e) {
+      pinSay('Could not reach the server. Check your connection.', false);
+    }
+    pinBtn.disabled = false;
+  });
 })();
 </script>
 @endpush

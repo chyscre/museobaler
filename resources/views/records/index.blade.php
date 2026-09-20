@@ -25,6 +25,13 @@
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;display:inline;vertical-align:middle;margin-right:5px"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
     Visitor Records
   </button>
+  <button class="tab-btn {{ $activeTab === 'groups' ? 'active' : '' }}" onclick="switchTab('groups',this)">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;display:inline;vertical-align:middle;margin-right:5px"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    Groups
+    @if($groupStats['unpaid'] > 0)
+      <span style="background:var(--red);color:white;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;margin-left:4px" title="Groups still owing">{{ $groupStats['unpaid'] }}</span>
+    @endif
+  </button>
   <button class="tab-btn {{ $activeTab === 'scans' ? 'active' : '' }}" onclick="switchTab('scans',this)">
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;display:inline;vertical-align:middle;margin-right:5px"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
     Scan Records
@@ -40,7 +47,7 @@
 
 <!-- Visitor Records -->
 <div id="tab-visitors" class="inner-panel {{ $activeTab === 'visitors' ? 'active' : '' }}">
-  <div class="stats-row">
+  <div class="stats-row stats-3">
     <div class="stat">
       <div class="stat-ico green">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -90,7 +97,7 @@
         {{ $stats['pending'] }} {{ Str::plural('visitor', $stats['pending']) }} waiting to be let in
       </div>
       <div style="font-size:12px;color:var(--text-2)">
-        They cannot open the museum app until you collect the fee or check their ID.
+        They cannot open the museum app until the desk collects the fee or checks their ID.
       </div>
     </div>
     <a href="{{ route('records.index', ['tab' => 'visitors', 'adm' => 'pending']) }}" class="btn btn-gold btn-sm">Show queue</a>
@@ -141,22 +148,20 @@
   <div class="tbl-wrap">
     <table>
       <thead><tr>
-        <th>Last Name</th><th>First Name</th><th>Age</th><th>Sex</th>
-        <th>Visit Type</th><th>Visitor Type</th><th>Last Visit</th><th>City</th><th>Country</th>
+        <th>Name</th><th>Age</th><th>Sex</th>
+        <th>Visit Type</th><th>Visitor Type</th><th>Last Visit</th><th>Location</th>
         <th>Admission</th><th></th>
       </tr></thead>
       <tbody>
       @forelse($visitors as $v)
       <tr>
-        <td>{{ $v->last_name }}</td>
-        <td>{{ $v->first_name }}</td>
+        <td style="white-space:nowrap;font-weight:600">{{ $v->full_name }}</td>
         <td>{{ $v->age ?? '—' }}</td>
         <td>{{ $v->sex ?? '—' }}</td>
         <td><span class="badge b-blue">{{ $v->visit_type }}</span></td>
         <td><span class="badge {{ $v->visitor_type==='Local'?'b-green':($v->visitor_type==='Tourist'?'b-gold':'b-purple') }}">{{ $v->visitor_type }}</span></td>
         <td>{{ $v->last_visit ? \Carbon\Carbon::parse($v->last_visit)->format('M j, Y') : '—' }}</td>
-        <td>{{ $v->city ?? '—' }}</td>
-        <td>{{ $v->country ?? '—' }}</td>
+        <td style="white-space:nowrap">{{ $v->location ?: '—' }}</td>
         {{-- One column, because "has the fee been settled" and "will the app
              open for them" are the same question. The badge answers it; the
              line under it says what was owed. --}}
@@ -167,7 +172,9 @@
             <span class="badge b-red">{{ $v->clearanceLabel() }}</span>
           @endif
           <div style="font-size:11px;color:var(--text-3);margin-top:3px">
-            @if($v->payment_status === 'Free')
+            @if($v->group)
+              With {{ $v->group->label }}
+            @elseif($v->payment_status === 'Free')
               {{-- Ternary, not a nested @if: Blade will not compile a directive
                    that follows a word character ("entry@if"), so it printed raw. --}}
               Free entry{{ $v->id_verified ? ' · ID checked' : '' }}
@@ -177,7 +184,20 @@
           </div>
         </td>
         <td style="white-space:nowrap">
-          @if($v->payment_status === 'Unpaid')
+          {{-- Collecting a fee and sighting an ID happen at the counter. The
+               Tourism office reads this list from the municipal building and
+               does neither, so she gets no buttons — the routes behind them
+               are museum-only in any case. --}}
+          @if(auth()->user()->isTourismHead())
+            <span style="color:var(--text-4);font-size:12px">—</span>
+          @elseif($v->group && $v->group->payment_status === 'Unpaid' && ($v->isWithGroupToday() || $v->payment_status === 'Free'))
+          {{-- A group member's fee is the party's fee, so Mark Paid here
+               settles the group — and unlocks every member at once. --}}
+          <form method="POST" action="{{ route('desk.groups.paid', $v->group) }}" style="display:inline">
+            @csrf
+            <button type="submit" class="btn btn-green btn-xs" title="Collects the fee for the whole party">Mark Paid</button>
+          </form>
+          @elseif($v->payment_status === 'Unpaid')
           <form method="POST" action="{{ route('visitors.mark-paid', $v) }}" style="display:inline">
             @csrf
             <button type="submit" class="btn btn-green btn-xs">Mark Paid</button>
@@ -193,13 +213,138 @@
         </td>
       </tr>
       @empty
-      <tr><td colspan="11" style="text-align:center;padding:32px;color:var(--text-3)">No visitors found.</td></tr>
+      <tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-3)">No visitors found.</td></tr>
       @endforelse
       </tbody>
     </table>
     <div class="tbl-foot">
       <span class="tbl-count">{{ $visitors->total() }} visitors</span>
       <div>{{ $visitors->links() }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Groups -->
+{{-- A party the desk registered as one record: one headcount, one payment.
+     This is where that payment gets recorded. Members who joined from their
+     own phones are counted here, not in the visitor list, so a group of five
+     with three app users is five people, not eight. --}}
+<div id="tab-groups" class="inner-panel {{ $activeTab === 'groups' ? 'active' : '' }}">
+  <div class="stats-row stats-3">
+    <div class="stat">
+      <div class="stat-ico green">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </div>
+      <div><div class="stat-val">{{ number_format($groupStats['today']) }}</div><div class="stat-lbl">Groups today · {{ number_format($groupStats['heads_today']) }} people</div></div>
+    </div>
+    <div class="stat">
+      <div class="stat-ico red">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      </div>
+      <div><div class="stat-val">{{ number_format($groupStats['unpaid']) }}</div><div class="stat-lbl">Still owing</div></div>
+    </div>
+    <div class="stat">
+      <div class="stat-ico gold">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      </div>
+      <div><div class="stat-val">₱{{ number_format($groupStats['outstanding'], 2) }}</div><div class="stat-lbl">Outstanding from groups</div></div>
+    </div>
+  </div>
+
+  <form method="GET" action="{{ route('records.index') }}" class="fbar">
+    <input type="hidden" name="tab" value="groups">
+    <input type="date" class="fsel" name="gdate" value="{{ $gdate ?? '' }}" onchange="this.form.submit()">
+    <select class="fsel" name="gpay" onchange="this.form.submit()">
+      <option value="">All payments</option>
+      <option value="unpaid" {{ request('gpay') === 'unpaid' ? 'selected' : '' }}>Unpaid</option>
+      <option value="paid"   {{ request('gpay') === 'paid'   ? 'selected' : '' }}>Paid</option>
+      <option value="free"   {{ request('gpay') === 'free'   ? 'selected' : '' }}>Free (locals)</option>
+    </select>
+    @if(request()->hasAny(['gdate', 'gpay']))
+      <a href="{{ route('records.index', ['tab' => 'groups']) }}" class="btn btn-outline btn-sm">Clear</a>
+    @endif
+  </form>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th><th>Group</th><th>Signed in by</th><th>Type</th><th>People</th><th>Joined in app</th><th>Code</th><th>Fee</th><th>Payment</th><th>Registered by</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+      @forelse($groups as $g)
+      <tr>
+        <td style="white-space:nowrap">{{ $g->visit_date->format('M j, Y') }}<div style="font-size:11px;color:var(--text-3)">{{ $g->created_at->format('g:i A') }}</div></td>
+        <td style="font-weight:600;white-space:nowrap">{{ $g->label }}<div style="font-size:11px;font-weight:500;color:var(--text-3)">{{ $g->group_type }}{{ $g->city ? ' · ' . $g->city : '' }}</div></td>
+        <td>{{ $g->contact_name }}@if($g->contact_phone)<div style="font-size:11px;color:var(--text-3)">{{ $g->contact_phone }}</div>@endif</td>
+        <td><span class="badge {{ $g->visitor_type==='Local'?'b-green':($g->visitor_type==='Tourist'?'b-gold':'b-purple') }}">{{ $g->visitor_type }}</span></td>
+        <td>
+          {{ $g->headcount }}
+          @if($g->visitor_type !== 'Local' && $g->local_count > 0)
+            <div style="font-size:11px;color:var(--text-3)">{{ $g->local_count }} from Baler · {{ $g->paying_count }} paying</div>
+          @endif
+          @php
+            $unaccounted = $g->unaccountedLocals();
+          @endphp
+          @if($unaccounted > 0)
+            <div style="margin-top:3px;font-size:11px;font-weight:600;color:#b45309" title="Joined in the app as Local but the group is paying for them">{{ $unaccounted }} {{ $unaccounted === 1 ? 'local' : 'locals' }} being charged</div>
+          @endif
+        </td>
+        <td title="Members who entered the group code in the visitor app">{{ $g->visitors_count }} / {{ $g->headcount }}</td>
+        <td>
+          @if($g->visit_date->isToday() && $g->join_code)
+            <code style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;font-weight:700;letter-spacing:.1em;background:var(--border-light);border-radius:6px;padding:2px 7px;user-select:all">{{ $g->join_code }}</code>
+          @else
+            <span style="color:var(--text-4);font-size:12px">—</span>
+          @endif
+        </td>
+        <td style="white-space:nowrap">
+          {{ $g->total_fee > 0 ? '₱' . number_format((float) $g->total_fee, 2) : '—' }}
+          @if((float) $g->refunded_amount > 0)
+            <div style="font-size:11px;color:var(--text-3)" title="Handed back after a correction{{ $g->refunded_at ? ' at ' . $g->refunded_at->format('g:i A') : '' }}">₱{{ number_format((float) $g->refunded_amount, 2) }} refunded</div>
+          @endif
+        </td>
+        <td style="white-space:nowrap">
+          <span class="badge {{ $g->payment_status==='Paid'?'b-green':($g->payment_status==='Unpaid'?'b-red':'b-gray') }}">{{ $g->payment_status }}</span>
+          @if($g->paid_at)<div style="font-size:11px;color:var(--text-3);margin-top:3px">{{ $g->paid_at->format('g:i A') }}</div>@endif
+        </td>
+        <td style="font-size:12px;color:var(--text-3)">{{ $g->registeredBy?->name ?? '—' }}</td>
+        <td style="white-space:nowrap">
+          {{-- Collecting money is desk work; the Tourism office reads this
+               tab but does not stand at the counter. Same rule as the
+               individual Mark Paid, whose route is museum-only too. --}}
+          @if(!auth()->user()->isTourismHead())
+            @if($g->payment_status === 'Unpaid')
+              <form method="POST" action="{{ route('desk.groups.paid', $g) }}" style="display:inline">
+                @csrf
+                <button type="submit" class="btn btn-green btn-xs">Mark Paid</button>
+              </form>
+            @endif
+            @if($g->visit_date->isToday() && $g->visitor_type !== 'Local')
+              {{-- Corrections are today-only: yesterday's takings have been
+                   counted, and changing them is the Tourism office's call. --}}
+              <form method="POST" action="{{ route('desk.groups.correct', $g) }}" style="display:inline-flex;align-items:center;gap:5px;margin-left:6px">
+                @csrf
+                <input class="fi" name="local_count" type="number" min="0" max="{{ $g->headcount }}" value="{{ $g->local_count }}"
+                       style="width:52px;padding:4px 6px;font-size:12px;text-align:center" title="How many of this party are from Baler">
+                <button type="submit" class="btn btn-outline btn-xs" title="Re-price for this many locals. If already paid, the difference is recorded as a refund.">Locals</button>
+              </form>
+            @endif
+          @endif
+          @if(auth()->user()->isTourismHead() || ($g->payment_status !== 'Unpaid' && (!$g->visit_date->isToday() || $g->visitor_type === 'Local')))
+            <span style="color:var(--text-4);font-size:12px">—</span>
+          @endif
+        </td>
+      </tr>
+      @empty
+      <tr><td colspan="11" style="text-align:center;padding:32px;color:var(--text-3)">No groups registered{{ request()->hasAny(['gdate','gpay']) ? ' for that filter' : ' yet' }}.</td></tr>
+      @endforelse
+      </tbody>
+    </table>
+    <div class="tbl-foot">
+      <span class="tbl-count">{{ $groups->total() }} groups</span>
+      <div>{{ $groups->links() }}</div>
     </div>
   </div>
 </div>
@@ -288,7 +433,7 @@
           <td style="padding:9px 10px;font-size:13px;color:var(--text-3)">{{ $attendances->firstItem() + $i }}</td>
           <td style="padding:9px 10px">
             @if($a->visitor)
-              <div style="font-size:13px;font-weight:600;color:var(--text)">{{ $a->visitor->first_name }} {{ $a->visitor->last_name }}</div>
+              <div style="font-size:13px;font-weight:600;color:var(--text)">{{ $a->visitor->full_name }}</div>
               <div style="font-size:11px;color:var(--text-3)">{{ $a->visitor->visitor_type }} · {{ $a->visitor->city ?? 'Unknown' }}</div>
             @elseif($a->visitor_name)
               <div style="font-size:13px;font-weight:600;color:var(--text)">{{ $a->visitor_name }}</div>

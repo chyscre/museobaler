@@ -4,8 +4,8 @@
 @push('styles')
 <style>
 .ex-card{cursor:pointer}
-.ex-card:hover .ex-thumb img{transform:scale(1.04);transition:transform .25s ease}
-.ex-thumb img{transition:transform .25s ease}
+
+
 .btn-muted{background:var(--surface);color:var(--text-3);border:1.5px solid var(--border)}
 .btn-muted:hover{border-color:var(--text-3);color:var(--text)}
 .ex-chip{display:inline-flex;align-items:center;background:var(--border-light);border-radius:4px;padding:2px 8px;font-size:11px;color:var(--text-3);font-weight:500}
@@ -87,10 +87,6 @@
     <p>Manage museum exhibits and QR codes</p>
   </div>
   <div class="ph-right">
-    <button class="btn btn-outline btn-sm" onclick="window.print()">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-      Print Report
-    </button>
     <button class="btn btn-outline btn-sm" onclick="window.location='{{ route('exhibits.qr.panel') }}'">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
       All QR Codes
@@ -159,21 +155,22 @@
      data-order="{{ $ex->storyline_order }}"
      data-scans="{{ $ex->scans_count }}"
      onclick="openExModal({{ $ex->exhibit_id }})">
-  <div class="ex-thumb">
+  {{-- The whole card is the picture; the name sits on it, gallery-poster
+       style. Details ride along in small type so the grid stays a wall of
+       images rather than a list of forms. --}}
+  <div class="ex-thumb {{ $ex->image ? '' : 'no-image' }}">
     @if($ex->image)
-      <img src="{{ $ex->image_url }}" alt="{{ $ex->name }}">
-    @else
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px;color:var(--green-mid)"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      <img src="{{ $ex->image_url }}" alt="" loading="lazy">
     @endif
+    <span class="ex-code">{{ $ex->exhibit_code }}</span>
     @if(!$ex->status)<span class="arch-tag">Archived</span>@endif
-  </div>
-  <div class="ex-body">
-    <div class="ex-title">{{ $ex->name }}</div>
-    <div class="ex-meta">
-      <strong>{{ $ex->exhibit_code }}</strong><br>
-      {{ $ex->floor }} · {{ $ex->hall }}<br>
-      {{ $ex->category?->name ?? '—' }}<br>
-      {{ number_format($ex->scans_count) }} scans
+    <div class="ex-overlay">
+      <div class="ex-title">{{ $ex->name }}</div>
+      <div class="ex-meta">
+        <span>{{ $ex->floor }} · {{ $ex->hall }}</span>
+        @if($ex->category)<span>{{ $ex->category->name }}</span>@endif
+        <span>{{ number_format($ex->scans_count) }} scans</span>
+      </div>
     </div>
   </div>
 </div>
@@ -254,7 +251,7 @@
 
       <div class="fi-row">
         <div class="fg"><label class="fl">Languages</label><input class="fi" name="languages" value="{{ $addFailed ? old('languages', 'Filipino,English') : 'Filipino,English' }}"></div>
-        <div class="fg"><label class="fl">Storyline Order</label><input class="fi" type="number" name="storyline_order" value="{{ $addFailed ? old('storyline_order', 0) : 0 }}" min="0"></div>
+        <div class="fg"><label class="fl">Storyline Order</label><input class="fi" type="number" name="storyline_order" value="{{ $addFailed ? old('storyline_order') : '' }}" min="1" placeholder="Leave blank to add it last (#{{ $nextOrder }})"></div>
       </div>
       <div class="fg">
         <label class="fl">Image <span style="font-weight:400;text-transform:none">(JPG, PNG, GIF or WebP, up to 10 MB)</span></label>

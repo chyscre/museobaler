@@ -12,6 +12,13 @@
   <div><span class="k">Total people</span><span class="v">{{ number_format($headcount) }}</span></div>
   <div><span class="k">Entries</span><span class="v">{{ number_format($visitors->count() + $groups->count()) }}</span></div>
   <div><span class="k">Collected</span><span class="v">PHP {{ number_format($collected, 2) }}</span></div>
+  @if($refunded > 0)
+    {{-- Money that came in and went back out again after a group was
+         corrected. Without this line the drawer and the report disagree by
+         exactly this much. --}}
+    <div><span class="k">Refunded</span><span class="v" style="color:#b45309">PHP {{ number_format($refunded, 2) }}</span></div>
+    <div><span class="k">Net</span><span class="v">PHP {{ number_format($net, 2) }}</span></div>
+  @endif
   @if($outstanding > 0)
     <div><span class="k">Outstanding</span><span class="v" style="color:#991b1b">PHP {{ number_format($outstanding, 2) }}</span></div>
   @endif
@@ -40,9 +47,12 @@
             @if($group->group_name)<br><span style="color:#78716c">{{ $group->contact_name }}</span>@endif
           </td>
           <td>{{ $group->visitor_type }}</td>
-          <td>{{ $group->headcount }}</td>
+          <td>{{ $group->headcount }}@if($group->visitor_type !== 'Local' && $group->local_count > 0)<br><span style="color:#78716c">{{ $group->local_count }} local</span>@endif</td>
           <td>{{ $group->city ?: $group->country }}</td>
-          <td>{{ $group->total_fee > 0 ? number_format($group->total_fee, 2) : '—' }}</td>
+          <td>
+            {{ $group->total_fee > 0 ? number_format($group->total_fee, 2) : '—' }}
+            @if((float) $group->refunded_amount > 0)<br><span style="color:#b45309">−{{ number_format($group->refunded_amount, 2) }} ref.</span>@endif
+          </td>
           <td>
             <span class="tag {{ $group->payment_status === 'Paid' ? 't-green' : ($group->payment_status === 'Unpaid' ? 't-red' : 't-gray') }}">
               {{ $group->payment_status }}

@@ -20,12 +20,18 @@ class ExhibitController extends Controller
     {
         $exhibits   = Exhibit::with('category')
             ->withCount('scans')
+            // Storyline first, then the code. Newest-first as the tiebreaker
+            // put a freshly added exhibit at the top of its order group, which
+            // read as "the new one jumped the queue".
             ->orderBy('storyline_order')
-            ->orderByDesc('created_at')
+            ->orderBy('exhibit_code')
             ->get();
         $categories = Category::orderBy('name')->get();
 
-        return view('exhibits.index', compact('exhibits', 'categories'));
+        // Shown as the placeholder on the add form: what a blank order becomes.
+        $nextOrder  = (int) Exhibit::max('storyline_order') + 1;
+
+        return view('exhibits.index', compact('exhibits', 'categories', 'nextOrder'));
     }
 
     /**
@@ -86,6 +92,12 @@ class ExhibitController extends Controller
             'languages', 'storyline_order',
         ]);
         $data['date_published'] = now()->toDateString();
+
+        // No order given means "after everything else". The form used to
+        // default this to 0, which sorted every new exhibit ahead of EXH-001.
+        if (empty($data['storyline_order'])) {
+            $data['storyline_order'] = (int) Exhibit::max('storyline_order') + 1;
+        }
 
         if ($request->hasFile('image')) {
             $data['image'] = $this->saveImage($request->file('image'), $request->name);

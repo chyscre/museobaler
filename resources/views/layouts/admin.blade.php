@@ -50,7 +50,7 @@
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
           <span>Visitor Records</span>
         </a>
-        <a href="{{ route('feedback.index') }}" class="nav-item {{ request()->routeIs('feedback.*') ? 'active' : '' }}">
+        <a href="{{ route('feedback.index') }}" class="nav-item {{ request()->routeIs('feedback.*') || request()->routeIs('survey.*') ? 'active' : '' }}">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <span>Feedback</span>
         </a>
@@ -61,52 +61,43 @@
 
       @else
 
+        {{-- Seven doors. Pages that belong to one of them - guided tours
+             to the desk, recognition to the exhibits, the floor map to
+             museum info - open from a button on that page, not from here,
+             and keep its item lit while they are open. --}}
         <a href="{{ route('dashboard') }}" class="nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
           <span>Dashboard</span>
         </a>
-        {{-- Front desk: the busiest screen in the building, so it sits high. --}}
-        <a href="{{ route('desk.register') }}" class="nav-item {{ request()->routeIs('desk.*') ? 'active' : '' }}">
+        <a href="{{ route('desk.register') }}" class="nav-item {{ request()->routeIs('desk.*') || request()->routeIs('tours.*') ? 'active' : '' }}">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8"/><path d="M2 21h20"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           <span>Front Desk</span>
         </a>
-        <a href="{{ route('my.attendance') }}" class="nav-item {{ request()->routeIs('my.attendance*') ? 'active' : '' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 16 11 18 15 14"/></svg>
-          <span>My Attendance</span>
-        </a>
-        <a href="{{ route('exhibits.index') }}" class="nav-item {{ request()->routeIs('exhibits.*') ? 'active' : '' }}">
+        <a href="{{ route('exhibits.index') }}" class="nav-item {{ request()->routeIs('exhibits.*') || request()->routeIs('recognition.*') ? 'active' : '' }}">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
           <span>Exhibit</span>
-        </a>
-        <a href="{{ route('recognition.index') }}" class="nav-item {{ request()->routeIs('recognition.*') ? 'active' : '' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/></svg>
-          <span>Recognition</span>
-        </a>
-        <a href="{{ route('tours.index') }}" class="nav-item {{ request()->routeIs('tours.*') ? 'active' : '' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><circle cx="12" cy="8" r="1"/></svg>
-          <span>Guided Tours</span>
         </a>
         <a href="{{ route('records.index') }}" class="nav-item {{ request()->routeIs('records.*') ? 'active' : '' }}">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
           <span>Records</span>
         </a>
-        <a href="{{ route('staff-attendance.index') }}" class="nav-item {{ request()->routeIs('staff-attendance.*') || request()->routeIs('corrections.*') ? 'active' : '' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          <span>Staff Attendance</span>
-        </a>
-        <a href="{{ route('feedback.index') }}" class="nav-item {{ request()->routeIs('feedback.*') ? 'active' : '' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <span>Feedback</span>
-        </a>
         <a href="{{ route('logs.index') }}" class="nav-item {{ request()->routeIs('logs.*') ? 'active' : '' }}">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
           <span>Logs</span>
         </a>
-        <a href="{{ route('museum.map') }}" class="nav-item {{ request()->routeIs('museum.map') ? 'active' : '' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
-          <span>Map</span>
+        <a href="{{ route('staff-attendance.index') }}" class="nav-item {{ request()->routeIs('staff-attendance.*') || request()->routeIs('corrections.*') ? 'active' : '' }}">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span>Staff Attendance</span>
         </a>
-        <a href="{{ route('museum.index') }}" class="nav-item {{ request()->routeIs('museum.index') ? 'active' : '' }}">
+        <a href="{{ route('my.attendance') }}" class="nav-item {{ request()->routeIs('my.attendance*') ? 'active' : '' }}">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 16 11 18 15 14"/></svg>
+          <span>My Attendance</span>
+        </a>
+        <a href="{{ route('feedback.index') }}" class="nav-item {{ request()->routeIs('feedback.*') || request()->routeIs('survey.*') ? 'active' : '' }}">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span>Feedback</span>
+        </a>
+        <a href="{{ route('museum.index') }}" class="nav-item {{ request()->routeIs('museum.*') ? 'active' : '' }}">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
           <span>Museum Info</span>
         </a>
@@ -117,17 +108,18 @@
     <div class="sidebar-footer">
       <div class="user-info">
         <div class="avatar">{{ strtoupper(substr(auth()->user()->name, 0, 2)) }}</div>
-        <div>
-          <div class="user-name">{{ auth()->user()->name }}</div>
-          <div class="user-role">{{ auth()->user()->role_label }}</div>
+        <div class="user-text">
+          <div class="user-name" title="{{ auth()->user()->name }}">{{ auth()->user()->name }}</div>
+          <div class="user-role" title="{{ auth()->user()->role_label }}">{{ auth()->user()->role_label }}</div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:4px">
+      <div class="user-actions">
         {{-- Everyone owns their own password, including the Tourism office —
              an account nobody can change the password of is an account whose
              credential stays wherever it first leaked. --}}
         <a href="{{ route('password.edit') }}" class="icon-btn" title="Change my password">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span>Password</span>
         </a>
         {{-- Notification Bell — the live desk feed (check-ins, unpaid
              fees, unverified IDs) is museum-floor work, so the Tourism
@@ -136,12 +128,14 @@
         <button id="notifBtn" class="icon-btn" onclick="toggleNotifPanel()" title="Notifications">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
           <span id="notifBadge" class="dot" style="display:none"></span>
+          <span>Alerts</span>
         </button>
         @endif
         <form method="POST" action="{{ route('logout') }}">
           @csrf
-          <button type="submit" class="logout-btn" title="Logout">
+          <button type="submit" class="logout-btn" title="Log out">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <span>Log out</span>
           </button>
         </form>
       </div>
@@ -244,7 +238,8 @@
   var REFRESH_PATHS = [
     '{{ rtrim(parse_url(route("dashboard"), PHP_URL_PATH), "/") }}',
     '{{ rtrim(parse_url(route("records.index"), PHP_URL_PATH), "/") }}',
-    '{{ rtrim(parse_url(route("attendance.index"), PHP_URL_PATH), "/") }}'
+    '{{ rtrim(parse_url(route("attendance.index"), PHP_URL_PATH), "/") }}',
+    '{{ rtrim(parse_url(route("feedback.index"), PHP_URL_PATH), "/") }}'
   ];
 
   function toggleNotifPanel() {
@@ -311,12 +306,18 @@
       var ICONS = {
         attendance: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
         scan:       '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/>',
-        visitor:    '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'
+        visitor:    '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+        payment:    '<rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>',
+        id_check:   '<path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/>',
+        feedback:   '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'
       };
       var icon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0">'
         + (ICONS[n.type] || ICONS.visitor) + '</svg>';
       var color = n.type === 'attendance' ? 'var(--green-dark)'
                 : n.type === 'scan'       ? 'var(--green)'
+                : n.type === 'payment'    ? '#b45309'
+                : n.type === 'id_check'   ? 'var(--green-dark)'
+                : n.type === 'feedback'   ? '#2563eb'
                 : 'var(--text-2)';
       // Messages embed visitor-supplied names, so escape before injecting.
       return '<a href="' + esc(n.url) + '" style="display:flex;align-items:flex-start;gap:10px;padding:9px 14px;text-decoration:none;border-bottom:1px solid var(--border-light)" onmouseover="this.style.background=\'var(--border-light)\'" onmouseout="this.style.background=\'\'">'
@@ -331,13 +332,16 @@
   function pollNotifications(isInit) {
     var url = isInit
       ? POLL_URL + '?init=1'
-      : POLL_URL + '?since=' + encodeURIComponent(_lastPoll);
+      : POLL_URL + (_lastPoll ? '?since=' + encodeURIComponent(_lastPoll) : '');
 
     fetch(url)
       .then(function(r){ return r.json(); })
       .then(function(data) {
-        // Only update _lastPoll on normal polls, not init
-        if (!isInit && data.server_time) _lastPoll = data.server_time;
+        // The server clock is the baseline for the next poll: it is in the
+        // app timezone, like the rows, so the window is exactly "since the
+        // last answer" - on init as well, so the first real poll does not
+        // reach back over hours the init already showed.
+        if (data.server_time) _lastPoll = data.server_time;
 
         var countEl = document.getElementById('notifTodayCount');
         if (countEl) countEl.textContent = (data.today_attendance || 0) + ' today';
@@ -373,7 +377,10 @@
           _allNotifs = newItems.concat(_allNotifs).slice(0, 20);
           renderNotifList();
           if (!_notifOpen) document.getElementById('notifBadge').style.display = 'block';
-          toast(newItems[0].message, newItems[0].type === 'visitor' ? 'blue' : 'green');
+          toast(newItems.length === 1
+            ? newItems[0].message
+            : newItems[0].message + ' (+' + (newItems.length - 1) + ' more)',
+            newItems[0].type === 'visitor' || newItems[0].type === 'feedback' ? 'blue' : 'green');
 
           // Auto-refresh the read-only pages whose figures the new record
           // changes. Deliberately limited to these three — reloading while
@@ -387,11 +394,14 @@
       .catch(function(){});
   }
 
-  // Init immediately, then poll every 30s
-  // Set _lastPoll to NOW before init so the first real poll catches anything new
-  _lastPoll = new Date().toISOString();
+  // Init immediately, then every 10s - close enough to live that the desk
+  // sees a phone registration before the visitor reaches the counter, and
+  // a poll is one small JSON request. Paused while the tab is hidden and
+  // caught up the moment it is shown again.
+  _lastPoll = null;
   pollNotifications(true);
-  setInterval(function(){ pollNotifications(false); }, 30000);
+  var _pollTimer = setInterval(function(){ if (!document.hidden) pollNotifications(false); }, 10000);
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden && _lastPoll) pollNotifications(false); });
   @endif
 </script>
 </body>

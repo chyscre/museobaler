@@ -185,10 +185,11 @@ class OversightTest extends TestCase
         ]);
     }
 
-    public function test_the_person_who_filed_a_correction_cannot_approve_it(): void
+    public function test_the_tourism_office_cannot_file_a_correction_at_all(): void
     {
-        // A Tourism account filing and then approving its own request would
-        // collapse the two-person rule into one person with extra steps.
+        // She was not on site to vouch for anyone, and if she could both file
+        // and approve, the two-signature rule would be one person with extra
+        // steps. Filing is museum work; her half is the review.
         $tourism = Staff::factory()->tourismHead()->create();
         $guide   = Staff::factory()->administrator()->create();
 
@@ -196,16 +197,29 @@ class OversightTest extends TestCase
             'staff_id' => $guide->staff_id, 'work_date' => today()->subDay()->toDateString(),
             'type' => 'in', 'requested_time' => '08:05',
             'reason' => 'Kiosk tablet was offline all morning.',
+        ])->assertForbidden();
+
+        $this->assertDatabaseCount('attendance_corrections', 0);
+
+        // She still reads the list — that is where the approve buttons live.
+        $this->actingAs($tourism)->get('/attendance/corrections')->assertOk();
+    }
+
+    public function test_the_tourism_office_cannot_act_on_visitor_records(): void
+    {
+        // Records is a window for her, not a counter. Collecting a fee or
+        // sighting an ID is desk work and stays behind the museum-only routes.
+        $tourism = Staff::factory()->tourismHead()->create();
+        $visitor = \App\Models\Visitor::create([
+            'first_name' => 'Ramon', 'last_name' => 'Cruz', 'visitor_type' => 'Tourist',
+            'admission_fee' => 50, 'payment_status' => 'Unpaid',
         ]);
 
-        $correction = AttendanceCorrection::first();
+        $this->actingAs($tourism)->get('/records')->assertOk();
+        $this->actingAs($tourism)->post("/visitors/{$visitor->visitor_id}/mark-paid")->assertForbidden();
+        $this->actingAs($tourism)->post("/visitors/{$visitor->visitor_id}/verify-id")->assertForbidden();
 
-        $this->actingAs($tourism)->post("/attendance/corrections/{$correction->correction_id}/review", [
-            'decision' => 'Approved',
-        ]);
-
-        $this->assertSame('Pending', $correction->fresh()->status);
-        $this->assertDatabaseCount('staff_attendances', 0);
+        $this->assertSame('Unpaid', $visitor->fresh()->payment_status);
     }
 
     public function test_a_museum_administrator_cannot_approve_a_correction(): void

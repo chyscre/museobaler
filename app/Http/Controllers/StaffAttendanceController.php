@@ -195,6 +195,53 @@ class StaffAttendanceController extends Controller
 
     // -- Oversight board ---------------------------------------------------
 
+    /**
+     * Move the museum pin to where this phone is standing.
+     *
+     * The pin is what "at the museum" means for every fence, so it has to be
+     * set with a real GPS fix taken at the door - not from the Museum Info
+     * page on a laptop, whose position is a Wi-Fi guess. Same trust as
+     * editing Museum Info: any museum staff account may do it, and it is
+     * logged.
+     */
+    public function setPin(Request $request)
+    {
+        $data = $request->validate([
+            'latitude'  => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+            'accuracy'  => 'required|integer|min:0|max:100000',
+        ]);
+
+        if ($data['accuracy'] > GeofenceService::MAX_ACCEPTABLE_ACCURACY_M) {
+            return response()->json([
+                'ok'      => false,
+                'message' => 'GPS fix is only accurate to about ' . $data['accuracy'] . ' m. Step outside, wait a moment, and try again.',
+            ], 422);
+        }
+
+        $museum = \App\Models\MuseumInfo::firstOrCreate(['info_id' => 1]);
+        $museum->update([
+            'latitude'  => round((float) $data['latitude'], 7),
+            'longitude' => round((float) $data['longitude'], 7),
+        ]);
+        \App\Models\MuseumInfo::forgetAdmissionFee();
+
+        \App\Models\Log::create([
+            'user_id'    => $request->user()->staff_id,
+            'user_name'  => $request->user()->name,
+            'role'       => $request->user()->role,
+            'action'     => 'Museum Pin Moved',
+            'details'    => sprintf('Set the geofence pin to %.7f, %.7f from a phone (accurate to about %d m)',
+                                $museum->latitude, $museum->longitude, $data['accuracy']),
+            'ip_address' => $request->ip(),
+        ]);
+
+        return response()->json([
+            'ok'      => true,
+            'message' => 'Museum pin set to where you are standing (accurate to about ' . $data['accuracy'] . ' m). Scan again.',
+        ]);
+    }
+
     public function index(Request $request)
     {
         $date = $request->filled('date')

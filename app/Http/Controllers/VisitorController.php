@@ -7,6 +7,7 @@ use App\Models\Exhibit;
 use App\Models\Log;
 use App\Models\Scan;
 use App\Models\Visitor;
+use App\Models\VisitGroup;
 use Illuminate\Http\Request;
 
 class VisitorController extends Controller
@@ -14,7 +15,9 @@ class VisitorController extends Controller
     public function index(Request $request)
     {
         // ── Visitor tab ──────────────────────────────────────
-        $query = Visitor::query();
+        // Group is needed per row: isCleared() follows the group's payment
+        // for members, and the row says which party they came with.
+        $query = Visitor::with('group');
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('first_name', 'like', "%$search%")
@@ -74,10 +77,37 @@ class VisitorController extends Controller
             $chartValues[] = Attendance::whereDate('visit_date', $d->toDateString())->count();
         }
 
+        // ── Groups tab ────────────────────────────────────────
+        // Parties the desk registered as one record. Until this tab existed
+        // the only place they appeared was the read-only logbook report, so
+        // a group could be registered and could never be marked paid - every
+        // tourist party stayed Unpaid forever and the outstanding figure on
+        // the daily report grew with money that had in fact been collected.
+        $groupQuery = VisitGroup::with('registeredBy')->withCount('visitors');
+        if ($gdate = $request->input('gdate')) {
+            $groupQuery->whereDate('visit_date', $gdate);
+        }
+        match ($request->input('gpay')) {
+            'unpaid' => $groupQuery->where('payment_status', 'Unpaid'),
+            'paid'   => $groupQuery->where('payment_status', 'Paid'),
+            'free'   => $groupQuery->where('payment_status', 'Free'),
+            default  => null,
+        };
+        $groups = $groupQuery->orderByDesc('visit_date')->orderByDesc('created_at')
+            ->paginate(15, ['*'], 'gpage')->withQueryString();
+
+        $groupStats = [
+            'today'       => VisitGroup::whereDate('visit_date', today())->count(),
+            'heads_today' => (int) VisitGroup::whereDate('visit_date', today())->sum('headcount'),
+            'unpaid'      => VisitGroup::where('payment_status', 'Unpaid')->count(),
+            'outstanding' => (float) VisitGroup::where('payment_status', 'Unpaid')->sum('total_fee'),
+        ];
+
         $activeTab = $request->input('tab', 'visitors');
 
         return view('records.index', compact(
             'visitors', 'stats', 'scanStats',
+            'groups', 'groupStats', 'gdate',
             'attendances', 'todayCount', 'totalAtt', 'anonAtt', 'attDate',
             'chartLabels', 'chartValues', 'activeTab'
         ));

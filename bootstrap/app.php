@@ -59,10 +59,17 @@ return Application::configure(basePath: dirname(__DIR__))
         // call any effect. Without it, a temporary password that Tourism
         // handed over could still be sitting in an open session somewhere
         // after the staff member had replaced it.
+        //
+        // SanitizeInput strips HTML tags and control characters from every
+        // string field before validation and the controllers see it - the
+        // input-side half of the XSS defence, Blade's escaping being the
+        // output-side half.
         $middleware->web(append: [
+            \App\Http\Middleware\SanitizeInput::class,
             \Illuminate\Session\Middleware\AuthenticateSession::class,
             \App\Http\Middleware\SecurityHeaders::class,
             \App\Http\Middleware\AuditLog::class,
+            \App\Http\Middleware\BackupWatchdog::class,
         ]);
 
         // SECURITY: Register named middleware aliases for use in routes
@@ -86,6 +93,14 @@ return Application::configure(basePath: dirname(__DIR__))
         );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // An unhandled error in production is worth an email, not just a
+        // log line nobody opens. Laravel has already filtered out the
+        // routine ones (404, 403, validation, expired sessions) before this
+        // callback runs. See App\Support\Alerts.
+        $exceptions->report(function (\Throwable $e) {
+            \App\Support\Alerts::exception($e);
+        });
+
         // "419 Page Expired" is a dead end, and almost nobody who meets it
         // has done anything wrong.
         //

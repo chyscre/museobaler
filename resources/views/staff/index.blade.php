@@ -24,7 +24,9 @@
      stored in plaintext. If it is lost before it reaches the staff member,
      the fix is to issue another one. --}}
 @if(session('issued_credential'))
-  @php($cred = session('issued_credential'))
+  @php
+    $cred = session('issued_credential');
+  @endphp
   <div class="card card-p-lg" style="margin-bottom:18px;border:1.5px solid #fde68a;background:#fffbeb">
     <div style="display:flex;align-items:flex-start;gap:12px">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;color:#b45309;flex-shrink:0;margin-top:2px"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>

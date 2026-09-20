@@ -117,7 +117,12 @@ class GeofenceService
             return [
                 'ok'       => false,
                 'distance' => $distance,
-                'reason'   => 'You must be at the museum to record attendance.',
+                // The number is what makes a mis-set pin diagnosable from the
+                // phone: "1,800 m away" at the entrance means the pin, not
+                // the person, is in the wrong place.
+                'reason'   => 'You must be at the museum to record attendance. Your phone measured '
+                    . number_format($distance) . ' m from the museum pin (within ' . $radius . ' m needed'
+                    . ($accuracy !== null ? ', GPS accurate to about ' . $accuracy . ' m' : '') . ').',
             ];
         }
 

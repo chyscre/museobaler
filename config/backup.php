@@ -46,4 +46,35 @@ return [
 
     'keep' => (int) env('BACKUP_KEEP', 14),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Encryption at rest
+    |--------------------------------------------------------------------------
+    |
+    | A base64 32-byte key; `php artisan db:backup:key` prints a fresh one.
+    | With it set, every dump is written as .sql.gz.enc and only
+    | `php artisan db:backup:decrypt` with the same key can open it. Without
+    | it, the dump is plain and the command says so on every run.
+    |
+    | Keep a copy of this key somewhere that is not this machine. A backup
+    | whose key died with the server is not a backup.
+    |
+    */
+
+    'encryption_key' => env('BACKUP_ENCRYPTION_KEY'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Second copy
+    |--------------------------------------------------------------------------
+    |
+    | A directory on a different disk - a second drive, a network share, a
+    | folder that OneDrive or Google Drive syncs. After every run the newest
+    | dump is copied here and the same retention applied. Empty means no
+    | second copy, which means a dead drive takes the backups with it.
+    |
+    */
+
+    'copy_to' => env('BACKUP_COPY_TO'),
+
 ];
