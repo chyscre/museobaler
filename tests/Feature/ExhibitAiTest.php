@@ -171,7 +171,7 @@ class ExhibitAiTest extends TestCase
 
         $this->staff()->from('/exhibits')->post('/exhibits', [
             '_form' => 'add_exhibit', 'exhibit_code' => 'EXH-010', 'name' => 'Baler Church',
-            'description' => 'The church.', 'floor' => 'Ground Floor', 'hall' => 'Hall A',
+            'description' => 'The church.',
             'languages' => 'Filipino,English', 'storyline_order' => 10, 'source_language' => 'en',
             // The admin corrected the Filipino title before saving.
             't_code'        => ['en', 'fil'],
@@ -210,7 +210,7 @@ class ExhibitAiTest extends TestCase
         $exhibit->translations()->create(['language_code' => 'es',  'language_label' => 'Spanish',  'title' => 'Bahía']);
 
         $this->staff()->from('/exhibits')->put("/exhibits/{$exhibit->exhibit_id}", [
-            'exhibit_code' => 'EXH-011', 'name' => 'Bay', 'floor' => 'Ground Floor', 'hall' => 'Hall A',
+            'exhibit_code' => 'EXH-011', 'name' => 'Bay',
             't_code' => ['fil'], 't_label' => ['Filipino'], 't_title' => ['Look ng Baler'], 't_desc' => [''], 't_facts' => [''],
             't_delete' => ['es'],
         ])->assertRedirect('/exhibits');
@@ -228,7 +228,7 @@ class ExhibitAiTest extends TestCase
     {
         $this->staff()->from('/exhibits')->post('/exhibits', [
             '_form' => 'add_exhibit', 'exhibit_code' => 'EXH-012', 'name' => 'Agta',
-            'floor' => 'Ground Floor', 'hall' => 'Hall A', 'languages' => 'Filipino,English',
+            'languages' => 'Filipino,English',
         ])->assertRedirect('/exhibits');
 
         $exhibit = Exhibit::where('exhibit_code', 'EXH-012')->firstOrFail();
@@ -247,7 +247,7 @@ class ExhibitAiTest extends TestCase
             ->assertOk()->assertDownload('EXH-012.svg');
 
         $this->staff()->from('/exhibits')->put("/exhibits/{$exhibit->exhibit_id}", [
-            'exhibit_code' => 'EXH-112', 'name' => 'Agta', 'floor' => 'Ground Floor', 'hall' => 'Hall A',
+            'exhibit_code' => 'EXH-112', 'name' => 'Agta',
         ])->assertRedirect('/exhibits');
 
         $exhibit->refresh();

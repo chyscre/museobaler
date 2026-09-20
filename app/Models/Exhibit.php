@@ -10,7 +10,7 @@ class Exhibit extends Model
 
     protected $fillable = [
         'exhibit_code', 'name', 'description', 'fun_facts',
-        'category_id', 'floor', 'hall', 'map_x', 'map_y', 'authors',
+        'category_id', 'hall_id', 'map_x', 'map_y', 'authors',
         'languages', 'source_language', 'storyline_order', 'image', 'qr_file',
         'status', 'date_published',
     ];
@@ -35,6 +35,26 @@ class Exhibit extends Model
         }
         // Newly uploaded files in Laravel public storage
         return \Illuminate\Support\Facades\Storage::disk('public')->url('exhibits/' . $this->image);
+    }
+
+    /**
+     * The hall this exhibit sits in. Its name and floor are read through
+     * the hall and floor accessors below, so views keep printing
+     * $exhibit->hall exactly as they did when those were columns.
+     */
+    public function museumHall()
+    {
+        return $this->belongsTo(MuseumHall::class, 'hall_id', 'hall_id');
+    }
+
+    public function getHallAttribute(): ?string
+    {
+        return $this->museumHall?->name;
+    }
+
+    public function getFloorAttribute(): ?string
+    {
+        return $this->museumHall?->floor;
     }
 
     public function category()

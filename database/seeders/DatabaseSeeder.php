@@ -123,6 +123,8 @@ class DatabaseSeeder extends Seeder
         foreach ($halls as $hall) {
             DB::table('museum_halls')->insertOrIgnore(array_merge($hall, ['created_at' => now(), 'updated_at' => now()]));
         }
+        // Exhibits below name their hall by its letter; resolve that to the row.
+        $hallId = fn (string $letter) => DB::table('museum_halls')->where('name', 'like', "Hall $letter%")->value('hall_id');
 
         // ── Category IDs ──────────────────────────────────────────────────────
         $histId  = DB::table('categories')->where('name', 'History')->value('category_id');
@@ -140,8 +142,7 @@ class DatabaseSeeder extends Seeder
                 'description'     => 'From July 1, 1898 to June 2, 1899, a garrison of 54 Spanish soldiers under Captain Enrique de las Morenas fortified themselves inside the San Luis Obispo de Tolosa Church in Baler. Filipino revolutionary forces laid siege for 337 days — one of the longest last stands of the Spanish colonial era. Remarkably, the soldiers held out even after Spain had already ceded the Philippines to the United States through the Treaty of Paris on December 10, 1898. The siege ended when Lieutenant Saturnino Martin Cerezo finally surrendered, unaware the war had long been over. This exhibit features a diorama of the siege, period weapons, and historical documents.',
                 'fun_facts'       => "The siege lasted 337 days — the longest holdout of the Spanish colonial period in the Philippines.\nThe Spanish soldiers were unaware that Spain had already surrendered the Philippines to the US months earlier.\nCaptain Enrique de las Morenas died of illness during the siege; Lieutenant Martin Cerezo took command.\nOnly 33 of the original 54 soldiers survived to surrender on June 2, 1899.\nThe event is commemorated annually on Philippine-Spanish Friendship Day.",
                 'category_id'     => $histId,
-                'floor'           => 'Ground Floor',
-                'hall'            => 'Hall A',
+                'hall_id'         => $hallId('A'),
                 'authors'         => 'Museo de Baler Curatorial Team',
                 'languages'       => 'Filipino,English',
                 'storyline_order' => 1,
@@ -158,8 +159,7 @@ class DatabaseSeeder extends Seeder
                 'description'     => 'The Casiguran Agta (also known as Dumagat) are among the earliest inhabitants of the Philippines — a Negrito people who have lived along the Sierra Madre and the Pacific coast of Aurora for thousands of years. Traditionally nomadic hunter-gatherers, they subsisted on forest game, river fish, and coastal seafood. Their intimate knowledge of the Sierra Madre\'s ecosystems — its plants, animals, rivers, and seasons — reflects generations of careful observation and dependence on the natural world. This exhibit highlights their tools, traditions, and the cultural pressures they face today.',
                 'fun_facts'       => "The Agta are considered among the earliest inhabitants of the Philippine archipelago.\nThey are one of approximately 25 Negrito ethnolinguistic groups found across the Philippines.\nCasiguran Dumagat Agta is a distinct Northeastern Luzon language still spoken today.\nIn the past, the Agta lived freely along the coasts; logging and homesteaders later pushed many into the mountains.\nThe Agta traditionally practiced a barter system, trading forest products with lowland farmers.",
                 'category_id'     => $cultId,
-                'floor'           => 'Ground Floor',
-                'hall'            => 'Hall B',
+                'hall_id'         => $hallId('B'),
                 'authors'         => 'Museo de Baler Curatorial Team',
                 'languages'       => 'Filipino,English',
                 'storyline_order' => 2,
@@ -176,8 +176,7 @@ class DatabaseSeeder extends Seeder
                 'description'     => 'Aurora Province, carved out of Quezon Province in 1979, was named after Aurora Aragon — the beloved wife of President Manuel L. Quezon. This exhibit celebrates the province\'s unique blend of indigenous, Spanish colonial, and modern Filipino heritage. From the early Franciscan missions established in Baler and Casiguran in 1609 to the traditions of its diverse peoples, Aurora\'s heritage reflects centuries of resilience, faith, and cultural pride. Featured are traditional garments, woven crafts, ceremonial objects, and historical photographs documenting life in Aurora across the centuries.',
                 'fun_facts'       => "Aurora Province was created by Presidential Decree No. 1649 on August 13, 1979.\nIt was named after Aurora Aragon Quezon, who was assassinated in an ambush in 1949.\nThe Franciscans established the first missions in Baler and Casiguran as early as 1609.\nAurora is the only province in Central Luzon without any chartered city.\nThe province borders six other provinces: Quezon, Bulacan, Nueva Ecija, Nueva Vizcaya, Quirino, and Isabela.",
                 'category_id'     => $cultId,
-                'floor'           => 'Ground Floor',
-                'hall'            => 'Hall B',
+                'hall_id'         => $hallId('B'),
                 'authors'         => 'Museo de Baler Curatorial Team',
                 'languages'       => 'Filipino,English',
                 'storyline_order' => 3,
@@ -194,8 +193,7 @@ class DatabaseSeeder extends Seeder
                 'description'     => 'Baler, Aurora is the birthplace of Manuel Luis Quezon y Molina — born on August 19, 1878 — who rose from this quiet coastal town to become the first President of the Philippine Commonwealth (1935–1944). Educated at San Juan de Letran and the University of Santo Tomás, Quezon fought in the Philippine Revolution, entered politics, and became one of the nation\'s most influential statesmen. He proclaimed Filipino as the national language in 1937. He died in exile on August 1, 1944, in Saranac Lake, New York. This exhibit traces the Quezon family\'s roots in Baler and their enduring legacy on Philippine nationhood.',
                 'fun_facts'       => "Manuel L. Quezon was born on August 19, 1878, right here in Baler.\nHe was the first President of the Philippine Commonwealth, serving from 1935 until his death in 1944.\nQuezon proclaimed Filipino (based on Tagalog) as the national language in 1937.\nAurora Province was named after his wife, Aurora Aragon Quezon.\nQuezon City, the most populous city in the Philippines, is also named in his honor.",
                 'category_id'     => $histId,
-                'floor'           => '2nd Floor',
-                'hall'            => 'Hall D',
+                'hall_id'         => $hallId('D'),
                 'authors'         => 'Museo de Baler Curatorial Team',
                 'languages'       => 'Filipino,English',
                 'storyline_order' => 4,
@@ -212,8 +210,7 @@ class DatabaseSeeder extends Seeder
                 'description'     => 'The San Luis Obispo de Tolosa Parish Church is one of the most historically significant structures in Baler. Originally built by Franciscan missionaries who founded the settlement in 1609, the church has witnessed centuries of faith, colonial rule, natural disaster, and revolution. It was within these walls that Spanish troops made their legendary last stand during the 337-day Siege of Baler. A great storm in 1735 devastated the old settlement at Barrio Sabang, and the survivors rebuilt their community around the church. This exhibit traces the church\'s role as the spiritual and historical heart of Baler.',
                 'fun_facts'       => "The Franciscans founded Baler as a settlement in 1609, with the church as its spiritual center.\nA catastrophic storm on December 27, 1735 swept away the old settlement at Barrio Sabang.\nThe church served as the fortress during the 337-day Siege of Baler in 1898–1899.\nThe church is dedicated to Saint Louis of Toulouse (San Luis Obispo de Tolosa).\nIt remains an active parish church and a National Cultural Treasure.",
                 'category_id'     => $relId,
-                'floor'           => 'Ground Floor',
-                'hall'            => 'Hall A',
+                'hall_id'         => $hallId('A'),
                 'authors'         => 'Museo de Baler Curatorial Team',
                 'languages'       => 'Filipino,English',
                 'storyline_order' => 5,
@@ -230,8 +227,7 @@ class DatabaseSeeder extends Seeder
                 'description'     => 'Baler Bay sits along the Pacific coastline of Aurora Province, sheltered by the foothills of the Sierra Madre. Long before it became famous as a surfing destination, Baler Bay was the lifeblood of the community — a source of food, trade, and livelihood for generations of fisherfolk. The bay was also the site of dramatic historical events: Spanish supply ships attempted to relieve the besieged garrison during the Siege of Baler through these very waters. Today, the bay is internationally known for its powerful surf breaks, drawing visitors from around the world while its fishing traditions endure.',
                 'fun_facts'       => "Baler Bay gained international fame after the 1979 film Apocalypse Now was filmed nearby, introducing surfing to the area.\nThe bay faces the Philippine Sea, an arm of the western Pacific Ocean.\nLocal fisherfolk have used traditional methods like the pukot (fish net) for centuries.\nBaler was virtually inaccessible by road until the 1970s — most goods and people arrived by sea.\nThe town's name may derive from the old Tagalog word for a type of fishing vessel.",
                 'category_id'     => $cultId,
-                'floor'           => 'Ground Floor',
-                'hall'            => 'Hall C',
+                'hall_id'         => $hallId('C'),
                 'authors'         => 'Museo de Baler Curatorial Team',
                 'languages'       => 'Filipino,English',
                 'storyline_order' => 6,
@@ -248,8 +244,7 @@ class DatabaseSeeder extends Seeder
                 'description'     => 'For centuries, the coastal communities of Baler and Aurora Province have depended on the sea for survival. This exhibit documents the traditional fishing practices, vessels, and tools used by the fisherfolk of Aurora — from hand-woven nets and bamboo fish traps to the distinct outrigger bancas (canoes) built for the Pacific swells. The fishing community\'s calendar was shaped by the seasons: the habagat (southwest monsoon) brought rough seas and rest, while the amihan (northeast monsoon) opened the waters for bountiful harvests. Displayed here are original tools, models of traditional vessels, and photographs of coastal life across generations.',
                 'fun_facts'       => "The traditional outrigger banca is still the primary fishing vessel used by Aurora fisherfolk today.\nThe habagat season (June–October) brings heavy surf that historically shut down fishing in Baler Bay.\nFish traps woven from bamboo called bubo have been used in Aurora for hundreds of years.\nLocal communities once used the tromba marina warning system to alert each other of approaching storms.\nThe 1735 great storm that destroyed old Baler originated in the Pacific and struck without warning.",
                 'category_id'     => $cultId,
-                'floor'           => 'Ground Floor',
-                'hall'            => 'Hall C',
+                'hall_id'         => $hallId('C'),
                 'authors'         => 'Museo de Baler Curatorial Team',
                 'languages'       => 'Filipino,English',
                 'storyline_order' => 7,
@@ -266,8 +261,7 @@ class DatabaseSeeder extends Seeder
                 'description'     => 'The Sierra Madre is the longest mountain range in the Philippines, stretching over 540 kilometers from the northernmost tip of Luzon down to Quezon Province. It forms the natural eastern wall of Aurora Province, sheltering Baler from the open Pacific while nurturing one of the most biodiverse ecosystems in Asia. Home to over 700 bird species — many endemic to the Philippines — as well as endangered mammals like the Philippine Eagle and the cloud rat, the Sierra Madre is the last great wilderness of Luzon. This exhibit explores its ecology, the communities that call it home, and the urgent conservation challenges it faces.',
                 'fun_facts'       => "The Sierra Madre stretches over 540 km — making it the longest mountain range in the Philippines.\nIt is home to over 700 bird species, including the critically endangered Philippine Eagle.\nThe Sierra Madre is considered one of the top biodiversity hotspots in the entire world.\nThe forest canopy of the Sierra Madre acts as a natural barrier protecting central Luzon from Pacific typhoons.\nThe Agta Dumagat people have lived within the Sierra Madre for thousands of years.",
                 'category_id'     => $natId,
-                'floor'           => '2nd Floor',
-                'hall'            => 'Hall E',
+                'hall_id'         => $hallId('E'),
                 'authors'         => 'Museo de Baler Curatorial Team',
                 'languages'       => 'Filipino,English',
                 'storyline_order' => 8,

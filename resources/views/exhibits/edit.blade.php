@@ -36,17 +36,11 @@
         </div>
         <div class="fg"><label class="fl">Name</label><input class="fi" name="name" value="{{ $exhibit->name }}" required></div>
         <div class="fi-row">
-          <div class="fg"><label class="fl">Floor</label>
-            <select class="fi" name="floor">
-              @foreach(['Ground Floor','2nd Floor'] as $f)
-              <option {{ $exhibit->floor === $f ? 'selected' : '' }}>{{ $f }}</option>
-              @endforeach
-            </select>
-          </div>
           <div class="fg"><label class="fl">Hall</label>
-            <select class="fi" name="hall">
-              @foreach(['Hall A','Hall B','Hall C','Hall D','Hall E'] as $h)
-              <option {{ $exhibit->hall === $h ? 'selected' : '' }}>{{ $h }}</option>
+            <select class="fi" name="hall_id">
+              <option value="">No hall yet</option>
+              @foreach($halls as $h)
+              <option value="{{ $h->hall_id }}" {{ $exhibit->hall_id === $h->hall_id ? 'selected' : '' }}>{{ $h->name }} · {{ $h->floor }}</option>
               @endforeach
             </select>
           </div>

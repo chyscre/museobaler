@@ -52,7 +52,7 @@ if (isset($_GET['id']) || isset($_GET['code'])) {
     }
 
     $stmt = mysqli_prepare($con,
-        "SELECT e.exhibit_id, e.exhibit_code, e.name, e.description, e.fun_facts, e.floor, e.hall,
+        "SELECT e.exhibit_id, e.exhibit_code, e.name, e.description, e.fun_facts, h.floor, h.name AS hall,
                 e.authors, e.languages, e.storyline_order, e.map_x, e.map_y, e.image, e.status,
                 e.date_published,
                 c.name as category,
@@ -61,6 +61,7 @@ if (isset($_GET['id']) || isset($_GET['code'])) {
                 (SELECT e2.exhibit_id FROM exhibits e2 WHERE e2.storyline_order = e.storyline_order + 1 AND e2.status = 1 LIMIT 1) as next_id
          FROM exhibits e
          LEFT JOIN categories c ON c.category_id = e.category_id
+         LEFT JOIN museum_halls h ON h.hall_id = e.hall_id
          LEFT JOIN exhibit_translations t ON t.exhibit_id = e.exhibit_id AND t.language_code = ?
          WHERE $col = ? AND e.status = 1"
     );
@@ -124,12 +125,13 @@ if (isset($_GET['id']) || isset($_GET['code'])) {
 
 // All exhibits (for home/browse + offline cache)
 $stmt = mysqli_prepare($con,
-    "SELECT e.exhibit_id, e.exhibit_code, e.name, e.description, e.fun_facts, e.floor, e.hall,
+    "SELECT e.exhibit_id, e.exhibit_code, e.name, e.description, e.fun_facts, h.floor, h.name AS hall,
             e.authors, e.languages, e.storyline_order, e.map_x, e.map_y, e.image, e.date_published,
             c.name as category,
             t.title as t_title, t.description as t_desc, t.fun_facts as t_fun_facts, t.audio_file
      FROM exhibits e
      LEFT JOIN categories c ON c.category_id = e.category_id
+     LEFT JOIN museum_halls h ON h.hall_id = e.hall_id
      LEFT JOIN exhibit_translations t ON t.exhibit_id = e.exhibit_id AND t.language_code = ?
      WHERE e.status = 1
      ORDER BY e.storyline_order ASC, e.name ASC"

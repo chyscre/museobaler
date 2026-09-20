@@ -116,7 +116,7 @@
   <x-fctl icon="hall">
     <select class="fsel" id="exHall" onchange="filterExhibits()">
       <option value="">All Halls</option>
-      <option>Hall A</option><option>Hall B</option><option>Hall C</option><option>Hall D</option><option>Hall E</option>
+      @foreach($halls as $h)<option>{{ $h->name }}</option>@endforeach
     </select>
   </x-fctl>
   <x-fctl icon="tag">
@@ -216,17 +216,12 @@
       </div>
       <div class="fg"><label class="fl">Name</label><input class="fi" name="name" required placeholder="Exhibit name" value="{{ $addFailed ? old('name') : '' }}"></div>
       <div class="fi-row">
-        <div class="fg"><label class="fl">Floor</label>
-          <select class="fi" name="floor">
-            @foreach(['Ground Floor', '2nd Floor'] as $floor)
-            <option @selected($addFailed && old('floor') === $floor)>{{ $floor }}</option>
-            @endforeach
-          </select>
-        </div>
         <div class="fg"><label class="fl">Hall</label>
-          <select class="fi" name="hall">
-            @foreach(['Hall A', 'Hall B', 'Hall C', 'Hall D', 'Hall E'] as $hall)
-            <option @selected($addFailed && old('hall') === $hall)>{{ $hall }}</option>
+          {{-- Halls come from the Museum Info page; the floor is the hall's. --}}
+          <select class="fi" name="hall_id">
+            <option value="">No hall yet</option>
+            @foreach($halls as $h)
+            <option value="{{ $h->hall_id }}" @selected($addFailed && (int) old('hall_id') === $h->hall_id)>{{ $h->name }} · {{ $h->floor }}</option>
             @endforeach
           </select>
         </div>
