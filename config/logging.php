@@ -52,10 +52,30 @@ return [
 
     'channels' => [
 
+        // 'daily' by default, not 'single': one ever-growing laravel.log
+        // fills the disk eventually and is unreadable long before that. A
+        // file per day, kept for a month, is what an incident review can
+        // actually open.
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', (string) env('LOG_STACK', 'single')),
+            'channels' => explode(',', (string) env('LOG_STACK', 'daily')),
             'ignore_exceptions' => false,
+        ],
+
+        /*
+        | SECURITY: the events an incident review starts from - failed
+        | sign-ins, lockouts, role denials, password changes - written to
+        | their own file so they cannot scroll off the end of the ordinary
+        | application log, and kept three times as long. Written to by
+        | AppServiceProvider::logSecurityEvents(), EnsureRole and
+        | LoginRateLimiter.
+        */
+        'security' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/security.log'),
+            'level' => 'info',
+            'days' => env('LOG_SECURITY_DAYS', 90),
+            'replace_placeholders' => true,
         ],
 
         'single' => [
@@ -69,7 +89,7 @@ return [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
-            'days' => env('LOG_DAILY_DAYS', 14),
+            'days' => env('LOG_DAILY_DAYS', 30),
             'replace_placeholders' => true,
         ],
 

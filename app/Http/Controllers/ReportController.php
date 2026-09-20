@@ -9,7 +9,9 @@ use App\Models\Staff;
 use App\Models\Tour;
 use App\Models\Visitor;
 use App\Models\VisitGroup;
+use App\Models\SurveyQuestion;
 use App\Services\AttendanceStatusService;
+use App\Support\CsmReport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -48,8 +50,14 @@ class ReportController extends Controller
             ->orderBy('created_at')
             ->get();
 
+        // Collected is what came in over the counter - for a group that was
+        // corrected after paying, that is the fee it owes now PLUS what was
+        // handed back, because both of those crossed the counter. Refunded is
+        // the part that went back. Net is what the drawer should hold.
+        $refunded = (float) $groups->sum('refunded_amount');
+
         $collected = $visitors->where('payment_status', 'Paid')->sum('admission_fee')
-                   + $groups->where('payment_status', 'Paid')->sum('total_fee');
+                   + $groups->sum(fn (VisitGroup $g) => $g->grossCollected());
 
         $outstanding = $visitors->where('payment_status', 'Unpaid')->sum('admission_fee')
                      + $groups->where('payment_status', 'Unpaid')->sum('total_fee');
@@ -60,6 +68,8 @@ class ReportController extends Controller
             'groups'      => $groups,
             'headcount'   => $visitors->count() + $groups->sum('headcount'),
             'collected'   => $collected,
+            'refunded'    => $refunded,
+            'net'         => $collected - $refunded,
             'outstanding' => $outstanding,
         ]);
     }
@@ -71,13 +81,14 @@ class ReportController extends Controller
         $visitors = Visitor::whereDate('created_at', $date)->whereNull('group_id')->orderBy('created_at')->get();
         $groups   = VisitGroup::whereDate('visit_date', $date)->orderBy('created_at')->get();
 
-        $rows = [['Time', 'Name', 'Type', 'Pax', 'From', 'Source', 'Fee', 'Payment']];
+        $rows = [['Time', 'Name', 'Type', 'Pax', 'Locals', 'From', 'Source', 'Fee', 'Refunded', 'Payment']];
 
         foreach ($visitors as $v) {
             $rows[] = [
                 $v->created_at->format('g:i A'), $v->full_name, $v->visitor_type, 1,
+                $v->visitor_type === 'Local' ? 1 : 0,
                 $v->city ?: $v->country, $v->source,
-                number_format((float) $v->admission_fee, 2), $v->payment_status,
+                number_format((float) $v->admission_fee, 2), '0.00', $v->payment_status,
             ];
         }
 
@@ -86,8 +97,11 @@ class ReportController extends Controller
                 $g->created_at->format('g:i A'),
                 ($g->group_name ?: $g->contact_name) . ' (group)',
                 $g->visitor_type, $g->headcount,
+                $g->visitor_type === 'Local' ? $g->headcount : $g->local_count,
                 $g->city ?: $g->country, 'desk',
-                number_format((float) $g->total_fee, 2), $g->payment_status,
+                number_format((float) $g->total_fee, 2),
+                number_format((float) $g->refunded_amount, 2),
+                $g->payment_status,
             ];
         }
 
@@ -170,9 +184,13 @@ class ReportController extends Controller
     {
         [$from, $to] = $this->range($request);
 
-        $rows = Feedback::with(['staff', 'visitor'])
+        $rows = Feedback::with(['staff', 'visitor', 'answers'])
             ->whereBetween('submitted_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
             ->get();
+
+        // The ARTA Client Satisfaction Measurement figures for the range,
+        // computed as the ARTA guidelines define them (see CsmReport).
+        $csm = CsmReport::build($rows);
 
         // Guide ratings are reported as a count and an average, never ranked:
         // guided tours here are rare enough that a league table would be noise.
@@ -195,7 +213,62 @@ class ReportController extends Controller
             'byGuide'    => $byGuide,
             'unattributed' => $rows->whereNull('staff_id')->count(),
             'recent'     => $rows->sortByDesc('submitted_at')->take(20),
+            'csm'        => $csm,
+            'csmRating'  => CsmReport::rating($csm['sqd_score']),
         ]);
+    }
+
+    /**
+     * One row per survey response with a column per question code, in the
+     * column order of the paper tally sheet, so the office can paste it
+     * straight into its ARTA submission. N/A is written as "N/A" rather
+     * than left blank, so it cannot be mistaken for a missing answer.
+     */
+    public function feedbackCsv(Request $request): StreamedResponse
+    {
+        [$from, $to] = $this->range($request);
+
+        $rows = Feedback::with(['visitor', 'answers'])
+            ->whereBetween('submitted_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
+            ->whereHas('answers')
+            ->orderBy('submitted_at')
+            ->get();
+
+        // Every code that has an answer in the range, current questions first
+        // in their own order, then anything retired, so no column is lost.
+        $codes = SurveyQuestion::orderBy('sort_order')->pluck('code')
+            ->merge($rows->flatMap->answers->pluck('code')->unique())
+            ->unique()
+            ->filter(fn ($c) => $rows->flatMap->answers->contains('code', $c))
+            ->values();
+
+        $out = [array_merge(
+            ['Control No.', 'Date', 'Client type', 'Sex', 'Age', 'Region', 'Visitor type'],
+            $codes->all(),
+            ['Star rating', 'Suggestions']
+        )];
+
+        foreach ($rows as $f) {
+            $byCode = $f->answers->keyBy('code');
+            $line = [
+                $f->feedback_id,
+                $f->submitted_at?->format('Y-m-d H:i'),
+                $f->client_type ?: '',
+                $f->visitor?->sex ?: '',
+                $f->visitor?->age ?: '',
+                $f->region ?: '',
+                $f->visitor?->visitor_type ?: '',
+            ];
+            foreach ($codes as $code) {
+                $a = $byCode->get($code);
+                $line[] = $a === null ? '' : ($a->value === null ? 'N/A' : $a->value);
+            }
+            $line[] = $f->rating;
+            $line[] = $f->comment ?: '';
+            $out[] = $line;
+        }
+
+        return $this->csv($out, 'csm-' . $from->toDateString() . '-to-' . $to->toDateString() . '.csv');
     }
 
     // -- Exhibit engagement ------------------------------------------------

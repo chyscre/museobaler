@@ -196,14 +196,18 @@
   'save'    => route('recognition.model.save'),
   'csrf'    => csrf_token(),
   'min'     => $minPhotos,
+  'base'    => asset('js/vendor/mobilenet-base/model.json'),
 ]) !!}</script>
 @endsection
 
 @push('scripts')
 {{-- Same library and version as the visitor app, so what trains here is
-     exactly what runs there. --}}
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.5/dist/teachablemachine-image.min.js"></script>
+     exactly what runs there. Served from this server rather than a CDN: the
+     museum's own network could not reach jsDelivr, which left the trainer
+     showing "Unavailable" and the visitor app silently on the photo-match
+     fallback. TensorFlow.js 4.20.0 and @teachablemachine/image 0.8.5. --}}
+<script src="{{ asset('js/vendor/tf.min.js') }}"></script>
+<script src="{{ asset('js/vendor/teachablemachine-image.min.js') }}"></script>
 <script>
 (function () {
   var cfg    = JSON.parse(document.getElementById('rc-config').textContent);
@@ -280,8 +284,18 @@
       var total = classes.reduce(function (n, c) { return n + c.photos.length; }, 0);
       log('Training on ' + total + ' photos across ' + classes.length + ' classes: ' + classes.map(function (c) { return c.label; }).join(', '));
 
-      say('Downloading the model base (once)…');
-      var model = await tmImage.createTeachable({ tfjsVersion: tf.version.tfjs }, { version: 2, alpha: 0.35 });
+      say('Loading the model base…');
+      // The MobileNet base the classifier is built on is served from this
+      // server too (public/js/vendor/mobilenet-base/), so training needs no
+      // internet at all. checkpointUrl + trainingLayer together tell the
+      // library to use it instead of fetching from storage.googleapis.com;
+      // 'out_relu' is the library's own default layer for MobileNet v2, and
+      // the file is the exact v2 / alpha 0.35 / 224px checkpoint it would
+      // otherwise download.
+      var model = await tmImage.createTeachable(
+        { tfjsVersion: tf.version.tfjs },
+        { version: 2, alpha: 0.35, checkpointUrl: cfg.base, trainingLayer: 'out_relu' }
+      );
       model.setLabels(classes.map(function (c) { return c.label; }));
       model.setName('museo-de-baler');
 

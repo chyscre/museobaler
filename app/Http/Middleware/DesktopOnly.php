@@ -49,6 +49,7 @@ class DesktopOnly
     private const PHONE_ROUTES = [
         'my.attendance',
         'my.attendance.scan',
+        'my.attendance.pin',
         'recognition.photos',
         'recognition.photos.upload',
         'recognition.background',

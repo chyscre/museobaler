@@ -84,6 +84,39 @@ function visitorTokenFromRequest(?array $body = null): string
 }
 
 /**
+ * The visitor row, with today's group alongside it.
+ *
+ * A member of a party the desk registered is unlocked by the GROUP's payment,
+ * not their own - they owe nothing themselves. So every place that decides
+ * whether the door opens needs the group's standing on the same row. The
+ * join is restricted to today: group_id is kept as history and can point at
+ * last month's party, which must have no say in whether they get in now.
+ *
+ * Use this SELECT anywhere a visitor is loaded for a clearance decision.
+ */
+const VISITOR_WITH_GROUP_SQL =
+    "SELECT v.*,
+            g.group_id       AS g_group_id,
+            g.payment_status AS g_payment_status,
+            g.visitor_type   AS g_visitor_type,
+            g.contact_name   AS g_contact_name,
+            g.group_name     AS g_group_name,
+            g.headcount      AS g_headcount
+       FROM visitors v
+  LEFT JOIN visit_groups g
+         ON g.group_id = v.group_id AND g.visit_date = CURDATE()";
+
+/** Re-read one visitor by id, with today's group. */
+function loadVisitor($con, int $visitorId): ?array
+{
+    $stmt = mysqli_prepare($con, VISITOR_WITH_GROUP_SQL . " WHERE v.visitor_id = ? LIMIT 1");
+    mysqli_stmt_bind_param($stmt, 'i', $visitorId);
+    mysqli_stmt_execute($stmt);
+
+    return mysqli_fetch_assoc(mysqli_stmt_get_result($stmt)) ?: null;
+}
+
+/**
  * Resolve the visitor behind a token, or null when it is missing, unknown or
  * expired. Expiry is enforced in SQL so a stale row can never authenticate.
  */
@@ -96,7 +129,7 @@ function visitorFromToken($con, ?array $body = null): ?array
 
     $hash = hash('sha256', $raw);
     $stmt = mysqli_prepare($con,
-        "SELECT * FROM visitors WHERE api_token = ? AND token_expires_at IS NOT NULL AND token_expires_at > NOW() LIMIT 1"
+        VISITOR_WITH_GROUP_SQL . " WHERE v.api_token = ? AND v.token_expires_at IS NOT NULL AND v.token_expires_at > NOW() LIMIT 1"
     );
     mysqli_stmt_bind_param($stmt, 's', $hash);
     mysqli_stmt_execute($stmt);
@@ -104,15 +137,38 @@ function visitorFromToken($con, ?array $body = null): ?array
     return mysqli_fetch_assoc(mysqli_stmt_get_result($stmt)) ?: null;
 }
 
+/** True when this row is a member of a group that is here today. */
+function visitorInGroupToday(array $v): bool
+{
+    return !empty($v['g_group_id']);
+}
+
+/**
+ * Whether the group a member belongs to gets them through the door.
+ *
+ * A paying group clears its members once the fee is collected. A Local
+ * group clears them at once: the desk registered the party face to face,
+ * looking at them, which is the residency check - there is no separate ID
+ * step. Mirrors VisitGroup::clearsMembers() in the admin panel.
+ */
+function groupClearsMembers(array $v): bool
+{
+    return $v['g_visitor_type'] === 'Local' || $v['g_payment_status'] === 'Paid';
+}
+
 /**
  * Whether the front desk has cleared this visitor to enter.
  *
- * Locals are admitted free but only once staff has sighted a residency ID.
- * Everyone else is admitted once the admission fee has been collected.
- * Returns one of: cleared | pending_id | pending_payment.
+ * With a group today, the group's standing is theirs. On their own, locals
+ * are admitted free but only once staff has sighted a residency ID, and
+ * everyone else is admitted once the admission fee has been collected.
+ * Returns one of: cleared | pending_id | pending_payment | pending_group.
  */
 function visitorClearance(array $v): string
 {
+    if (visitorInGroupToday($v)) {
+        return groupClearsMembers($v) ? 'cleared' : 'pending_group';
+    }
     if ($v['visitor_type'] === 'Local') {
         return (int)$v['id_verified'] === 1 ? 'cleared' : 'pending_id';
     }
@@ -142,6 +198,7 @@ function clearancePayload(array $v): array
         'visit_type'     => $v['visit_type'],
         'visitor_type'   => $v['visitor_type'],
         'city'           => $v['city'],
+        'barangay'       => $v['barangay'] ?? null,
         'province'       => $v['province'],
         'country'        => $v['country'],
         'admission_fee'  => (float)$v['admission_fee'],
@@ -150,6 +207,13 @@ function clearancePayload(array $v): array
         'explore_mode'   => $v['explore_mode'],
         'clearance'      => $state,
         'cleared'        => $state === 'cleared',
+        // Who they came with, so the app can say "you're with Maria's group"
+        // and explain that the group's payment is what they are waiting on.
+        'group'          => visitorInGroupToday($v) ? [
+            'label'          => $v['g_group_name'] ?: $v['g_contact_name'] . "'s group",
+            'headcount'      => (int)$v['g_headcount'],
+            'payment_status' => $v['g_payment_status'],
+        ] : null,
     ];
 }
 
@@ -175,13 +239,16 @@ function requireClearedVisitor($con, ?array $body = null): array
     }
 
     if (!visitorIsCleared($v)) {
+        $state = visitorClearance($v);
         http_response_code(403);
         echo json_encode([
             'error'     => 'not_cleared',
-            'clearance' => visitorClearance($v),
-            'message'   => visitorClearance($v) === 'pending_payment'
-                ? 'Please pay the admission fee at the entrance counter. A staff member will confirm it.'
-                : 'Please present your residency ID at the entrance desk. A staff member will verify it.',
+            'clearance' => $state,
+            'message'   => match ($state) {
+                'pending_payment' => 'Please pay the admission fee at the entrance counter. A staff member will confirm it.',
+                'pending_group'   => 'Your group\'s admission has not been recorded yet. Once the person who signed you in pays at the counter, this unlocks by itself.',
+                default           => 'Please present your residency ID at the entrance desk. A staff member will verify it.',
+            },
             'visitor'   => clearancePayload($v),
         ]);
         exit;

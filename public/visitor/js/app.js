@@ -90,6 +90,9 @@ function normalizeExhibit(ex) {
     floor:       ex.floor        || '—',
     year:        ex.year         || (ex.date_published ? ex.date_published.substring(0,4) : ''),
     storyline:   ex.storyline_order || ex.storyline || null,
+    // Pin position on the museum map, % of the floor plan; null = not placed yet
+    map_x:       (ex.map_x ?? null) === null ? null : +ex.map_x,
+    map_y:       (ex.map_y ?? null) === null ? null : +ex.map_y,
     icon:        ex.icon         || categoryIcon(ex.category || ex.category_name || ''),
     gradient:    ex.gradient     || categoryGradient(ex.category || ex.category_name || ''),
     description: ex.description  || '',
@@ -151,6 +154,7 @@ let STATE = {
   middleName: '',
   country: 'Philippines',
   city: '',
+  barangay: '',
   province: '',
   visitType: 'Walk-in',
   visitorType: 'Local',
@@ -166,6 +170,9 @@ let STATE = {
   // instantly, but never trusted: the server re-checks on every request.
   clearance: 'pending_payment',
   cleared: false,
+  // The party the desk signed them in with today, or null. Display only -
+  // the server decides whether the group covers them.
+  group: null,
   modeSelected: false,
   mode: 'storyline',
   lang: 'en',
@@ -175,6 +182,10 @@ let STATE = {
   storylineProgress: 0,
   settings: {
     narration: true,
+    // Start the narration by itself when an exhibit is scanned. Browsing to
+    // an exhibit from a list never autoplays - only a scan, which means the
+    // visitor is standing in front of the piece.
+    autoplay: true,
     music: false,
     speed: 1,
     textSize: 'medium',
@@ -383,7 +394,7 @@ const ADMISSION_RULES = {
   Local: {
     fee: 0,
     label: 'FREE',
-    note: 'Baler and Aurora residents enter free. Show your ID at the entrance desk.',
+    note: 'Baler residents enter free. Show your ID at the entrance desk.',
     bg: '#F0FDF4', border: '#BBF7D0', fg: '#15803D',
   },
   Tourist: PAYING_RULE,
@@ -650,6 +661,7 @@ function applySession(v) {
   if (v.visit_type)   STATE.visitType   = v.visit_type;
   if (v.visitor_type) STATE.visitorType = v.visitor_type;
   if (v.city    !== undefined && v.city    !== null) STATE.city     = v.city;
+  if (v.barangay !== undefined && v.barangay !== null) STATE.barangay = v.barangay;
   if (v.province!== undefined && v.province!== null) STATE.province = v.province;
   if (v.country)      STATE.country     = v.country;
   STATE.admissionFee  = Number(v.admission_fee || 0);
@@ -657,6 +669,10 @@ function applySession(v) {
   STATE.idVerified    = !!v.id_verified;
   STATE.clearance     = v.clearance || (v.cleared ? 'cleared' : STATE.clearance);
   STATE.cleared       = !!v.cleared;
+  // Who they came with, if the desk signed the party in as one. Explicitly
+  // cleared when the reply says null: a stale group from a previous visit
+  // must not linger in local state and claim to cover today's admission.
+  if (v.group !== undefined) STATE.group = v.group || null;
   STATE.provider      = 'manual';
   if (v.explore_mode) STATE.mode = v.explore_mode === 'Free Roam' ? 'free' : 'storyline';
   // Only a returning visitor has actually chosen a mode. A new registration
@@ -721,14 +737,31 @@ function showPending(v) {
     saveState();
   }
 
+  if (v && v.group !== undefined) STATE.group = v.group || null;
+
   const needsPayment = STATE.clearance === 'pending_payment';
+  const withGroup    = STATE.clearance === 'pending_group';
   const box   = document.getElementById('pending-action');
   const icon  = document.getElementById('pending-action-icon');
   const title = document.getElementById('pending-action-title');
   const text  = document.getElementById('pending-action-text');
   const feeRow = document.getElementById('pending-fee-row');
 
-  if (needsPayment) {
+  // The join box is for someone NOT yet in a group. Once they are, the box
+  // above explains that the group's payment is what they are waiting on.
+  const joinBox = document.getElementById('pending-join-group');
+  if (joinBox) joinBox.style.display = withGroup ? 'none' : 'block';
+
+  if (withGroup) {
+    const label = STATE.group ? STATE.group.label : 'your group';
+    box.style.background = '#F0FDF4';
+    box.style.border     = '1px solid #BBF7D0';
+    box.style.color      = '#166534';
+    icon.textContent     = 'groups';
+    title.textContent    = `You're with ${label}`;
+    text.textContent     = 'The group pays as one at the entrance counter. As soon as the person who signed you in settles it, this screen unlocks by itself - nothing to pay on your own.';
+    feeRow.style.display = 'none';
+  } else if (needsPayment) {
     box.style.background = '#FFFBEB';
     box.style.border     = '1px solid #FDE68A';
     box.style.color      = '#B45309';
@@ -744,7 +777,7 @@ function showPending(v) {
     box.style.color      = '#1D4ED8';
     icon.textContent     = 'badge';
     title.textContent    = 'Show your ID at the entrance desk';
-    text.textContent     = 'Present proof of Aurora residency — barangay certificate, PhilSys ID, driver’s licence, school or company ID. Staff will verify it and this screen unlocks by itself.';
+    text.textContent     = 'Present proof of Baler residency — barangay certificate, PhilSys ID, driver’s licence, school or company ID. Staff will verify it and this screen unlocks by itself.';
     feeRow.style.display = 'none';
   }
 
@@ -838,6 +871,23 @@ function selectRadioPill(input) {
     group.querySelectorAll('.radio-pill').forEach(p => p.classList.remove('active'));
     input.closest('.radio-pill').classList.add('active');
   }
+
+  // The group code only makes sense for someone arriving with a party the
+  // desk has signed in. Show it for Group and School, tuck it away for a
+  // walk-in so the form stays as short as the paper book it replaced.
+  if (input.name === 'vtype') {
+    const wrap = document.getElementById('group-code-wrap');
+    if (wrap) {
+      const withParty = input.value === 'Group' || input.value === 'School';
+      wrap.style.display = withParty ? 'block' : 'none';
+      if (!withParty) document.getElementById('vi-group-code').value = '';
+    }
+  }
+}
+
+/** Upper-case, no spaces: what the desk read out, however it was typed. */
+function normaliseGroupCode(raw) {
+  return String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
 // ── Visitor type: swap the location fields and the fee summary ─────────────
@@ -888,12 +938,14 @@ function submitRegistration() {
   if (!age || Number(age) < 1) { showToast('Please enter your age'); return; }
   if (!sex) { showToast('Please select your sex'); return; }
 
-  // Location depends on the visitor type — locals must name their municipality
-  // so the free-admission claim can be checked against a real address.
-  let city = '', province = '', country = 'Philippines';
+  // Location depends on the visitor type — locals must name their barangay
+  // so the free-admission claim (Baler residents only) can be checked
+  // against what their ID says at the desk.
+  let city = '', province = '', country = 'Philippines', barangay = '';
   if (visitorType === 'Local') {
-    city = document.getElementById('vi-municipality').value;
-    if (!city) { showToast('Please select your municipality'); return; }
+    barangay = document.getElementById('vi-barangay').value;
+    if (!barangay) { showToast('Please select your barangay'); return; }
+    city = 'Baler';
     province = 'Aurora';
   } else if (visitorType === 'Tourist') {
     city     = document.getElementById('vi-city').value.trim();
@@ -912,6 +964,7 @@ function submitRegistration() {
   STATE.sex         = sex;
   STATE.country     = country;
   STATE.city        = city;
+  STATE.barangay    = barangay;
   STATE.province    = province;
   STATE.middleName  = document.getElementById('vi-middle').value.trim();
   STATE.visitType   = document.querySelector('input[name="vtype"]:checked')?.value || 'Walk-in';
@@ -932,11 +985,15 @@ function submitRegistration() {
       visitor_type:     STATE.visitorType,
       country:          STATE.country,
       city:             STATE.city,
+      barangay:         STATE.barangay,
       province:         STATE.province,
       email:            pendingSignup.email,
       password:         pendingSignup.password,
       password_confirm: pendingSignup.password,
       explore_mode:     STATE.mode === 'free' ? 'Free Roam' : 'Storyline',
+      // Blank unless they are joining a party the desk signed in. The server
+      // decides what the code is worth; the fee is never sent from here.
+      group_code:       normaliseGroupCode(document.getElementById('vi-group-code')?.value),
     })
   })
   .then(r => r.json())
@@ -944,9 +1001,10 @@ function submitRegistration() {
     if (!data || data.error) {
       const message = (data && data.message) || registrationErrorText(data && data.error);
       showToast(message, 3800);
-      // A rejected password or a taken email has to be fixed on the welcome
-      // screen, so send the visitor back there rather than leaving them stuck.
-      if (data && (data.error === 'email_taken' || String(data.error).startsWith('password'))) {
+      // A rejected password, a taken email or a bogus email domain has to be
+      // fixed on the welcome screen, so send the visitor back there rather
+      // than leaving them stuck on the details form.
+      if (data && (data.error === 'email_taken' || data.error === 'email_domain_invalid' || String(data.error).startsWith('password'))) {
         showRegError(message);
         setAuthMode(data.error === 'email_taken' ? 'signin' : 'signup');
         showScreen('s-register');
@@ -975,10 +1033,14 @@ function registrationErrorText(code) {
     invalid_email:        'Please enter a valid email address.',
     email_too_long:       'That email address is too long.',
     email_taken:          'That email is already registered. Tap Sign In instead.',
-    missing_municipality: 'Please select your municipality.',
+    email_domain_invalid: 'That email address does not look real — please check the part after the @.',
+    missing_municipality: 'Please select your barangay.',
+    missing_barangay: 'Please select your barangay.',
     missing_country:      'Please tell us which country you are from.',
     location_too_long:    'That location is too long.',
     registration_failed:  'Registration failed. Please ask a staff member for help.',
+    group_not_found:      'That group code was not found for today. Check it with the person who signed you in.',
+    group_full:           'Everyone in that group has already joined. Ask the desk to check the headcount.',
   };
   return messages[code] || 'Registration failed. Please try again.';
 }
@@ -995,16 +1057,72 @@ function finishRegistration() {
 
   const free = STATE.paymentStatus === 'Free';
   document.getElementById('success-fee').textContent = free ? 'FREE' : feeLabel(STATE.admissionFee || ADMISSION_FEE);
-  document.getElementById('success-fee-note').textContent = free
-    ? 'Show your ID at the entrance desk to claim free entry.'
-    : 'Payable at the entrance counter before your tour.';
+  document.getElementById('success-fee-note').textContent = STATE.group
+    ? `You're with ${STATE.group.label}. The group's payment covers your admission.`
+    : free
+      ? 'Show your ID at the entrance desk to claim free entry.'
+      : 'Payable at the entrance counter before your tour.';
 
   showScreen('s-reg-success');
 }
 
-/** "Continue" on the success screen — always into the waiting room. */
+/**
+ * "Continue" on the success screen. Into the waiting room, unless they are
+ * with a group that has already paid (or a Local group the desk signed in
+ * face to face) - then there is nothing to wait for.
+ */
 function afterRegistrationContinue() {
+  if (STATE.cleared) {
+    routeAfterAuth({ ...STATE, cleared: true });
+    return;
+  }
   showPending(null);
+}
+
+/**
+ * Join a group from the waiting screen.
+ *
+ * For the member who registered before the desk had signed the party in, or
+ * a returning visitor who is with a group today. Once joined, the group's
+ * payment is what unlocks them - so if it has already paid, this ends the
+ * wait on the spot.
+ */
+function joinGroupFromPending() {
+  const input = document.getElementById('pending-group-code');
+  const code  = normaliseGroupCode(input && input.value);
+
+  if (code.length < 4) { showToast('Enter the group code the desk gave you.'); return; }
+  if (!STATE.token)    { handleSessionLost(); return; }
+
+  showLoading(true);
+  apiFetch(`${API_BASE}/visitor.php`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'join_group', group_code: code })
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (!data || data.error) {
+        showToast((data && data.message) || registrationErrorText(data && data.error), 3800);
+        return;
+      }
+
+      applySession(data);
+      saveState();
+      input.value = '';
+
+      if (data.cleared) {
+        stopClearancePolling();
+        showToast(`You're in with ${STATE.group ? STATE.group.label : 'your group'}. Welcome!`);
+        setTimeout(() => routeAfterAuth({ ...data, cleared: true }), 700);
+        return;
+      }
+
+      showToast(`Joined ${STATE.group ? STATE.group.label : 'the group'}. Waiting on the group's payment.`, 3000);
+      showPending(data);
+    })
+    .catch(() => showToast('Could not reach the museum. Check your connection and try again.', 3500))
+    .finally(() => showLoading(false));
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1942,17 +2060,17 @@ function handleScan(code, scanType = 'qr', alreadyLogged = false) {
           e.code === code.replace('EXH-2026-', 'MB0') ||
           ('EXH-2026-00' + e.code.replace('MB00','')) === code
         );
-        if (demo) { logScan(demo, scanType, !alreadyLogged); renderExhibit(demo); }
+        if (demo) { logScan(demo, scanType, !alreadyLogged); renderExhibit(demo, { autoplay: true }); }
         else showToast('Exhibit not found: ' + code);
         return;
       }
       const ex = normalizeExhibit(data);
       logScan(ex, scanType, !alreadyLogged);
-      renderExhibit(ex);
+      renderExhibit(ex, { autoplay: true });
     })
     .catch(() => {
       const demo = DEMO_EXHIBITS.find(e => e.code === code || e.id === code);
-      if (demo) { logScan(demo, scanType, !alreadyLogged); renderExhibit(demo); }
+      if (demo) { logScan(demo, scanType, !alreadyLogged); renderExhibit(demo, { autoplay: true }); }
       else showToast('Could not load exhibit. Check your connection.');
     });
 }
@@ -1991,18 +2109,99 @@ function logScan(exhibit, scanType = 'qr', postToServer = true) {
   }).catch(() => {});
 }
 
-// Exact SVG coordinates for each storyline node
-// Ground floor: nodes 1-3 | 2nd floor: nodes 4-8
-const STORYLINE_NODES = {
-  1: { floor: 'ground', svgId: 'map-svg-ground',  x: 187, y: 218 },
-  2: { floor: 'ground', svgId: 'map-svg-ground',  x: 40,  y: 331 },
-  3: { floor: 'ground', svgId: 'map-svg-ground',  x: 102, y: 331 },
-  4: { floor: 'second', svgId: 'map-svg-second',  x: 99,  y: 63  },
-  5: { floor: 'second', svgId: 'map-svg-second',  x: 40,  y: 310 },
-  6: { floor: 'second', svgId: 'map-svg-second',  x: 107, y: 310 },
-  7: { floor: 'second', svgId: 'map-svg-second',  x: 249, y: 345 },
-  8: { floor: 'second', svgId: 'map-svg-second',  x: 351, y: 345 },
+// ── Map pins ─────────────────────────────────────────────────
+// Each exhibit's pin comes from map_x/map_y saved on the admin Museum Map
+// (percent of the floor plan). Exhibits nobody has placed yet get a spot
+// along the walking route of their floor so they still show up.
+const MAP_FLOORS = {
+  ground: { svgId: 'map-svg-ground', label: '1st Floor' },
+  second: { svgId: 'map-svg-second', label: '2nd Floor' },
 };
+const MAP_DEFAULT_SPOTS = {
+  ground: [[24,54],[12,72],[30,85],[48,72],[18,24],[28,40],[70,30],[74,50],[86,20],[80,65],[60,70],[8,45]],
+  second: [[12,35],[30,20],[50,20],[68,20],[85,35],[90,60],[80,88],[60,90],[40,90],[20,88],[12,60],[50,55]],
+};
+const MAP_PIN_R = 52; // in floor-plan units (the plans are ~1700 wide, so ~13px on a phone)
+
+function mapFloorOf(ex) {
+  return /2nd|second/i.test(String(ex.floor || '')) ? 'second' : 'ground';
+}
+
+// Every active exhibit with a resolved {floor, svgId, x, y} in SVG units.
+function mapNodes() {
+  const src = _exhibitCache.length ? _exhibitCache : DEMO_EXHIBITS.map(normalizeExhibit);
+  const counters = { ground: 0, second: 0 };
+  return src.map(ex => {
+    const floor = mapFloorOf(ex);
+    const svg = document.getElementById(MAP_FLOORS[floor].svgId);
+    if (!svg) return null;
+    let px = ex.map_x, py = ex.map_y;
+    if (px === null || px === undefined || py === null || py === undefined) {
+      const spots = MAP_DEFAULT_SPOTS[floor];
+      const n = counters[floor]++;
+      const s = spots[n % spots.length], lap = Math.floor(n / spots.length);
+      px = Math.min(98, s[0] + lap * 3); py = Math.min(98, s[1] + lap * 3);
+    }
+    const vb = svg.viewBox.baseVal;
+    return { ex, floor, svgId: MAP_FLOORS[floor].svgId, x: px / 100 * vb.width, y: py / 100 * vb.height };
+  }).filter(Boolean);
+}
+
+function mapNodeFor(ex) {
+  if (!ex) return null;
+  return mapNodes().find(n => n.ex.id === ex.id || (ex.exhibit_id && n.ex.exhibit_id === ex.exhibit_id)) || null;
+}
+
+function svgEl(tag, attrs, text) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
+
+// Draws the numbered storyline pins + path and the free-explore pins for
+// both floors. Scan-done / scan-next markers are layered on afterwards.
+function renderMapPins() {
+  const nodes = mapNodes();
+  ['ground', 'second'].forEach(floor => {
+    const svg = document.getElementById(MAP_FLOORS[floor].svgId);
+    if (!svg) return;
+    const storyLayer = svg.querySelector(floor === 'ground' ? '#map-path-overlay' : '#map-path-overlay-2nd');
+    const freeLayer  = svg.querySelector(floor === 'ground' ? '#map-free-nodes'   : '#map-free-nodes-2nd');
+    const path       = svg.querySelector('[data-path]');
+    if (!storyLayer || !freeLayer) return;
+    storyLayer.innerHTML = ''; freeLayer.innerHTML = '';
+
+    const here = nodes.filter(n => n.floor === floor);
+    const story = here.filter(n => n.ex.storyline > 0).sort((a, b) => a.ex.storyline - b.ex.storyline);
+    if (path) {
+      path.setAttribute('points', story.map(n => n.x + ',' + n.y).join(' '));
+      path.style.display = (STATE.mode === 'storyline' && story.length > 1) ? 'block' : 'none';
+    }
+
+    story.forEach(n => {
+      const g = svgEl('g', { class: 'story-node', transform: 'translate(' + n.x + ',' + n.y + ')', style: 'cursor:pointer' });
+      g.appendChild(svgEl('circle', { r: MAP_PIN_R, fill: '#E8A020', stroke: 'white', 'stroke-width': 8 }));
+      g.appendChild(svgEl('text', { y: 16, 'text-anchor': 'middle', 'font-size': 44, 'font-weight': 700, fill: 'white' }, n.ex.storyline));
+      g.addEventListener('click', () => openExhibitFromMap(n.ex));
+      storyLayer.appendChild(g);
+    });
+
+    here.forEach(n => {
+      const code = String(parseInt(String(n.ex.code || '').replace(/\D/g, ''), 10) || '') || '•';
+      const g = svgEl('g', { class: 'free-node', transform: 'translate(' + n.x + ',' + n.y + ')', style: 'cursor:pointer' });
+      g.appendChild(svgEl('circle', { r: MAP_PIN_R, fill: '#4A7C2F', stroke: 'white', 'stroke-width': 8 }));
+      g.appendChild(svgEl('text', { y: 14, 'text-anchor': 'middle', 'font-size': code.length > 2 ? 32 : 40, 'font-weight': 700, fill: 'white' }, code));
+      g.addEventListener('click', () => openExhibitFromMap(n.ex));
+      freeLayer.appendChild(g);
+    });
+  });
+}
+
+function openExhibitFromMap(ex) {
+  const code = String(ex.code || ex.id || '').replace(/[^A-Za-z0-9_-]/g, '');
+  if (code) handleScan(code, 'qr', true);
+}
 
 function updateMapAfterScan(exhibit) {
   if (STATE.mode !== 'storyline') return;
@@ -2015,11 +2214,9 @@ function updateMapAfterScan(exhibit) {
   const storylineExhibits = src.filter(e => e.storyline > 0).sort((a,b) => a.storyline - b.storyline);
   const nextEx = storylineExhibits.find(e => !scannedOrders.includes(e.storyline));
   if (nextEx) {
-    const node = STORYLINE_NODES[nextEx.storyline];
-    const floorLabel = node ? (node.floor === 'ground' ? '1st Floor' : '2nd Floor') : '';
-    infoText.textContent = 'Next: ' + nextEx.title + (floorLabel ? ' · ' + floorLabel : '');
+    infoText.textContent = 'Next: ' + nextEx.title + ' · ' + MAP_FLOORS[mapFloorOf(nextEx)].label;
   } else {
-    infoText.textContent = 'Storyline complete! You\'ve visited all exhibits.';
+    infoText.textContent = "Storyline complete! You've visited all exhibits.";
   }
 }
 
@@ -2032,66 +2229,37 @@ function getScannedStorylineOrders(src) {
 }
 
 function refreshStorylineMapOverlay() {
-  const src = _exhibitCache.length ? _exhibitCache : DEMO_EXHIBITS.map(normalizeExhibit);
-  const storylineExhibits = src.filter(e => e.storyline > 0).sort((a,b) => a.storyline - b.storyline);
+  renderMapPins();
+  const nodes = mapNodes();
+  const src = nodes.map(n => n.ex);
   const scannedOrders = getScannedStorylineOrders(src);
-  const nextEx = storylineExhibits.find(e => !scannedOrders.includes(e.storyline));
+  const storylineNodes = nodes.filter(n => n.ex.storyline > 0).sort((a, b) => a.ex.storyline - b.ex.storyline);
+  const nextNode = storylineNodes.find(n => !scannedOrders.includes(n.ex.storyline));
 
   ['map-svg-ground', 'map-svg-second'].forEach(svgId => {
     const svg = document.getElementById(svgId);
     if (!svg) return;
     svg.querySelectorAll('.scan-done, .scan-next').forEach(el => el.remove());
 
-    storylineExhibits.forEach(ex => {
-      const node = STORYLINE_NODES[ex.storyline];
-      if (!node || node.svgId !== svgId) return;
-      const isDone = scannedOrders.includes(ex.storyline);
-      const isNext = nextEx && ex.storyline === nextEx.storyline;
-      const ns = 'http://www.w3.org/2000/svg';
+    storylineNodes.forEach(node => {
+      if (node.svgId !== svgId) return;
+      const isDone = scannedOrders.includes(node.ex.storyline);
+      const isNext = nextNode && node.ex.storyline === nextNode.ex.storyline;
+      const at = 'translate(' + node.x + ',' + node.y + ')';
 
       if (isDone) {
-        const g = document.createElementNS(ns, 'g');
-        g.setAttribute('class', 'scan-done');
-        const bg = document.createElementNS(ns, 'circle');
-        bg.setAttribute('cx', node.x); bg.setAttribute('cy', node.y);
-        bg.setAttribute('r', '14'); bg.setAttribute('fill', '#16a34a');
-        bg.setAttribute('stroke', 'white'); bg.setAttribute('stroke-width', '2.5');
-        const check = document.createElementNS(ns, 'text');
-        check.setAttribute('x', node.x); check.setAttribute('y', node.y);
-        check.setAttribute('text-anchor', 'middle'); check.setAttribute('dominant-baseline', 'middle');
-        check.setAttribute('font-size', '13'); check.setAttribute('fill', 'white');
-        check.textContent = '✓';
-        g.appendChild(bg); g.appendChild(check);
+        const g = svgEl('g', { class: 'scan-done', transform: at });
+        g.appendChild(svgEl('circle', { r: MAP_PIN_R, fill: '#16a34a', stroke: 'white', 'stroke-width': 8 }));
+        g.appendChild(svgEl('text', { 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-size': 52, fill: 'white' }, '✓'));
         svg.appendChild(g);
-
       } else if (isNext) {
-        const g = document.createElementNS(ns, 'g');
-        g.setAttribute('class', 'scan-next');
-        // Pulsing outer ring
-        const pulse = document.createElementNS(ns, 'circle');
-        pulse.setAttribute('cx', node.x); pulse.setAttribute('cy', node.y);
-        pulse.setAttribute('r', '21'); pulse.setAttribute('fill', 'none');
-        pulse.setAttribute('stroke', '#ef4444'); pulse.setAttribute('stroke-width', '2.5');
-        pulse.setAttribute('opacity', '0.6');
+        const g = svgEl('g', { class: 'scan-next', transform: at });
+        const pulse = svgEl('circle', { r: 78, fill: 'none', stroke: '#ef4444', 'stroke-width': 8, opacity: 0.6 });
         pulse.style.animation = 'scanPulse 1.2s ease-out infinite';
-        // Inner circle
-        const inner = document.createElementNS(ns, 'circle');
-        inner.setAttribute('cx', node.x); inner.setAttribute('cy', node.y);
-        inner.setAttribute('r', '14'); inner.setAttribute('fill', '#ef4444');
-        inner.setAttribute('stroke', 'white'); inner.setAttribute('stroke-width', '2.5');
-        // SCAN label inside
-        const lbl = document.createElementNS(ns, 'text');
-        lbl.setAttribute('x', node.x); lbl.setAttribute('y', node.y);
-        lbl.setAttribute('text-anchor', 'middle'); lbl.setAttribute('dominant-baseline', 'middle');
-        lbl.setAttribute('font-size', '7'); lbl.setAttribute('font-weight', '700');
-        lbl.setAttribute('fill', 'white'); lbl.textContent = 'SCAN';
-        // Arrow label above
-        const arrow = document.createElementNS(ns, 'text');
-        arrow.setAttribute('x', node.x); arrow.setAttribute('y', node.y - 24);
-        arrow.setAttribute('text-anchor', 'middle');
-        arrow.setAttribute('font-size', '8'); arrow.setAttribute('font-weight', '700');
-        arrow.setAttribute('fill', '#ef4444'); arrow.textContent = '▼ NEXT';
-        g.appendChild(pulse); g.appendChild(inner); g.appendChild(lbl); g.appendChild(arrow);
+        g.appendChild(pulse);
+        g.appendChild(svgEl('circle', { r: MAP_PIN_R, fill: '#ef4444', stroke: 'white', 'stroke-width': 8 }));
+        g.appendChild(svgEl('text', { 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-size': 26, 'font-weight': 700, fill: 'white' }, 'SCAN'));
+        g.appendChild(svgEl('text', { y: -90, 'text-anchor': 'middle', 'font-size': 32, 'font-weight': 700, fill: '#ef4444' }, '▼ NEXT'));
         svg.appendChild(g);
       }
     });
@@ -2157,25 +2325,28 @@ function showExhibitPreview(ex) {
 // ═══════════════════════════════════════════════════════════
 // EXHIBIT DETAIL
 // ═══════════════════════════════════════════════════════════
-function renderExhibit(ex) {
+function renderExhibit(ex, opts) {
   if (typeof ex === 'string') {
     try { ex = JSON.parse(ex); } catch(e) { return; }
   }
+  opts = opts || {};
   currentExhibit = ex;
   stopAudio();
 
-  // Hero — show image if available, else gradient + icon
+  // Hero — the whole picture, never a crop: the hero grows to the image's
+  // own shape (capped so the text is still reachable) and a tap opens it
+  // full-screen. No picture: the old fixed gradient with an icon.
   const hero = document.getElementById('ex-hero');
   const heroIcon = document.getElementById('ex-hero-icon');
   const heroImg = document.getElementById('ex-hero-img');
   if (ex.image) {
-    if (hero) hero.style.background = '#000';
-    if (heroImg) { heroImg.src = ex.image; heroImg.style.display = 'block'; }
-    if (heroIcon) heroIcon.style.display = 'none';
+    if (hero) { hero.style.background = '#000'; hero.style.height = 'auto'; hero.style.minHeight = '220px'; }
+    if (heroImg) { heroImg.src = ex.image; heroImg.alt = ex.title || ''; heroImg.style.display = 'block'; }
+    if (heroIcon) heroIcon.parentElement.style.display = 'none';
   } else {
-    if (hero) hero.style.background = ex.gradient || 'linear-gradient(160deg,var(--bd),var(--bm))';
-    if (heroImg) heroImg.style.display = 'none';
-    if (heroIcon) { heroIcon.style.display = ''; heroIcon.textContent = ex.icon || 'museum'; }
+    if (hero) { hero.style.background = ex.gradient || 'linear-gradient(160deg,var(--bd),var(--bm))'; hero.style.height = '220px'; hero.style.minHeight = ''; }
+    if (heroImg) { heroImg.style.display = 'none'; heroImg.removeAttribute('src'); }
+    if (heroIcon) { heroIcon.parentElement.style.display = ''; heroIcon.textContent = ex.icon || 'museum'; }
   }
   const badge = document.getElementById('ex-badge');
   if (badge) badge.textContent = `${ex.id} · ${ex.hall}`;
@@ -2295,6 +2466,40 @@ function renderExhibit(ex) {
 
   switchTab('overview');
   showScreen('s-exhibit');
+
+  // Scanned, not browsed: start reading. The visitor tapped to scan, so the
+  // browser has the user activation it wants; where it still refuses (older
+  // iOS), playAudio() leaves a "Tap play to listen" toast and the button.
+  if (opts.autoplay && STATE.settings.narration && STATE.settings.autoplay
+      && (audioState.audioFile || audioState.text)) {
+    setTimeout(() => { try { playAudio(); } catch (e) {} }, 350);
+  }
+}
+
+/* ── Full-screen picture ─────────────────────────────────────────────────
+   The hero shows the whole image, but small. A tap opens it over everything
+   at the largest size the screen allows; pinch-zoom is the browser's own. */
+function openHeroImage() {
+  const src = document.getElementById('ex-hero-img')?.getAttribute('src');
+  if (!src) return;
+  let box = document.getElementById('img-lightbox');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'img-lightbox';
+    box.setAttribute('role', 'dialog');
+    box.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.96);display:flex;align-items:center;justify-content:center;touch-action:pinch-zoom;';
+    box.innerHTML = '<img alt="" style="max-width:100%;max-height:100%;object-fit:contain;">'
+      + '<div onclick="closeHeroImage()" style="position:absolute;top:calc(14px + env(safe-area-inset-top));right:14px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;cursor:pointer;"><span class="material-icons-round" style="color:#fff;font-size:24px;">close</span></div>';
+    box.addEventListener('click', e => { if (e.target === box) closeHeroImage(); });
+    document.body.appendChild(box);
+  }
+  box.querySelector('img').src = src;
+  box.style.display = 'flex';
+}
+
+function closeHeroImage() {
+  const box = document.getElementById('img-lightbox');
+  if (box) box.style.display = 'none';
 }
 
 function updateBookmarkIcon() {
@@ -3020,15 +3225,15 @@ function updateMap() {
     if (slFill) slFill.style.width = pct + '%';
 
     if (nextEx) {
-      const node = STORYLINE_NODES[nextEx.storyline];
-      const floorLabel = node ? (node.floor === 'ground' ? '1st Floor' : '2nd Floor') : '';
-      if (infoText) infoText.textContent = 'Next: ' + nextEx.title + (floorLabel ? ' · ' + floorLabel : '');
-      if (node) switchVisFloor(node.floor === 'ground' ? 1 : 2);
+      const floor = mapFloorOf(nextEx);
+      if (infoText) infoText.textContent = 'Next: ' + nextEx.title + ' · ' + MAP_FLOORS[floor].label;
+      switchVisFloor(floor === 'ground' ? 1 : 2);
     } else {
       if (infoText) infoText.textContent = 'Storyline complete! You\'ve visited all exhibits.';
     }
   } else {
-    if (infoText) infoText.textContent = 'Tap any exhibit node to view details';
+    renderMapPins();
+    if (infoText) infoText.textContent = 'Tap any exhibit pin to view details';
   }
 
   // Floor tab colors
@@ -3073,6 +3278,7 @@ function toggleMapPath() {
 function syncSettings() {
   const s = STATE.settings;
   setToggle('toggle-narration', s.narration);
+  setToggle('toggle-autoplay', s.autoplay !== false);
   setToggle('toggle-music', s.music);
   setToggle('toggle-contrast', s.highContrast);
   setToggle('toggle-darkmode', s.darkMode);
@@ -3174,6 +3380,13 @@ function setToggle(id, on) {
     el.classList.remove('on');
     if (knob) { knob.style.right = ''; knob.style.left = '2px'; }
   }
+}
+
+function toggleAutoplay() {
+  STATE.settings.autoplay = !STATE.settings.autoplay;
+  setToggle('toggle-autoplay', STATE.settings.autoplay);
+  saveState();
+  showToast(STATE.settings.autoplay ? 'Narration will start on scan' : 'Narration waits for Play');
 }
 
 function toggleNarration() {
@@ -3352,37 +3565,269 @@ function toggleExploreMode(val) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// FEEDBACK
+// FEEDBACK — the ARTA Client Satisfaction Measurement survey
+//
+// Three steps in one sheet: Citizen's Charter (CC1–3), Service Quality
+// Dimensions (SQD0–8), then the museum's own — star rating, guide, the
+// APP_* questions and a comment. Steps 1–2 and the APP_* block are built
+// from the question list the `survey` action returns, so the Tourism
+// office can edit wording, add or retire questions without touching this.
 // ═══════════════════════════════════════════════════════════
+const SURVEY = { questions: [], answers: {}, step: 1, defaults: {}, regions: [], guided: false };
+
+// Question text is typed by the Tourism office, not by visitors, but it is
+// still text going into innerHTML — a stray "<" in a question must not eat
+// the rest of the sheet.
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Text in the visitor's language. The paper form is Filipino; the sheet is
+// Filipino-first with English underneath when the app is set to Filipino,
+// English-first otherwise.
+function surveyLang() { return STATE.lang === 'fil' ? 'fil' : 'en'; }
+function surveyText(q, key) {
+  const lang = surveyLang(), other = lang === 'fil' ? 'en' : 'fil';
+  return { main: q[key + '_' + lang] || q[key + '_' + other] || '', sub: q[key + '_' + other] || '' };
+}
+
+const SURVEY_FACES = {
+  1: 'sentiment_very_dissatisfied',
+  2: 'sentiment_dissatisfied',
+  3: 'sentiment_neutral',
+  4: 'sentiment_satisfied',
+  5: 'sentiment_very_satisfied',
+};
+
 function openFeedback() {
   feedbackRating = 0;
   guideRating = 0;
-  // Clears both rows, which is what we want when reopening the sheet.
+  SURVEY.answers = {};
+  SURVEY.step = 1;
   document.querySelectorAll('.star').forEach(s => s.classList.remove('active'));
   const textEl = document.getElementById('feedback-text');
   if (textEl) textEl.value = '';
-  document.getElementById('feedback-sheet').classList.add('open');
 
-  // Most visits here are unguided, so the guide question is hidden by default
-  // and only revealed if a guide was actually assigned to this visitor today.
-  const block = document.getElementById('guide-feedback');
-  if (block) block.style.display = 'none';
+  // Sheet chrome in the visitor's language.
+  const lang = surveyLang();
+  document.querySelectorAll('#feedback-sheet [data-fil]').forEach(el => {
+    el.textContent = el.getAttribute('data-' + lang) || el.getAttribute('data-en');
+  });
+  if (textEl) textEl.placeholder = textEl.getAttribute('data-' + lang + '-ph') || textEl.getAttribute('data-en-ph');
+
+  document.getElementById('survey-loading').style.display = 'block';
+  document.querySelectorAll('.survey-step').forEach(s => s.style.display = 'none');
+  document.getElementById('survey-nav').style.display = 'none';
+  document.getElementById('feedback-sheet').classList.add('open');
 
   if (!STATE.visitorId) return;
 
   apiFetch(`${API_BASE}/visitor.php`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'my_guide' })
+    body: JSON.stringify({ action: 'survey' })
   })
     .then(r => r.json())
     .then(data => {
-      if (!data || !data.guided || !block) return;
-      const label = document.getElementById('guide-feedback-label');
-      if (label) label.textContent = `How was your guide, ${data.guide_name}?`;
-      block.style.display = 'block';
+      SURVEY.questions = (data && data.questions) || [];
+      SURVEY.defaults  = (data && data.defaults)  || {};
+      SURVEY.regions   = (data && data.regions)   || [];
+      SURVEY.guided    = !!(data && data.guided);
+      SURVEY.answers   = { _client_type: SURVEY.defaults.client_type || 'citizen', _region: SURVEY.defaults.region || '' };
+
+      // SQD5 defaults to N/A — admission is usually free.
+      SURVEY.questions.forEach(q => { if (q.default_na) SURVEY.answers[q.code] = null; });
+
+      const block = document.getElementById('guide-feedback');
+      if (block) {
+        block.style.display = SURVEY.guided ? 'block' : 'none';
+        if (SURVEY.guided) {
+          const label = document.getElementById('guide-feedback-label');
+          if (label) label.textContent = (lang === 'fil' ? 'Kumusta ang iyong guide, ' : 'How was your guide, ') + data.guide_name + '?';
+        }
+      }
+
+      renderSurveyStep(1);
+      renderSurveyStep(2);
+      renderSurveyStep(3);
+      document.getElementById('survey-loading').style.display = 'none';
+      document.getElementById('survey-nav').style.display = 'block';
+      showSurveyStep(1);
     })
-    .catch(() => {}); // Unreachable: just show the plain museum rating.
+    .catch(() => {
+      // Offline or an old server: fall back to the plain star rating.
+      SURVEY.questions = [];
+      document.getElementById('survey-loading').style.display = 'none';
+      document.getElementById('survey-nav').style.display = 'block';
+      document.getElementById('survey-app-questions').innerHTML = '';
+      showSurveyStep(3);
+    });
+}
+
+// Sections map to steps; "app" questions live inside step 3.
+function surveyQuestionsFor(step) {
+  const section = { 1: 'cc', 2: 'sqd', 3: 'app' }[step];
+  return SURVEY.questions.filter(q => q.section === section);
+}
+
+function renderSurveyStep(step) {
+  const host = step === 3
+    ? document.getElementById('survey-app-questions')
+    : document.getElementById('survey-step-' + step);
+  const qs = surveyQuestionsFor(step);
+  const lang = surveyLang();
+  let html = '';
+
+  // The paper form's header fields that the visitor record cannot answer.
+  if (step === 1) {
+    const ct = SURVEY.answers._client_type || 'citizen';
+    const ctLabels = lang === 'fil'
+      ? { citizen: 'Mamamayan', business: 'Negosyo', government: 'Gobyerno' }
+      : { citizen: 'Citizen', business: 'Business', government: 'Government' };
+    html += `<div class="survey-q">
+      <div class="survey-q-text">${lang === 'fil' ? 'Uri ng Kliyente at Rehiyon' : 'Client type and region'}</div>
+      <div class="survey-header" style="margin-top:8px">
+        <select class="fi" onchange="SURVEY.answers._client_type=this.value">
+          ${Object.keys(ctLabels).map(k => `<option value="${k}" ${k === ct ? 'selected' : ''}>${ctLabels[k]}</option>`).join('')}
+        </select>
+        <select class="fi" onchange="SURVEY.answers._region=this.value">
+          ${SURVEY.regions.map(r => `<option value="${escapeHtml(r)}" ${r === SURVEY.answers._region ? 'selected' : ''}>${escapeHtml(r)}</option>`).join('')}
+        </select>
+      </div>
+    </div>`;
+  }
+
+  qs.forEach(q => {
+    const t = surveyText(q, 'text'), h = surveyText(q, 'hint');
+    // CC1 / SQD0 are printed on the paper form, so visitors recognise them;
+    // the museum's own codes are bookkeeping and stay out of sight.
+    html += `<div class="survey-q" id="sq-${q.code}" data-code="${q.code}">
+      ${q.section === 'app' ? '' : `<div class="survey-q-code">${escapeHtml(q.code)}</div>`}
+      <div class="survey-q-text">${escapeHtml(t.main)}</div>
+      ${t.sub ? `<div class="survey-q-sub">${escapeHtml(t.sub)}</div>` : ''}
+      ${h.main ? `<div class="survey-q-hint">${escapeHtml(h.main)}</div>` : ''}
+      ${q.scale === 'choice' ? renderChoices(q, lang) : renderScale(q, lang)}
+    </div>`;
+  });
+
+  host.innerHTML = html;
+  qs.forEach(q => paintSurveyAnswer(q));
+}
+
+function renderScale(q, lang) {
+  return `<div class="survey-scale">` + q.choices.map(c => {
+    const v = c.na ? 'na' : c.value;
+    const icon = c.na ? 'block' : SURVEY_FACES[c.value] || 'circle';
+    return `<button type="button" class="${c.na ? 'na' : ''}" data-v="${v}" onclick="setSurveyAnswer('${q.code}','${v}')" title="${escapeHtml(c[lang] || c.en)}">
+      <span class="material-icons-round">${icon}</span><small>${c.na ? 'N/A' : escapeHtml(shortScaleLabel(c.value, lang))}</small>
+    </button>`;
+  }).join('') + `</div>`;
+}
+
+// Face captions need to fit six across a phone.
+function shortScaleLabel(v, lang) {
+  const fil = { 1: 'Lubos na hindi', 2: 'Hindi', 3: 'Walang kinikilingan', 4: 'Sumasang-ayon', 5: 'Labis' };
+  const en  = { 1: 'Strongly disagree', 2: 'Disagree', 3: 'Neutral', 4: 'Agree', 5: 'Strongly agree' };
+  return (lang === 'fil' ? fil : en)[v] || '';
+}
+
+function renderChoices(q, lang) {
+  return `<div class="survey-choices">` + q.choices.map(c => {
+    const v = c.na ? 'na' : c.value;
+    return `<label class="radio-pill" data-v="${v}" onclick="setSurveyAnswer('${q.code}','${v}')">
+      <span class="material-icons-round">radio_button_unchecked</span>
+      <span>${escapeHtml(c[lang] || c.en)}</span>
+    </label>`;
+  }).join('') + `</div>`;
+}
+
+function setSurveyAnswer(code, v) {
+  SURVEY.answers[code] = v === 'na' ? null : parseInt(v, 10);
+  const q = SURVEY.questions.find(x => x.code === code);
+  if (q) paintSurveyAnswer(q);
+  // A CC1 change can hide or reveal CC2/CC3.
+  SURVEY.questions.filter(x => x.show_if && x.show_if.code === code).forEach(paintSurveyAnswer);
+}
+
+function surveyIsShown(q) {
+  if (!q.show_if || !q.show_if.code) return true;
+  const dep = SURVEY.answers[q.show_if.code];
+  return dep !== undefined && dep !== null && (q.show_if.in || []).map(Number).includes(dep);
+}
+
+function paintSurveyAnswer(q) {
+  const el = document.getElementById('sq-' + q.code);
+  if (!el) return;
+  el.style.display = surveyIsShown(q) ? '' : 'none';
+  el.classList.remove('missing');
+  const has = Object.prototype.hasOwnProperty.call(SURVEY.answers, q.code);
+  const cur = has ? (SURVEY.answers[q.code] === null ? 'na' : String(SURVEY.answers[q.code])) : undefined;
+  el.querySelectorAll('[data-v]').forEach(b => {
+    const on = has && b.getAttribute('data-v') === cur;
+    b.classList.toggle('on', on);
+    b.classList.toggle('active', on);
+    if (b.classList.contains('radio-pill')) {
+      const ic = b.querySelector('.material-icons-round');
+      if (ic) ic.textContent = on ? 'radio_button_checked' : 'radio_button_unchecked';
+    }
+  });
+}
+
+function showSurveyStep(step) {
+  // Skip a step with nothing to ask (e.g. every CC question retired).
+  if (step < 3 && surveyQuestionsFor(step).length === 0) {
+    return showSurveyStep(step + (step >= SURVEY.step ? 1 : -1));
+  }
+  SURVEY.step = step;
+  const lang = surveyLang();
+  document.querySelectorAll('.survey-step').forEach(s => s.style.display = 'none');
+  document.getElementById('survey-step-' + step).style.display = 'block';
+  document.querySelectorAll('#survey-dots i').forEach((d, i) => d.classList.toggle('on', i + 1 === step));
+
+  const subs = lang === 'fil'
+    ? { 1: "Tungkol sa Citizen's Charter (CC) ng tanggapan", 2: 'Piliin ang sagot na pinakaangkop sa iyo', 3: 'Tungkol sa museo at sa app' }
+    : { 1: "About the office's Citizen's Charter (CC)", 2: 'Pick the answer that best fits how you feel', 3: 'About the museum and the app' };
+  document.getElementById('survey-step-sub').textContent = subs[step];
+
+  const first = step === 1 || (step === 2 && surveyQuestionsFor(1).length === 0);
+  document.getElementById('survey-back').style.display = first ? 'none' : '';
+  const next = document.getElementById('survey-next');
+  next.innerHTML = step === 3
+    ? `<span class="material-icons-round">send</span>${lang === 'fil' ? 'Ipasa' : 'Submit'}`
+    : `${lang === 'fil' ? 'Susunod' : 'Next'}<span class="material-icons-round">arrow_forward</span>`;
+
+  document.querySelector('#feedback-sheet .sheet').scrollTop = 0;
+}
+
+// Every shown, required question on this step must have an answer.
+function surveyStepComplete(step) {
+  let ok = true, firstMissing = null;
+  surveyQuestionsFor(step).forEach(q => {
+    if (!q.required || !surveyIsShown(q)) return;
+    if (!Object.prototype.hasOwnProperty.call(SURVEY.answers, q.code)) {
+      ok = false;
+      const el = document.getElementById('sq-' + q.code);
+      if (el) { el.classList.add('missing'); firstMissing = firstMissing || el; }
+    }
+  });
+  if (firstMissing) firstMissing.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  return ok;
+}
+
+function surveyBack() {
+  if (SURVEY.step > 1) showSurveyStep(SURVEY.step - 1);
+}
+
+function surveyNext() {
+  const lang = surveyLang();
+  if (!surveyStepComplete(SURVEY.step)) {
+    showToast(lang === 'fil' ? 'Pakisagutan ang lahat ng tanong' : 'Please answer every question');
+    return;
+  }
+  if (SURVEY.step < 3) return showSurveyStep(SURVEY.step + 1);
+  submitFeedback();
 }
 
 function setGuideRating(n) {
@@ -3398,7 +3843,7 @@ function closeFeedback() {
 
 function setRating(n) {
   feedbackRating = n;
-  // Scoped to the museum row: the sheet now also carries a guide star row,
+  // Scoped to the museum row: the sheet also carries a guide star row,
   // and a bare '.star' selector would light both up together.
   document.querySelectorAll('#star-row .star').forEach((s, i) => {
     s.classList.toggle('active', i < n);
@@ -3406,26 +3851,51 @@ function setRating(n) {
 }
 
 function submitFeedback() {
-  if (!feedbackRating) { showToast('Please select a rating'); return; }
+  const lang = surveyLang();
+  if (!feedbackRating) { showToast(lang === 'fil' ? 'Pumili ng rating' : 'Please select a rating'); return; }
   const text = document.getElementById('feedback-text')?.value || '';
+
+  // Only the question answers go under `answers`; the header fields are
+  // their own keys. No survey loaded (offline fallback) means no `answers`
+  // key at all, which the API treats as a star-only submission.
+  const body = {
+    // Authorship comes from the session token, not from the body.
+    action: 'feedback',
+    rating: feedbackRating,
+    guide_rating: guideRating,
+    comment: text,
+  };
+  if (SURVEY.questions.length) {
+    body.answers = {};
+    SURVEY.questions.forEach(q => {
+      if (Object.prototype.hasOwnProperty.call(SURVEY.answers, q.code)) body.answers[q.code] = SURVEY.answers[q.code];
+    });
+    body.client_type = SURVEY.answers._client_type || 'citizen';
+    body.region = SURVEY.answers._region || '';
+  }
+
   showLoading(true);
   apiFetch(`${API_BASE}/visitor.php`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      // Authorship comes from the session token, not from the body.
-      action: 'feedback',
-      rating: feedbackRating,
-      guide_rating: guideRating,
-      comment: text
-    })
+    body: JSON.stringify(body)
   })
-  .catch(() => {})
-  .finally(() => {
-    showLoading(false);
+  .then(r => r.json())
+  .then(d => {
+    if (d && d.error === 'missing_answer') {
+      // The question bank changed while the sheet was open; reload it.
+      showToast(lang === 'fil' ? 'May kulang na sagot — pakisubukang muli' : 'An answer is missing — please try again');
+      openFeedback();
+      return;
+    }
     closeFeedback();
-    showToast('Thank you for your feedback!');
-  });
+    showToast(lang === 'fil' ? 'Maraming salamat sa iyong sagot!' : 'Thank you for your feedback!');
+  })
+  .catch(() => {
+    closeFeedback();
+    showToast(lang === 'fil' ? 'Maraming salamat sa iyong sagot!' : 'Thank you for your feedback!');
+  })
+  .finally(() => showLoading(false));
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3456,11 +3926,11 @@ function doLogout() {
     country: 'Philippines', city: '', province: '',
     visitType: 'Walk-in', visitorType: 'Local',
     admissionFee: 0, paymentStatus: 'Free', idVerified: false,
-    token: null, clearance: 'pending_payment', cleared: false, modeSelected: false,
+    token: null, clearance: 'pending_payment', cleared: false, group: null, modeSelected: false,
     mode: 'storyline', lang: 'en',
     scanned: [], bookmarks: [], recentlyViewed: [],
     storylineProgress: 0,
-    settings: { narration: true, music: false, speed: 1, textSize: 'medium', highContrast: false, volume: 1 }
+    settings: { narration: true, autoplay: true, music: false, speed: 1, textSize: 'medium', highContrast: false, volume: 1 }
   };
   saveState();
   // Clear the sign-in form so the next visitor starts from a blank slate —

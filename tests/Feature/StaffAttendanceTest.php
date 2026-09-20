@@ -332,4 +332,51 @@ class StaffAttendanceTest extends TestCase
         $this->assertSame('Late', $summary['status']);
         $this->assertSame(16, $summary['late_minutes']); // 8:31 against an 8:15 cutoff
     }
+
+    // -- The museum pin, set from a phone --------------------------------
+
+    public function test_museum_staff_can_move_the_pin_to_where_their_phone_is(): void
+    {
+        $phone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1';
+        $staff = Staff::factory()->administrator()->create();
+
+        $this->withHeader('User-Agent', $phone)->actingAs($staff)
+            ->postJson('/my/attendance/pin', ['latitude' => 15.7595, 'longitude' => 121.5625, 'accuracy' => 12])
+            ->assertOk()->assertJsonPath('ok', true);
+
+        $pin = MuseumInfo::first();
+        $this->assertEquals(15.7595, (float) $pin->latitude);
+        $this->assertEquals(121.5625, (float) $pin->longitude);
+        $this->assertDatabaseHas('logs', ['action' => 'Museum Pin Moved', 'user_id' => $staff->staff_id]);
+    }
+
+    public function test_a_vague_fix_cannot_move_the_pin(): void
+    {
+        // A Wi-Fi guess accurate to half a kilometre is what put the pin
+        // 1.8 km from the door in the first place.
+        $staff = Staff::factory()->administrator()->create();
+        $before = MuseumInfo::first()?->latitude;
+
+        $this->actingAs($staff)
+            ->postJson('/my/attendance/pin', ['latitude' => 15.7, 'longitude' => 121.5, 'accuracy' => 500])
+            ->assertStatus(422);
+
+        $this->assertEquals($before, MuseumInfo::first()?->latitude);
+    }
+
+    public function test_the_refusal_says_how_far_off_the_phone_measured(): void
+    {
+        $staff = Staff::factory()->administrator()->create();
+        MuseumInfo::firstOrCreate(['info_id' => 1])->update(['latitude' => 15.7604405, 'longitude' => 121.5616958, 'geofence_radius_m' => 150]);
+        $code = app(AttendanceQrService::class)->currentPayload();
+
+        // 1.76 km east-southeast: the laptop's Wi-Fi guess of 2026-09-19.
+        $res = $this->actingAs($staff)->postJson('/my/attendance/scan', [
+            'code' => $code, 'latitude' => 15.7556815, 'longitude' => 121.5774035, 'accuracy' => 15,
+        ]);
+
+        $res->assertStatus(422);
+        $this->assertStringContainsString('m from the museum pin', $res->json('message'));
+        $this->assertMatchesRegularExpression('/1,7\d\d m from/', $res->json('message'));
+    }
 }

@@ -7,7 +7,11 @@
     <h2>Guided Tours</h2>
     <p>Most visitors roam on their own — assign a guide when one is asked for, for a foreign visitor, or for a school</p>
   </div>
-  <div class="ph-right">
+  <div class="ph-right" style="display:flex;gap:8px;align-items:center">
+    <a href="{{ route('desk.register') }}" class="btn btn-outline btn-sm">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      Front Desk
+    </a>
     <form method="GET" style="display:flex;gap:8px;align-items:center">
       <input type="date" name="from" value="{{ $from->toDateString() }}" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:var(--surface)">
       <span style="font-size:12px;color:var(--text-3)">to</span>

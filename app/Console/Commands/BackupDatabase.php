@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Support\Alerts;
+use App\Support\BackupCipher;
 use Illuminate\Console\Command;
 use Symfony\Component\Process\Process;
 
@@ -20,8 +22,9 @@ use Symfony\Component\Process\Process;
  * line in cron. See the schedule in routes/console.php.
  *
  * A dump beside the database it came from survives a mistake, not a fire.
- * Copying these somewhere else - another drive, a cloud bucket, anything not
- * this computer - is the other half of the job and is not automated here.
+ * Set BACKUP_COPY_TO to another drive or a synced folder and each dump is
+ * copied there too; set BACKUP_ENCRYPTION_KEY and every dump is encrypted
+ * before it is written, so a copy that goes missing is not a breach.
  */
 class BackupDatabase extends Command
 {
@@ -34,28 +37,26 @@ class BackupDatabase extends Command
         $connection = config('database.default');
 
         if ($connection !== 'mysql') {
-            $this->error("The database connection is '{$connection}', not mysql - nothing to dump.");
-            $this->line('This command shells out to mysqldump. Check DB_CONNECTION in .env.');
-
-            return self::FAILURE;
+            return $this->abandon(
+                "The database connection is '{$connection}', not mysql - nothing to dump.",
+                'This command shells out to mysqldump. Check DB_CONNECTION in .env.'
+            );
         }
 
         $binary = $this->mysqldump();
 
         if ($binary === null) {
-            $this->error('mysqldump was not found.');
-            $this->line('Set MYSQLDUMP_PATH in .env to its full path (Laragon keeps it in bin/mysql/<version>/bin).');
-
-            return self::FAILURE;
+            return $this->abandon(
+                'mysqldump was not found.',
+                'Set MYSQLDUMP_PATH in .env to its full path (Laragon keeps it in bin/mysql/<version>/bin).'
+            );
         }
 
         $database = config("database.connections.{$connection}");
         $directory = config('backup.directory');
 
         if (!is_dir($directory) && !mkdir($directory, 0775, true) && !is_dir($directory)) {
-            $this->error("Could not create {$directory}.");
-
-            return self::FAILURE;
+            return $this->abandon("Could not create {$directory}.");
         }
 
         $stem = $directory . '/' . $database['database'] . '-' . now()->format('Y-m-d_His');
@@ -73,19 +74,87 @@ class BackupDatabase extends Command
 
         if ($dumped !== true) {
             @unlink("{$stem}.sql");
-            $this->error('mysqldump failed.');
-            $this->line($dumped);
-
-            return self::FAILURE;
+            return $this->abandon('mysqldump failed.', $dumped);
         }
 
         $archive = $this->compress("{$stem}.sql");
 
+        // Encrypted when a key is configured. The plain archive is removed
+        // once the encrypted one exists, so the only readable copy of the
+        // data on disk is the database itself.
+        if (($key = BackupCipher::key()) !== null) {
+            $encrypted = BackupCipher::encrypt($archive, "{$archive}.enc", $key);
+            @unlink($archive);
+            $archive = $encrypted;
+        } else {
+            $this->warn('BACKUP_ENCRYPTION_KEY is not set: this dump is readable by anyone who can open the file.');
+        }
+
         $this->info('Wrote ' . basename($archive) . ' (' . $this->humanSize(filesize($archive)) . ')');
 
         $this->prune($directory);
+        $this->copyOffMachine($archive);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * A failed backup is the one failure that must not be quiet.
+     *
+     * The scheduler runs this at half past two in the morning with nobody
+     * watching the console. Without this, "mysqldump was not found" is a
+     * line in a log file that is read the day a restore is needed.
+     */
+    private function abandon(string $message, string $hint = ''): int
+    {
+        $this->error($message);
+
+        if ($hint !== '') {
+            $this->line($hint);
+        }
+
+        Alerts::send('Nightly database backup failed', trim($message . "\n" . $hint), 'backup-failed');
+
+        return self::FAILURE;
+    }
+
+    /**
+     * The second copy.
+     *
+     * A dump beside the database survives a mistake, not a dead disk.
+     * BACKUP_COPY_TO names somewhere else - a second drive, a mounted
+     * network share, a folder a cloud client syncs - and the newest dump
+     * is copied there after every run, with the same retention applied.
+     *
+     * Unreachable is a warning and an alert, not a failure: the local dump
+     * was written, which is the more important half.
+     */
+    private function copyOffMachine(string $archive): void
+    {
+        $copyTo = (string) config('backup.copy_to');
+
+        if ($copyTo === '') {
+            return;
+        }
+
+        if (!is_dir($copyTo) && !@mkdir($copyTo, 0775, true) && !is_dir($copyTo)) {
+            $this->warn("Second copy skipped: {$copyTo} is not reachable.");
+            Alerts::send('Backup second copy skipped', "The backup was written locally but {$copyTo} could not be reached. Is the drive connected?", 'backup-copy');
+
+            return;
+        }
+
+        $target = rtrim($copyTo, '/\\') . DIRECTORY_SEPARATOR . basename($archive);
+
+        if (!@copy($archive, $target)) {
+            $this->warn("Second copy failed: could not write {$target}.");
+            Alerts::send('Backup second copy failed', "The backup was written locally but could not be copied to {$target}.", 'backup-copy');
+
+            return;
+        }
+
+        $this->line('Copied to ' . $target);
+        $this->prune($copyTo);
     }
 
     /**
@@ -206,7 +275,8 @@ class BackupDatabase extends Command
             return;
         }
 
-        $dumps = glob($directory . '/*.sql.gz') ?: [];
+        // Plain (.sql.gz) and encrypted (.sql.gz.enc) alike.
+        $dumps = glob($directory . '/*.sql.gz*') ?: [];
 
         // Names are timestamped, so newest sorts last.
         rsort($dumps);

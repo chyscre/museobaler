@@ -11,6 +11,7 @@ class Feedback extends Model
     protected $fillable = [
         'visitor_id', 'tour_id', 'staff_id',
         'rating', 'guide_rating', 'attributed_by', 'comment', 'submitted_at',
+        'client_type', 'region',
     ];
 
     protected function casts(): array
@@ -37,5 +38,14 @@ class Feedback extends Model
     public function staff()
     {
         return $this->belongsTo(Staff::class, 'staff_id', 'staff_id');
+    }
+
+    /**
+     * The ARTA survey answers behind the star rating, one row per question.
+     * Feedback filed before the survey existed simply has none.
+     */
+    public function answers()
+    {
+        return $this->hasMany(FeedbackAnswer::class, 'feedback_id', 'feedback_id');
     }
 }

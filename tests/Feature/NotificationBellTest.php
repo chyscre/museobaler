@@ -63,6 +63,45 @@ class NotificationBellTest extends TestCase
         }
     }
 
+    public function test_every_desk_event_reaches_the_bell(): void
+    {
+        $admin = Staff::factory()->create(['role' => 'Administrator']);
+
+        // Registered, then paid; a local whose ID was sighted; an anonymous
+        // walk-in; a rating left on the way out.
+        $tourist = Visitor::create([
+            'first_name' => 'Tomas', 'last_name' => 'Cruz', 'visitor_type' => 'Tourist',
+            'admission_fee' => 50, 'payment_status' => 'Paid', 'paid_at' => now(), 'id_verified' => false,
+        ]);
+        Visitor::create([
+            'first_name' => 'Lita', 'last_name' => 'Bautista', 'visitor_type' => 'Local',
+            'admission_fee' => 0, 'payment_status' => 'Free',
+            'id_verified' => true, 'verified_at' => now(), 'verified_by' => 'Rosa',
+        ]);
+        \App\Models\VisitGroup::create([
+            'group_name' => 'Baler NHS', 'group_type' => 'School', 'contact_name' => 'Sir Ben',
+            'visitor_type' => 'Local', 'headcount' => 40, 'local_count' => 40, 'paying_count' => 0, 'visit_date' => today(),
+            'total_fee' => 0, 'payment_status' => 'Free',
+        ]);
+        \App\Models\Attendance::create([
+            'visitor_id' => null, 'visitor_name' => null, 'visit_date' => today(),
+        ]);
+        \App\Models\Feedback::create([
+            'visitor_id' => $tourist->visitor_id, 'rating' => 4, 'comment' => 'Lovely', 'submitted_at' => now(),
+        ]);
+
+        $messages = collect($this->actingAs($admin)
+            ->getJson(route('notifications.poll', ['init' => 1]))
+            ->json('items'))->pluck('message')->implode(' | ');
+
+        $this->assertStringContainsString('Tomas Cruz registered', $messages);
+        $this->assertStringContainsString('Tomas Cruz paid ₱50.00', $messages);
+        $this->assertStringContainsString("Lita Bautista's residency ID was verified by Rosa", $messages);
+        $this->assertStringContainsString('Baler NHS registered — party of 40', $messages);
+        $this->assertStringContainsString('An anonymous visitor checked in', $messages);
+        $this->assertStringContainsString('Tomas Cruz left feedback — ★★★★', $messages);
+    }
+
     public function test_dashboard_stat_tiles_link_to_their_sections(): void
     {
         $admin = Staff::factory()->create(['role' => 'Administrator']);

@@ -88,12 +88,50 @@ class MuseumController extends Controller
         $allExhibits = Exhibit::where('status', true)
             ->orderBy('storyline_order')
             ->orderBy('name')
-            ->get(['exhibit_id', 'name', 'hall', 'exhibit_code']);
+            ->get(['exhibit_id', 'name', 'hall', 'floor', 'exhibit_code', 'storyline_order', 'map_x', 'map_y']);
+
+        // What the map draws its pins from. Positions are percentages of the
+        // floor plan; null ones get a spot picked by the page until saved.
+        $pins = $allExhibits->map(fn ($ex) => [
+            'id'        => $ex->exhibit_id,
+            'code'      => $ex->exhibit_code,
+            'name'      => $ex->name,
+            'hall'      => $ex->hall,
+            'floor'     => $ex->floor === '2nd Floor' ? 'second' : 'ground',
+            'storyline' => (int) $ex->storyline_order,
+            'x'         => $ex->map_x,
+            'y'         => $ex->map_y,
+        ])->values();
 
         $activeCount   = Exhibit::where('status', true)->count();
         $archivedCount = Exhibit::where('status', false)->count();
 
-        return view('museum.map', compact('storyline', 'allExhibits', 'activeCount', 'archivedCount'));
+        return view('museum.map', compact('storyline', 'allExhibits', 'pins', 'activeCount', 'archivedCount'));
+    }
+
+    /**
+     * Save where the pins were dragged to. The page sends every pin on both
+     * floors at once, so one save is the whole layout.
+     */
+    public function savePositions(Request $request)
+    {
+        $data = $request->validate([
+            'positions'              => 'required|array',
+            'positions.*.id'         => 'required|integer|exists:exhibits,exhibit_id',
+            'positions.*.x'          => 'required|numeric|min:0|max:100',
+            'positions.*.y'          => 'required|numeric|min:0|max:100',
+        ]);
+
+        foreach ($data['positions'] as $p) {
+            Exhibit::where('exhibit_id', $p['id'])->update([
+                'map_x' => round($p['x'], 2),
+                'map_y' => round($p['y'], 2),
+            ]);
+        }
+
+        $this->log('Museum Map Updated', 'Repositioned ' . count($data['positions']) . ' exhibit pin(s) on the floor plan');
+
+        return response()->json(['ok' => true, 'saved' => count($data['positions'])]);
     }
 
     private function log(string $action, string $details): void

@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Attendance;
+use App\Models\Feedback;
 use App\Models\Scan;
+use App\Models\VisitGroup;
 use App\Models\Visitor;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -14,8 +16,9 @@ use Illuminate\Support\Collection;
  *
  * Two kinds of information come back, and they behave differently:
  *
- * - `items` are *events* — a check-in, a registration, an exhibit scan. The
- *   client deduplicates them by id so each one toasts at most once.
+ * - `items` are *events* — a check-in, a registration, a group
+ *   arriving, an exhibit scan, a fee collected, an ID sighted, feedback left.
+ *   The client deduplicates them by id so each one toasts at most once.
  * - `pending` are *outstanding desk tasks* — an admission fee still to collect,
  *   a residency ID still to sight. Those are current state rather than events,
  *   so they are re-sent on every poll and stay in the panel until someone
@@ -31,25 +34,16 @@ class NotificationController extends Controller
 {
     public function poll(Request $request)
     {
-        $today     = today()->toDateString();
-        $isInit    = $request->has('init');
+        $today  = today()->toDateString();
+        $isInit = $request->has('init');
 
         if ($isInit) {
-            $items = $this->events(
-                Attendance::whereDate('visit_date', $today),
-                Visitor::whereDate('created_at', $today),
-                Scan::whereDate('scanned_at', $today),
-            );
+            $items = $this->events(fn (Builder $q, string $column) => $q->whereDate($column, $today));
         } else {
             // Timestamps are compared in the app timezone, which now matches the
             // MySQL server clock — see the APP_TIMEZONE note in config/app.php.
             $since = $request->input('since', now()->subSeconds(40)->toDateTimeString());
-
-            $items = $this->events(
-                Attendance::where('created_at', '>=', $since),
-                Visitor::where('created_at', '>=', $since),
-                Scan::where('scanned_at', '>=', $since),
-            );
+            $items = $this->events(fn (Builder $q, string $column) => $q->where($column, '>=', $since));
         }
 
         return response()->json([
@@ -65,47 +59,98 @@ class NotificationController extends Controller
     }
 
     /**
-     * Merge the three event sources into one feed, newest first.
+     * Every event source merged into one feed, newest first.
+     *
+     * $window narrows a query to the time range wanted — the whole of today on
+     * init, or everything since the last poll — given the column that marks
+     * when the event happened. Each source has its own such column.
      */
-    private function events(Builder $attendance, Builder $visitors, Builder $scans): Collection
+    private function events(callable $window): Collection
     {
-        $checkIns = $attendance->orderByDesc('created_at')->get()->map(fn ($a) => [
-            'id'      => 'att_' . $a->attendance_id,
-            'type'    => 'attendance',
-            'message' => ($a->visitor_name ?: 'Anonymous') . ' checked in',
-            'time'    => $a->created_at?->format('h:i A') ?? '',
-            'at'      => $a->created_at?->timestamp ?? 0,
-            'url'     => route('records.index') . '?tab=attendance',
-        ]);
+        $records = fn (string $tab) => route('records.index') . '?tab=' . $tab;
 
-        $registrations = $visitors->orderByDesc('created_at')->get()->map(fn ($v) => [
-            'id'      => 'vis_' . $v->visitor_id,
-            'type'    => 'visitor',
-            'message' => trim($v->first_name . ' ' . $v->last_name) . ' registered',
-            'time'    => $v->created_at?->format('h:i A') ?? '',
-            'at'      => $v->created_at?->timestamp ?? 0,
-            'url'     => route('records.index') . '?tab=visitors',
-        ]);
+        $checkIns = $window(Attendance::query(), 'created_at')
+            ->orderByDesc('created_at')->get()->map(fn ($a) => [
+                'id'      => 'att_' . $a->attendance_id,
+                'type'    => 'attendance',
+                'message' => ($a->visitor_name ?: 'An anonymous visitor') . ' checked in',
+                'time'    => $a->created_at?->format('h:i A') ?? '',
+                'at'      => $a->created_at?->timestamp ?? 0,
+                'url'     => $records('attendance'),
+            ]);
 
-        $exhibitScans = $scans->with(['exhibit', 'visitor'])->orderByDesc('scanned_at')->get()
-            ->map(function ($s) {
-                $who = $s->visitor
-                    ? trim($s->visitor->first_name . ' ' . $s->visitor->last_name)
-                    : 'A guest';
+        // No check-out event: attendances.exited_at is rewritten every time the
+        // phone is pocketed ("last confirmed on site"), so it cannot say when
+        // someone actually left.
 
-                return [
-                    'id'      => 'scan_' . $s->scan_id,
-                    'type'    => 'scan',
-                    'message' => $who . ' scanned ' . ($s->exhibit->name ?? 'an exhibit'),
-                    'time'    => $s->scanned_at?->format('h:i A') ?? '',
-                    'at'      => $s->scanned_at?->timestamp ?? 0,
-                    'url'     => $s->exhibit
-                        ? route('exhibits.show', $s->exhibit->exhibit_id)
-                        : route('records.index') . '?tab=scans',
-                ];
-            });
+        $registrations = $window(Visitor::query(), 'created_at')
+            ->orderByDesc('created_at')->get()->map(fn ($v) => [
+                'id'      => 'vis_' . $v->visitor_id,
+                'type'    => 'visitor',
+                'message' => $v->full_name . ' registered'
+                    . ($v->visitor_type ? ' (' . $v->visitor_type . ')' : ''),
+                'time'    => $v->created_at?->format('h:i A') ?? '',
+                'at'      => $v->created_at?->timestamp ?? 0,
+                'url'     => $records('visitors'),
+            ]);
 
-        return $checkIns->concat($registrations)->concat($exhibitScans)
+        $groups = $window(VisitGroup::query(), 'created_at')
+            ->orderByDesc('created_at')->get()->map(fn ($g) => [
+                'id'      => 'grp_' . $g->group_id,
+                'type'    => 'visitor',
+                'message' => ($g->group_name ?: $g->contact_name ?: 'A group') . ' registered'
+                    . ' — party of ' . (int) $g->headcount,
+                'time'    => $g->created_at?->format('h:i A') ?? '',
+                'at'      => $g->created_at?->timestamp ?? 0,
+                'url'     => $records('visitors'),
+            ]);
+
+        $payments = $window(Visitor::where('payment_status', 'Paid')->whereNotNull('paid_at'), 'paid_at')
+            ->orderByDesc('paid_at')->get()->map(fn ($v) => [
+                'id'      => 'paid_' . $v->visitor_id . '_' . $v->paid_at?->timestamp,
+                'type'    => 'payment',
+                'message' => $v->full_name . ' paid ₱' . number_format((float) $v->admission_fee, 2),
+                'time'    => $v->paid_at?->format('h:i A') ?? '',
+                'at'      => $v->paid_at?->timestamp ?? 0,
+                'url'     => $records('visitors'),
+            ]);
+
+        $idChecks = $window(Visitor::where('id_verified', true)->whereNotNull('verified_at'), 'verified_at')
+            ->orderByDesc('verified_at')->get()->map(fn ($v) => [
+                'id'      => 'idv_ok_' . $v->visitor_id . '_' . $v->verified_at?->timestamp,
+                'type'    => 'id_check',
+                'message' => $v->full_name . "'s residency ID was verified"
+                    . ($v->verified_by ? ' by ' . $v->verified_by : ''),
+                'time'    => $v->verified_at?->format('h:i A') ?? '',
+                'at'      => $v->verified_at?->timestamp ?? 0,
+                'url'     => $records('visitors'),
+            ]);
+
+        $feedback = $window(Feedback::with('visitor'), 'submitted_at')
+            ->orderByDesc('submitted_at')->get()->map(fn ($f) => [
+                'id'      => 'fb_' . $f->feedback_id,
+                'type'    => 'feedback',
+                'message' => ($f->visitor?->full_name ?: 'A visitor') . ' left feedback'
+                    . ($f->rating ? ' — ' . str_repeat('★', (int) $f->rating) : ''),
+                'time'    => $f->submitted_at?->format('h:i A') ?? '',
+                'at'      => $f->submitted_at?->timestamp ?? 0,
+                'url'     => route('feedback.show', $f->feedback_id),
+            ]);
+
+        $exhibitScans = $window(Scan::with(['exhibit', 'visitor']), 'scanned_at')
+            ->orderByDesc('scanned_at')->get()->map(fn ($s) => [
+                'id'      => 'scan_' . $s->scan_id,
+                'type'    => 'scan',
+                'message' => ($s->visitor?->full_name ?: 'A guest') . ' scanned ' . ($s->exhibit->name ?? 'an exhibit'),
+                'time'    => $s->scanned_at?->format('h:i A') ?? '',
+                'at'      => $s->scanned_at?->timestamp ?? 0,
+                'url'     => $s->exhibit
+                    ? route('exhibits.show', $s->exhibit->exhibit_id)
+                    : $records('scans'),
+            ]);
+
+        return $checkIns->concat($registrations)->concat($groups)
+            ->concat($payments)->concat($idChecks)->concat($feedback)->concat($exhibitScans)
             ->sortByDesc('at')
             ->values();
     }
@@ -129,7 +174,7 @@ class NotificationController extends Controller
             ->limit(10)
             ->get()
             ->map(function ($v) {
-                $name   = trim($v->first_name . ' ' . $v->last_name);
+                $name   = $v->full_name;
                 $unpaid = $v->payment_status === 'Unpaid';
 
                 return [

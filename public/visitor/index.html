@@ -23,14 +23,18 @@
 <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
-<link rel="stylesheet" href="./css/app.css?v=15">
+<link rel="stylesheet" href="./css/app.css?v=16">
 <!-- Device fit: real viewport height, safe areas, soft keyboard. Runs before
      anything else measures the layout. -->
 <script src="./js/viewport.js?v=15"></script>
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-<!-- TensorFlow.js + Teachable Machine image model -->
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.5/dist/teachablemachine-image.min.js"></script>
+<!-- QR scanner, TensorFlow.js and the Teachable Machine runtime are served
+     from this server (../js/vendor/) rather than a CDN. On the museum network
+     the CDNs were unreachable, which silently dropped recognition to the
+     photo-match fallback and broke QR scanning outright. Same pinned
+     versions as before: html5-qrcode 2.3.8, tfjs 4.20.0, tm-image 0.8.5. -->
+<script src="../js/vendor/html5-qrcode.min.js"></script>
+<script src="../js/vendor/tf.min.js"></script>
+<script src="../js/vendor/teachablemachine-image.min.js"></script>
 </head>
 <body>
 <div id="app">
@@ -236,6 +240,16 @@
           <label class="radio-pill"><input type="radio" name="vtype" value="Group" onchange="selectRadioPill(this)"> Group</label>
           <label class="radio-pill"><input type="radio" name="vtype" value="School" onchange="selectRadioPill(this)"> School</label>
         </div>
+        <!-- Only for a party the desk has already signed in. The desk hands
+             the party a six-letter code; a member who enters it is counted
+             inside the group and owes nothing themselves, because the group
+             paid as one. Without it, "Group" is just a label on a solo
+             visitor who is charged separately. -->
+        <div id="group-code-wrap" style="display:none;margin-top:12px;background:var(--ew);border-radius:12px;padding:12px 13px;">
+          <div style="font-size:calc(11px * var(--fs));color:var(--tl);margin-bottom:6px;">Group code from the entrance desk <span style="color:var(--tl);font-weight:400;">(optional)</span></div>
+          <input id="vi-group-code" class="fi" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8" placeholder="e.g. K7PM4X" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.18em;text-transform:uppercase;font-size:calc(16px * var(--fs));">
+          <div style="font-size:calc(11px * var(--fs));color:var(--tl);margin-top:7px;line-height:1.5;">If the person who signed your group in at the desk was given a code, enter it here. You will be counted with your group and the group's payment covers you. Leave it blank if you are paying on your own.</div>
+        </div>
       </div>
 
       <div style="margin-bottom:14px;">
@@ -249,22 +263,26 @@
 
       <!-- ── Visitor-type dependent fields ─────────────────────────────── -->
 
-      <!-- LOCAL — Aurora resident, free entry, ID sighted at the desk -->
+      <!-- LOCAL — Baler resident, free entry, ID sighted at the desk -->
       <div id="panel-local" class="vistype-panel">
         <div class="fg">
-          <label class="fl">Municipality <span style="color:#ef4444;">*</span></label>
-          <select id="vi-municipality" class="fi">
-            <option value="" disabled selected>Select your municipality</option>
-            <option>Baler</option>
-            <option>Casiguran</option>
-            <option>Dilasag</option>
-            <option>Dinalungan</option>
-            <option>Dingalan</option>
-            <option>Dipaculao</option>
-            <option>Maria Aurora</option>
-            <option>San Luis</option>
+          <label class="fl">Barangay <span style="color:#ef4444;">*</span></label>
+          <select id="vi-barangay" class="fi">
+            <option value="" disabled selected>Select your barangay</option>
+            <option>Barangay I (Poblacion)</option>
+            <option>Barangay II (Poblacion)</option>
+            <option>Barangay III (Poblacion)</option>
+            <option>Barangay IV (Poblacion)</option>
+            <option>Barangay V (Poblacion)</option>
+            <option>Buhangin</option>
+            <option>Calabuanan</option>
+            <option>Obligacion</option>
+            <option>Pingit</option>
+            <option>Reserva</option>
+            <option>Sabang</option>
+            <option>Suklayin</option>
+            <option>Zabali</option>
           </select>
-          <div style="font-size:calc(10.5px * var(--fs));color:var(--tl);margin-top:5px;line-height:1.5;">Aurora province only. If you live outside Aurora, please choose <strong>Tourist</strong> instead.</div>
         </div>
         <div style="display:flex;gap:9px;align-items:flex-start;background:var(--warn-bg);border:1px solid var(--warn-br);border-radius:11px;padding:11px 13px;margin-bottom:14px;">
           <span class="material-icons-round" style="font-size:17px;color:#B45309;flex-shrink:0;margin-top:1px;">badge</span>
@@ -275,7 +293,7 @@
         </div>
       </div>
 
-      <!-- TOURIST — Filipino from outside Aurora -->
+      <!-- TOURIST — Filipino from outside Baler -->
       <div id="panel-tourist" class="vistype-panel" style="display:none;">
         <div class="fi-row" style="margin-bottom:14px;">
           <div>
@@ -427,6 +445,20 @@
         <div style="min-width:0;flex:1;">
           <div id="pending-name" style="font-size:calc(13.5px * var(--fs));font-weight:700;color:var(--td);">—</div>
           <div id="pending-meta" style="font-size:calc(11.5px * var(--fs));color:var(--tl);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">—</div>
+        </div>
+      </div>
+
+      <!-- With a group? Someone who registered before the desk signed the
+           party in, or a returning visitor who is with a group today, can
+           join here and stop owing a separate fee. Hidden once they are in
+           one — the action box above then explains the group is what they
+           are waiting on. -->
+      <div id="pending-join-group" style="display:none;background:var(--ew);border-radius:12px;padding:12px 13px;margin-bottom:16px;">
+        <div style="font-size:calc(12.5px * var(--fs));font-weight:700;color:var(--td);margin-bottom:4px;">Arrived with a group?</div>
+        <div style="font-size:calc(11.5px * var(--fs));color:var(--tl);line-height:1.5;margin-bottom:9px;">If the desk signed your party in as one group, enter the code they gave you and the group's payment covers your admission.</div>
+        <div style="display:flex;gap:8px;">
+          <input id="pending-group-code" class="fi" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8" placeholder="Group code" style="flex:1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.16em;text-transform:uppercase;">
+          <button class="btn btn-green" style="padding:10px 14px;white-space:nowrap;" onclick="joinGroupFromPending()">Join</button>
         </div>
       </div>
 
@@ -765,7 +797,7 @@
 <div id="s-exhibit" class="screen">
   <div style="height:100%;background:var(--ec);display:flex;flex-direction:column;">
     <div id="ex-hero" style="height:220px;background:linear-gradient(160deg,var(--bd),var(--bm));position:relative;flex-shrink:0;">
-      <img id="ex-hero-img" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;position:absolute;inset:0;">
+      <img id="ex-hero-img" src="" alt="" onclick="openHeroImage()" style="display:none;width:100%;height:auto;max-height:62vh;object-fit:contain;background:#000;cursor:zoom-in;">
       <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
         <span id="ex-hero-icon" class="material-icons-round" style="font-size:72px;color:rgba(255,255,255,0.25);">history_edu</span>
       </div>
@@ -976,255 +1008,175 @@
     </div>
     <div style="flex:1;overflow:hidden;background:#F0EBE0;position:relative;display:flex;flex-direction:column;">
       <div style="flex:1;overflow:auto">
-      <svg id="map-svg-ground" viewBox="0 0 438 470" width="100%" style="display:block;background:#E8D9B8;font-family:sans-serif">
+      <!-- Floor plans are the same drawing as the admin Museum Map; pins are
+           placed by JS from each exhibit's saved map_x/map_y. -->
+      <svg id="map-svg-ground" data-floor="ground" viewBox="0 0 1660 1000" width="100%" style="display:block;background:#E8D9B8;font-family:sans-serif">
   <defs>
     <style>
-      @keyframes dash{to{stroke-dashoffset:-20}}
+      @keyframes dash{to{stroke-dashoffset:-64}}
       .story-path{animation:dash 1s linear infinite}
-      @keyframes scanPulse{0%{r:14;opacity:.7}100%{r:26;opacity:0}}
-      /* Legend color overrides */
-      .glass-case{fill:#7BAFD4}
-      .statue{fill:#3A6EA5}
-      .story-node{fill:#E8A020}
-      .free-node{fill:#2E86AB}
+      @keyframes scanPulse{0%{r:60;opacity:.7}100%{r:120;opacity:0}}
     </style>
-    <marker id="arr-v" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-      <path d="M0,0 L6,3 L0,6 Z" fill="#5C1A0A"/>
-    </marker>
   </defs>
-
-  <!-- L-shape: full rect minus top-left notch -->
-  <polygon points="120,8 430,8 430,465 8,465 8,140 120,140 120,8"
-           fill="#D9C9A3" stroke="#2C1810" stroke-width="3" stroke-linejoin="round"/>
-
-  <!-- Horizontal divider wall: separates upper section from main hall -->
-  <line x1="120" y1="148" x2="430" y2="148" stroke="#2C1810" stroke-width="2"/>
-
-  <!-- STAIRS — top center, same color as MAIN EXHIBITION HALL -->
-  <rect x="168" y="14" width="108" height="90" fill="#8B1A1A" stroke="#2C1810" stroke-width="1.5"/>
-  <line x1="168" y1="26" x2="276" y2="26" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
-  <line x1="168" y1="38" x2="276" y2="38" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
-  <line x1="168" y1="50" x2="276" y2="50" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
-  <line x1="168" y1="62" x2="276" y2="62" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
-  <line x1="168" y1="74" x2="276" y2="74" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
-  <line x1="168" y1="86" x2="276" y2="86" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
-  <text x="222" y="59" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="rgba(255,255,255,0.9)">STAIRS</text>
-
-  <!-- COMFORT ROOM — directly below stairs -->
-  <rect x="168" y="108" width="108" height="40" fill="#C8B89A" stroke="#2C1810" stroke-width="1.5"/>
-  <text x="222" y="123" text-anchor="middle" font-size="7.5" font-weight="700" fill="#2C1810">COMFORT</text>
-  <text x="222" y="135" text-anchor="middle" font-size="7.5" font-weight="700" fill="#2C1810">ROOM</text>
-
-  <!-- Diamond outlines left of stairs (from photo) -->
-  <polygon points="138,30 148,40 138,50 128,40" fill="none" stroke="#2C1810" stroke-width="1.5"/>
-  <polygon points="138,68 148,78 138,88 128,78" fill="none" stroke="#2C1810" stroke-width="1.5"/>
-
-  <!-- Upper-left: 2 gray glass cases left of stairs -->
-  <rect x="122" y="14" width="38" height="24" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
-  <rect x="122" y="46" width="38" height="24" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
-
-  <!-- Upper-right: 2 gray cases right of stairs -->
-  <rect x="286" y="14" width="40" height="24" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
-  <rect x="286" y="46" width="40" height="24" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
-  <!-- Far right: 3 stacked cases -->
-  <rect x="336" y="14" width="86" height="24" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
-  <rect x="336" y="46" width="86" height="24" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
-  <rect x="336" y="78" width="86" height="24" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
-
-  <!-- Left wall: 3 gray glass cases stacked -->
-  <rect x="14" y="158" width="56" height="36" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.5"/>
-  <rect x="14" y="204" width="56" height="36" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.5"/>
-  <rect x="14" y="250" width="56" height="36" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.5"/>
-
-  <!-- Center: large dark brown horizontal display case -->
-  <rect x="82" y="192" width="210" height="52" fill="#7B2D0A" stroke="#2C1810" stroke-width="2"/>
-
-  <!-- Blue statue square — below center case -->
-  <rect x="182" y="258" width="24" height="24" fill="#2B5F8E" stroke="#2C1810" stroke-width="1.5"/>
-
-  <!-- Right side: 2 columns of gray cases -->
-  <rect x="306" y="158" width="56" height="36" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.5"/>
-  <rect x="306" y="204" width="56" height="36" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.5"/>
-  <rect x="306" y="250" width="56" height="36" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.5"/>
-  <rect x="372" y="158" width="50" height="36" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.5"/>
-  <rect x="372" y="204" width="50" height="36" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.5"/>
-
-  <!-- Bottom section wall -->
-  <line x1="8" y1="306" x2="430" y2="306" stroke="#2C1810" stroke-width="2"/>
-
-  <!-- Bottom-left: 2 dark brown cases -->
-  <rect x="14" y="316" width="52" height="30" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.5"/>
-  <rect x="76" y="316" width="52" height="30" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.5"/>
-
-  <!-- INFO DESK — bottom left -->
-  <rect x="14" y="356" width="70" height="32" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.5"/>
-  <text x="49" y="370" text-anchor="middle" font-size="7" font-weight="700" fill="white">INFO</text>
-  <text x="49" y="381" text-anchor="middle" font-size="7" font-weight="700" fill="white">DESK</text>
-
-  <!-- ENTRANCE — bottom center with inward arrows -->
-  <rect x="170" y="450" width="80" height="12" fill="#2C1810"/>
-  <text x="210" y="460" text-anchor="middle" font-size="7" font-weight="700" fill="white">ENTRANCE</text>
-  <line x1="190" y1="436" x2="180" y2="449" stroke="#7B2D0A" stroke-width="1.5" marker-end="url(#arr-v)"/>
-  <line x1="230" y1="436" x2="240" y2="449" stroke="#7B2D0A" stroke-width="1.5" marker-end="url(#arr-v)"/>
-
-  <!-- EXIT — right of entrance -->
-  <rect x="260" y="450" width="50" height="12" fill="#2C1810"/>
-  <text x="285" y="460" text-anchor="middle" font-size="7" font-weight="700" fill="white">EXIT</text>
-  <line x1="285" y1="436" x2="285" y2="449" stroke="#7B2D0A" stroke-width="1.5" marker-end="url(#arr-v)"/>
-
-  <!-- FOR STAFF ONLY — bottom right with X -->
-  <rect x="322" y="314" width="100" height="96" fill="#C8B89A" stroke="#2C1810" stroke-width="1.5"/>
-  <line x1="322" y1="314" x2="422" y2="410" stroke="#2C1810" stroke-width="1" opacity="0.4"/>
-  <line x1="422" y1="314" x2="322" y2="410" stroke="#2C1810" stroke-width="1" opacity="0.4"/>
-  <text x="372" y="358" text-anchor="middle" font-size="7" font-weight="700" fill="#2C1810">For Staff</text>
-  <text x="372" y="370" text-anchor="middle" font-size="7" font-weight="700" fill="#2C1810">Only</text>
-
-  <!-- YOU ARE HERE — dynamically placed by JS after QR scan -->
+        <!-- Outer walls -->
+        <polygon points="235,35 570,35 570,10 1020,10 1020,55 1640,55 1640,945 1030,945 1030,980 640,980 640,945 10,945 10,125 235,125" fill="#D9C9A3" stroke="#2C1810" stroke-width="8" stroke-linejoin="round"/>
+        <!-- Stairs block with comfort room -->
+        <rect x="570" y="10" width="450" height="370" fill="#6E3A1E" stroke="#2C1810" stroke-width="5"/>
+        <text x="795" y="110" text-anchor="middle" font-size="30" font-weight="700" fill="#fff" letter-spacing="3">STAIRS</text>
+        <g stroke="#3A1E0E" stroke-width="3">
+          <line x1="590" y1="200" x2="700" y2="200"/><line x1="590" y1="220" x2="700" y2="220"/><line x1="590" y1="240" x2="700" y2="240"/><line x1="590" y1="260" x2="700" y2="260"/><line x1="590" y1="280" x2="700" y2="280"/><line x1="590" y1="300" x2="700" y2="300"/><line x1="590" y1="320" x2="700" y2="320"/><line x1="590" y1="340" x2="700" y2="340"/>
+          <line x1="890" y1="200" x2="1000" y2="200"/><line x1="890" y1="220" x2="1000" y2="220"/><line x1="890" y1="240" x2="1000" y2="240"/><line x1="890" y1="260" x2="1000" y2="260"/><line x1="890" y1="280" x2="1000" y2="280"/><line x1="890" y1="300" x2="1000" y2="300"/><line x1="890" y1="320" x2="1000" y2="320"/><line x1="890" y1="340" x2="1000" y2="340"/>
+        </g>
+        <rect x="710" y="190" width="170" height="150" fill="#EFE6D0" stroke="#2C1810" stroke-width="3"/>
+        <text x="795" y="258" text-anchor="middle" font-size="19" font-weight="700" fill="#2C1810">COMFORT</text>
+        <text x="795" y="284" text-anchor="middle" font-size="19" font-weight="700" fill="#2C1810">ROOM</text>
+        <!-- Wall between the stairs and the right wing -->
+        <line x1="1080" y1="55" x2="1080" y2="380" stroke="#2C1810" stroke-width="7"/>
+        <line x1="1020" y1="380" x2="1080" y2="380" stroke="#2C1810" stroke-width="7"/>
+        <!-- Entrance vestibule, info desk, exit -->
+        <line x1="620" y1="775" x2="620" y2="945" stroke="#2C1810" stroke-width="7"/>
+        <rect x="640" y="900" width="390" height="45" fill="#F3EBD9" stroke="none"/>
+        <rect x="650" y="855" width="70" height="45" fill="#7B2D0A" stroke="#2C1810" stroke-width="3"/>
+        <text transform="translate(740,900) rotate(-90)" text-anchor="start" font-size="18" font-weight="700" fill="#2C1810">INFO DESK</text>
+        <text transform="translate(805,900) rotate(-90)" text-anchor="start" font-size="22" font-weight="700" fill="#2C1810" letter-spacing="2">ENTRANCE</text>
+        <rect x="760" y="935" width="110" height="45" fill="#fff" stroke="#2C1810" stroke-width="3"/>
+        <path d="M760,935 a55,55 0 0 1 55,-55" fill="none" stroke="#2C1810" stroke-width="2"/>
+        <path d="M870,935 a55,55 0 0 0 -55,-55" fill="none" stroke="#2C1810" stroke-width="2"/>
+        <line x1="1010" y1="900" x2="1010" y2="980" stroke="#2C1810" stroke-width="7"/>
+        <rect x="945" y="935" width="60" height="45" fill="#fff" stroke="#2C1810" stroke-width="3"/>
+        <text x="975" y="855" text-anchor="middle" font-size="20" font-weight="700" fill="#2C1810">EXIT</text>
+        <!-- Staff room and side corridor -->
+        <rect x="1520" y="380" width="60" height="290" fill="#F3EBD9" stroke="#2C1810" stroke-width="3"/>
+        <rect x="1310" y="670" width="270" height="275" fill="#EFE6D0" stroke="#2C1810" stroke-width="4"/>
+        <line x1="1310" y1="670" x2="1580" y2="945" stroke="#C0392B" stroke-width="2"/>
+        <line x1="1580" y1="670" x2="1310" y2="945" stroke="#C0392B" stroke-width="2"/>
+        <text x="1445" y="815" text-anchor="middle" font-size="22" font-weight="700" fill="#2C1810">For Staff Only</text>
+        <!-- Left wing: glass cases -->
+        <g fill="#A8BEC5" stroke="#2C1810" stroke-width="3">
+          <rect x="262" y="47" width="55" height="55" transform="rotate(45 290 75)"/>
+          <rect x="487" y="47" width="55" height="55" transform="rotate(45 515 75)"/>
+          <rect x="105" y="130" width="60" height="60"/><rect x="170" y="130" width="60" height="60"/><rect x="235" y="130" width="60" height="60"/>
+          <rect x="110" y="250" width="90" height="70"/>
+          <rect x="310" y="380" width="60" height="60"/>
+          <rect x="280" y="520" width="60" height="160"/>
+          <rect x="165" y="640" width="75" height="70"/>
+          <rect x="520" y="680" width="60" height="60"/>
+          <rect x="380" y="790" width="150" height="80"/>
+        </g>
+        <!-- Left wing: wooden stands, statues -->
+        <g fill="#7B2D0A" stroke="#2C1810" stroke-width="3">
+          <rect x="40" y="400" width="60" height="290"/>
+          <rect x="530" y="130" width="40" height="240"/>
+          <rect x="700" y="380" width="210" height="70"/>
+          <rect x="320" y="655" width="260" height="35"/>
+          <rect x="420" y="905" width="220" height="30"/>
+          <rect x="710" y="635" width="210" height="35"/>
+          <rect x="1020" y="640" width="90" height="35"/>
+          <rect x="860" y="770" width="110" height="30"/>
+        </g>
+        <rect x="270" y="390" width="40" height="40" fill="#8B1A1A" stroke="#2C1810" stroke-width="3"/>
+        <rect x="580" y="655" width="50" height="35" fill="#2C1810"/>
+        <rect x="990" y="645" width="30" height="30" fill="#2C1810"/>
+        <rect x="780" y="450" width="50" height="50" fill="#2B5F8E" stroke="#2C1810" stroke-width="3"/>
+        <rect x="1030" y="380" width="50" height="45" fill="#2B5F8E" stroke="#2C1810" stroke-width="3"/>
+        <!-- Right wing: glass cases -->
+        <g fill="#A8BEC5" stroke="#2C1810" stroke-width="3">
+          <rect x="1180" y="50" width="140" height="75"/>
+          <rect x="1280" y="130" width="40" height="130"/>
+          <rect x="1150" y="230" width="60" height="60"/>
+          <rect x="1440" y="150" width="60" height="50"/>
+          <rect x="1150" y="480" width="90" height="80"/>
+          <rect x="1300" y="540" width="70" height="100"/>
+          <rect x="1100" y="720" width="100" height="140"/>
+        </g>
+        <!-- Right wing: wooden stands -->
+        <g fill="#7B2D0A" stroke="#2C1810" stroke-width="3">
+          <rect x="1340" y="50" width="40" height="200"/>
+          <rect x="1480" y="160" width="60" height="100"/>
+          <rect x="1200" y="360" width="100" height="60"/>
+          <rect x="1350" y="360" width="60" height="60"/>
+          <rect x="1060" y="912" width="160" height="30"/>
+        </g>
+        <rect x="1310" y="360" width="40" height="60" fill="#2C1810"/>
+        <rect x="1570" y="350" width="40" height="40" fill="#8B1A1A" stroke="#2C1810" stroke-width="3"/>
+        <!-- You are here (the framed plan by the entrance) -->
+        <rect x="800" y="605" width="40" height="40" fill="#E03A2F" stroke="#2C1810" stroke-width="2"/>
+        <text x="820" y="592" text-anchor="middle" font-size="17" font-weight="700" fill="#C0392B">YOU ARE HERE</text>
+  <!-- Filled by JS: storyline path + numbered pins, free-explore pins, scan markers -->
+  <polyline class="story-path" data-path="ground" points="" fill="none" stroke="#E8A020" stroke-width="11" stroke-dasharray="30,20" stroke-linejoin="round"/>
+  <g id="map-path-overlay"></g>
+  <g id="map-free-nodes" style="display:none"></g>
   <g id="you-are-here-marker" style="display:none">
-    <circle r="14" fill="#C0392B" stroke="white" stroke-width="2.5" opacity="0.9"/>
-    <text text-anchor="middle" dy="4" font-size="8" font-weight="700" fill="white">HERE</text>
-  </g>
-
-  <!-- Storyline path — nodes ON wooden artifact stands -->
-  <g id="map-path-overlay">
-    <!-- Path connects: E1(center case) → E2(bottom-left case1) → E3(bottom-left case2) -->
-    <polyline points="187,218 40,331 102,331"
-              fill="none" stroke="#E8A020" stroke-width="3" stroke-dasharray="8,5" class="story-path"/>
-    <!-- E1: Siege of Baler Diorama — large center display case -->
-    <circle cx="187" cy="218" r="14" fill="#E8A020" stroke="white" stroke-width="2.5"/>
-    <text x="187" y="222" text-anchor="middle" font-size="10" font-weight="700" fill="white">1</text>
-    <!-- E2: Baler Church — bottom-left case 1 -->
-    <circle cx="40" cy="331" r="14" fill="#E8A020" stroke="white" stroke-width="2.5"/>
-    <text x="40" y="335" text-anchor="middle" font-size="10" font-weight="700" fill="white">2</text>
-    <!-- E3: Aurora Province Heritage — bottom-left case 2 -->
-    <circle cx="102" cy="331" r="14" fill="#E8A020" stroke="white" stroke-width="2.5"/>
-    <text x="102" y="335" text-anchor="middle" font-size="10" font-weight="700" fill="white">3</text>
-  </g>
-
-  <!-- Free explore nodes -->
-  <g id="map-free-nodes" style="display:none">
-    <circle cx="187" cy="218" r="13" fill="#4A7C2F" stroke="white" stroke-width="2"/>
-    <text x="187" y="222" text-anchor="middle" font-size="8" font-weight="700" fill="white">E1</text>
-    <circle cx="40" cy="331" r="13" fill="#4A7C2F" stroke="white" stroke-width="2"/>
-    <text x="40" y="335" text-anchor="middle" font-size="8" font-weight="700" fill="white">E2</text>
-    <circle cx="102" cy="331" r="13" fill="#4A7C2F" stroke="white" stroke-width="2"/>
-    <text x="102" y="335" text-anchor="middle" font-size="8" font-weight="700" fill="white">E3</text>
+    <circle r="40" fill="#C0392B" stroke="white" stroke-width="7" opacity="0.9"/>
+    <text text-anchor="middle" dy="10" font-size="24" font-weight="700" fill="white">HERE</text>
   </g>
 </svg>
-      <!-- 2ND FLOOR SVG — accurate to photo -->
-      <svg id="map-svg-second" viewBox="0 0 500 420" width="100%" style="display:none;background:#E8D9B8;font-family:sans-serif">
-
-  <!-- OUTER WALLS -->
-  <rect x="6" y="6" width="488" height="408" fill="#D9C9A3" stroke="#2C1810" stroke-width="3"/>
-
-  <!-- ── TOP SECTION (y=6..120) ── -->
-  <!-- Inner top wall -->
-  <line x1="6" y1="120" x2="494" y2="120" stroke="#2C1810" stroke-width="2"/>
-
-  <!-- Top-left: large wooden artifact block — no lines so it's not confused with stairs -->
-  <rect x="10" y="10" width="178" height="106" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.5"/>
-
-  <!-- Top-center: STAIRS — U-shape, same color as MAIN EXHIBITION HALL -->
-  <!-- Top bar -->
-  <rect x="196" y="10" width="118" height="26" fill="#8B1A1A" stroke="#2C1810" stroke-width="2"/>
-  <!-- Left leg -->
-  <rect x="196" y="10" width="28" height="106" fill="#8B1A1A" stroke="#2C1810" stroke-width="2"/>
-  <line x1="196" y1="38" x2="224" y2="38" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
-  <line x1="196" y1="52" x2="224" y2="52" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
-  <line x1="196" y1="66" x2="224" y2="66" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
-  <line x1="196" y1="80" x2="224" y2="80" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
-  <line x1="196" y1="94" x2="224" y2="94" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
-  <!-- Right leg -->
-  <rect x="286" y="10" width="28" height="106" fill="#8B1A1A" stroke="#2C1810" stroke-width="2"/>
-  <line x1="286" y1="38" x2="314" y2="38" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
-  <line x1="286" y1="52" x2="314" y2="52" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
-  <line x1="286" y1="66" x2="314" y2="66" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
-  <line x1="286" y1="80" x2="314" y2="80" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
-  <line x1="286" y1="94" x2="314" y2="94" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
-  <!-- STAIRS label centered in top bar -->
-  <text x="255" y="23" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="rgba(255,255,255,0.9)">STAIRS</text>
-
-  <!-- COMFORT ROOM — inside the U between the two legs -->
-  <rect x="224" y="36" width="62" height="80" fill="#C8B89A" stroke="#2C1810" stroke-width="1.5"/>
-  <text x="255" y="73" text-anchor="middle" font-size="7.5" font-weight="700" fill="#2C1810">COMFORT</text>
-  <text x="255" y="85" text-anchor="middle" font-size="7.5" font-weight="700" fill="#2C1810">ROOM</text>
-
-  <!-- Top-right: lighter area with glass cases (~38% width) -->
-  <rect x="322" y="10" width="168" height="106" fill="#C8B89A" stroke="#2C1810" stroke-width="1.5"/>
-  <!-- Glass cases in top-right -->
-  <rect x="332" y="18" width="68" height="28" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
-  <rect x="410" y="18" width="72" height="28" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
-  <rect x="332" y="54" width="68" height="28" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
-  <rect x="410" y="54" width="72" height="28" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
-  <rect x="332" y="88" width="150" height="24" fill="#A8BEC5" stroke="#2C1810" stroke-width="1.2"/>
-
-  <!-- ── MAIN EXHIBITION HALL (y=120..290) ── -->
-  <rect x="10" y="124" width="480" height="158" fill="#8B1A1A" stroke="#2C1810" stroke-width="2.5"/>
-  <text x="250" y="198" text-anchor="middle" font-size="15" font-weight="700" fill="rgba(255,255,255,0.95)">MAIN EXHIBITION HALL</text>
-  <text x="250" y="218" text-anchor="middle" font-size="10" fill="rgba(255,255,255,0.6)">2nd Floor Gallery</text>
-
-  <!-- Left wall wooden stands (inside hall, on left edge) -->
-  <rect x="6" y="130" width="8" height="26" fill="#7B2D0A" stroke="#2C1810" stroke-width="1"/>
-  <rect x="6" y="164" width="8" height="26" fill="#7B2D0A" stroke="#2C1810" stroke-width="1"/>
-  <rect x="6" y="198" width="8" height="26" fill="#7B2D0A" stroke="#2C1810" stroke-width="1"/>
-  <rect x="6" y="232" width="8" height="26" fill="#7B2D0A" stroke="#2C1810" stroke-width="1"/>
-
-  <!-- Right wall wooden stands -->
-  <rect x="486" y="130" width="8" height="26" fill="#7B2D0A" stroke="#2C1810" stroke-width="1"/>
-  <rect x="486" y="164" width="8" height="26" fill="#7B2D0A" stroke="#2C1810" stroke-width="1"/>
-  <rect x="486" y="198" width="8" height="26" fill="#7B2D0A" stroke="#2C1810" stroke-width="1"/>
-  <rect x="486" y="232" width="8" height="26" fill="#7B2D0A" stroke="#2C1810" stroke-width="1"/>
-
-  <!-- ── BOTTOM CORRIDOR (y=290..410) ── -->
-  <line x1="6" y1="290" x2="494" y2="290" stroke="#2C1810" stroke-width="2"/>
-
-  <!-- Bottom display cases row -->
-  <rect x="10" y="298" width="58" height="22" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
-  <rect x="76" y="298" width="58" height="22" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
-  <rect x="142" y="298" width="58" height="22" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
-  <rect x="208" y="298" width="58" height="22" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
-  <rect x="274" y="298" width="58" height="22" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
-  <rect x="340" y="298" width="58" height="22" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
-  <rect x="406" y="298" width="80" height="22" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
-
-  <!-- Bottom corner rooms -->
-  <rect x="10" y="330" width="90" height="72" fill="#C8B89A" stroke="#2C1810" stroke-width="1.5"/>
-  <rect x="396" y="330" width="90" height="72" fill="#C8B89A" stroke="#2C1810" stroke-width="1.5"/>
-
-  <!-- Bottom center display cases -->
-  <rect x="112" y="330" width="70" height="30" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
-  <rect x="194" y="330" width="110" height="30" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
-  <rect x="316" y="330" width="70" height="30" fill="#7B2D0A" stroke="#2C1810" stroke-width="1.2"/>
-
-  <!-- Storyline path overlay -->
-  <g id="map-path-overlay-2nd">
-    <polyline points="99,63 40,310 107,310 249,345 351,345"
-              fill="none" stroke="#E8A020" stroke-width="3" stroke-dasharray="8,5" class="story-path"/>
-    <circle cx="99" cy="63" r="14" fill="#E8A020" stroke="white" stroke-width="2.5"/>
-    <text x="99" y="67" text-anchor="middle" font-size="10" font-weight="700" fill="white">4</text>
-    <circle cx="40" cy="310" r="14" fill="#E8A020" stroke="white" stroke-width="2.5"/>
-    <text x="40" y="314" text-anchor="middle" font-size="10" font-weight="700" fill="white">5</text>
-    <circle cx="107" cy="310" r="14" fill="#E8A020" stroke="white" stroke-width="2.5"/>
-    <text x="107" y="314" text-anchor="middle" font-size="10" font-weight="700" fill="white">6</text>
-    <circle cx="249" cy="345" r="14" fill="#E8A020" stroke="white" stroke-width="2.5"/>
-    <text x="249" y="349" text-anchor="middle" font-size="10" font-weight="700" fill="white">7</text>
-    <circle cx="351" cy="345" r="14" fill="#E8A020" stroke="white" stroke-width="2.5"/>
-    <text x="351" y="349" text-anchor="middle" font-size="10" font-weight="700" fill="white">8</text>
-  </g>
-
-  <!-- Free explore nodes -->
-  <g id="map-free-nodes-2nd" style="display:none">
-    <circle cx="99" cy="63" r="13" fill="#4A7C2F" stroke="white" stroke-width="2"/>
-    <text x="99" y="67" text-anchor="middle" font-size="8" font-weight="700" fill="white">E4</text>
-    <circle cx="40" cy="310" r="13" fill="#4A7C2F" stroke="white" stroke-width="2"/>
-    <text x="40" y="314" text-anchor="middle" font-size="8" font-weight="700" fill="white">E5</text>
-    <circle cx="107" cy="310" r="13" fill="#4A7C2F" stroke="white" stroke-width="2"/>
-    <text x="107" y="314" text-anchor="middle" font-size="8" font-weight="700" fill="white">E6</text>
-    <circle cx="249" cy="345" r="13" fill="#4A7C2F" stroke="white" stroke-width="2"/>
-    <text x="249" y="349" text-anchor="middle" font-size="8" font-weight="700" fill="white">E7</text>
-    <circle cx="351" cy="345" r="13" fill="#4A7C2F" stroke="white" stroke-width="2"/>
-    <text x="351" y="349" text-anchor="middle" font-size="8" font-weight="700" fill="white">E8</text>
-  </g>
+      <svg id="map-svg-second" data-floor="second" viewBox="0 0 1770 1010" width="100%" style="display:none;background:#E8D9B8;font-family:sans-serif">
+        <defs>
+          <marker id="arr" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#C0392B"/></marker>
+          <marker id="arr-rev" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 Z" fill="#C0392B"/></marker>
+        </defs>
+        <!-- Outer walls -->
+        <polygon points="10,20 640,20 640,65 1095,65 1095,20 1755,20 1755,990 975,990 975,965 755,965 755,990 10,990" fill="#D9C9A3" stroke="#2C1810" stroke-width="8" stroke-linejoin="round"/>
+        <!-- Staircase block -->
+        <rect x="640" y="65" width="455" height="370" fill="#6E3A1E" stroke="#2C1810" stroke-width="5"/>
+        <rect x="640" y="65" width="455" height="170" fill="#5A2A14"/>
+        <g stroke="#3A1E0E" stroke-width="3">
+          <line x1="650" y1="250" x2="770" y2="250"/><line x1="650" y1="268" x2="770" y2="268"/><line x1="650" y1="286" x2="770" y2="286"/><line x1="650" y1="304" x2="770" y2="304"/><line x1="650" y1="322" x2="770" y2="322"/><line x1="650" y1="340" x2="770" y2="340"/><line x1="650" y1="358" x2="770" y2="358"/>
+          <line x1="810" y1="250" x2="925" y2="250"/><line x1="810" y1="268" x2="925" y2="268"/><line x1="810" y1="286" x2="925" y2="286"/><line x1="810" y1="304" x2="925" y2="304"/><line x1="810" y1="322" x2="925" y2="322"/><line x1="810" y1="340" x2="925" y2="340"/><line x1="810" y1="358" x2="925" y2="358"/>
+          <line x1="965" y1="250" x2="1085" y2="250"/><line x1="965" y1="268" x2="1085" y2="268"/><line x1="965" y1="286" x2="1085" y2="286"/><line x1="965" y1="304" x2="1085" y2="304"/><line x1="965" y1="322" x2="1085" y2="322"/><line x1="965" y1="340" x2="1085" y2="340"/><line x1="965" y1="358" x2="1085" y2="358"/>
+        </g>
+        <rect x="770" y="235" width="40" height="145" fill="#6E3A1E"/>
+        <rect x="925" y="235" width="40" height="145" fill="#6E3A1E"/>
+        <text x="867" y="160" text-anchor="middle" font-size="28" font-weight="700" fill="#fff" letter-spacing="3">STAIRS</text>
+        <rect x="640" y="380" width="455" height="55" fill="#8B5A2B" stroke="#2C1810" stroke-width="3"/>
+        <!-- Open atrium looking down on the 1st floor -->
+        <path d="M335,455 L640,455 Q867,540 1095,455 L1415,455 L1415,730 L335,730 Z" fill="#C1533A" stroke="#2C1810" stroke-width="7" stroke-linejoin="round"/>
+        <g fill="#2C1810">
+          <rect x="318" y="440" width="35" height="35"/><rect x="1398" y="440" width="35" height="35"/>
+          <rect x="318" y="715" width="35" height="35"/><rect x="1398" y="715" width="35" height="35"/>
+          <rect x="648" y="715" width="35" height="35"/><rect x="1078" y="715" width="35" height="35"/>
+          <rect x="623" y="440" width="35" height="35"/><rect x="1078" y="440" width="35" height="35"/>
+        </g>
+        <!-- Walkway direction across the gallery -->
+        <line x1="395" y1="410" x2="1355" y2="410" stroke="#C0392B" stroke-width="3" marker-start="url(#arr-rev)" marker-end="url(#arr)"/>
+        <!-- Wooden stands and artifacts -->
+        <g fill="#7B2D0A" stroke="#2C1810" stroke-width="3">
+          <rect x="65" y="35" width="550" height="25"/>
+          <rect x="25" y="80" width="50" height="205"/>
+          <rect x="140" y="200" width="95" height="95"/>
+          <rect x="585" y="120" width="40" height="205"/>
+          <rect x="110" y="455" width="65" height="220"/>
+          <rect x="195" y="455" width="55" height="90"/>
+          <rect x="195" y="555" width="60" height="120"/>
+          <rect x="120" y="745" width="45" height="210"/>
+          <rect x="200" y="825" width="115" height="40"/>
+          <rect x="235" y="875" width="40" height="40"/>
+          <rect x="325" y="755" width="40" height="60"/>
+          <rect x="355" y="905" width="25" height="45"/>
+          <rect x="465" y="855" width="140" height="25"/>
+          <rect x="685" y="835" width="60" height="120"/>
+          <rect x="985" y="835" width="50" height="120"/>
+          <rect x="1105" y="835" width="150" height="40"/>
+          <rect x="1280" y="835" width="65" height="40"/>
+          <rect x="1295" y="885" width="40" height="40"/>
+          <rect x="1485" y="875" width="40" height="40"/>
+          <rect x="1585" y="755" width="60" height="200"/>
+          <rect x="1535" y="515" width="60" height="130"/>
+          <rect x="1515" y="415" width="140" height="40"/>
+          <rect x="1670" y="210" width="45" height="205"/>
+          <rect x="1455" y="160" width="240" height="35"/>
+          <rect x="1145" y="30" width="270" height="25"/>
+        </g>
+        <!-- Glass storage -->
+        <g fill="#A8BEC5" stroke="#2C1810" stroke-width="3">
+          <rect x="1425" y="30" width="160" height="125" fill="#C8C0B0"/>
+          <rect x="1195" y="210" width="140" height="115"/>
+          <rect x="385" y="935" width="50" height="40"/>
+        </g>
+  <polyline class="story-path" data-path="second" points="" fill="none" stroke="#E8A020" stroke-width="11" stroke-dasharray="30,20" stroke-linejoin="round"/>
+  <g id="map-path-overlay-2nd"></g>
+  <g id="map-free-nodes-2nd" style="display:none"></g>
 </svg>
 
       <script>
@@ -1455,6 +1407,16 @@
             <div style="position:absolute;right:2px;top:2px;width:20px;height:20px;border-radius:50%;background:var(--w);box-shadow:0 1px 4px rgba(0,0,0,0.2);transition:all .2s;"></div>
           </div>
         </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:14px;border-bottom:1px solid var(--es);">
+          <span class="material-icons-round" style="font-size:20px;color:var(--accent-text);">play_circle</span>
+          <div style="flex:1;">
+            <div style="font-size:calc(14px * var(--fs));color:var(--td);">Play on Scan</div>
+            <div style="font-size:calc(11px * var(--fs));color:var(--tl);margin-top:2px;">Narration starts by itself after a QR scan</div>
+          </div>
+          <div id="toggle-autoplay" onclick="toggleAutoplay()" class="toggle on" style="width:44px;height:24px;border-radius:12px;background:var(--gm);position:relative;flex-shrink:0;cursor:pointer;">
+            <div style="position:absolute;right:2px;top:2px;width:20px;height:20px;border-radius:50%;background:var(--w);box-shadow:0 1px 4px rgba(0,0,0,0.2);transition:all .2s;"></div>
+          </div>
+        </div>
         <div id="row-music" style="display:flex;align-items:center;gap:10px;padding:14px;border-bottom:1px solid var(--es);">
           <span class="material-icons-round" style="font-size:20px;color:var(--tl);">music_note</span>
           <span style="flex:1;font-size:calc(14px * var(--fs));color:var(--td);">Background Music</span>
@@ -1603,34 +1565,62 @@
 <div id="feedback-sheet" class="sheet-overlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
-    <div style="font-family:'Young Serif',serif;font-size:calc(18px * var(--fs));color:var(--td);margin-bottom:6px;">Leave Feedback</div>
-    <div style="font-size:calc(13px * var(--fs));color:var(--tl);margin-bottom:16px;">How was your museum experience today?</div>
-    <div class="stars" id="star-row">
-      <span class="star" onclick="setRating(1)">★</span>
-      <span class="star" onclick="setRating(2)">★</span>
-      <span class="star" onclick="setRating(3)">★</span>
-      <span class="star" onclick="setRating(4)">★</span>
-      <span class="star" onclick="setRating(5)">★</span>
+    <!-- The ARTA Client Satisfaction Measurement form, in three steps:
+           1  Citizen's Charter (CC1–CC3)
+           2  Service Quality Dimensions (SQD0–SQD8)
+           3  The museum's own: star rating, guide, app questions, comment
+         Questions come from the survey_questions table via the `survey`
+         API action, so the Tourism office edits them without a deploy.
+         Only the fixed parts of step 3 are in the markup. -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <div style="font-family:'Young Serif',serif;font-size:calc(18px * var(--fs));color:var(--td);" data-fil="Sarbey ng Bisita" data-en="Visitor Survey">Visitor Survey</div>
+      <div class="survey-dots" id="survey-dots"><i class="on"></i><i></i><i></i></div>
     </div>
-    <!-- Only revealed when a guide was actually assigned to this visitor
-         today. Most visits at Museo de Baler are unguided, so asking everyone
-         about a guide they never had would just collect noise. -->
-    <div id="guide-feedback" style="display:none;margin-bottom:16px;padding-top:14px;border-top:1px solid var(--bd,#e7e5e4);">
-      <div id="guide-feedback-label" style="font-size:calc(13px * var(--fs));color:var(--tl);margin-bottom:8px;">How was your guide?</div>
-      <div class="stars" id="guide-star-row">
-        <span class="star guide-star" onclick="setGuideRating(1)">★</span>
-        <span class="star guide-star" onclick="setGuideRating(2)">★</span>
-        <span class="star guide-star" onclick="setGuideRating(3)">★</span>
-        <span class="star guide-star" onclick="setGuideRating(4)">★</span>
-        <span class="star guide-star" onclick="setGuideRating(5)">★</span>
+    <div id="survey-step-sub" style="font-size:calc(13px * var(--fs));color:var(--tl);margin-bottom:14px;"></div>
+
+    <div id="survey-loading" style="text-align:center;padding:24px;color:var(--tl);font-size:calc(13px * var(--fs));">Loading…</div>
+
+    <!-- Steps 1 and 2 are generated. -->
+    <div class="survey-step" id="survey-step-1" style="display:none;"></div>
+    <div class="survey-step" id="survey-step-2" style="display:none;"></div>
+
+    <div class="survey-step" id="survey-step-3" style="display:none;">
+      <div style="font-size:calc(13px * var(--fs));color:var(--tl);margin-bottom:6px;" data-fil="Kumusta ang iyong pagbisita sa museo?" data-en="How was your museum experience today?">How was your museum experience today?</div>
+      <div class="stars" id="star-row">
+        <span class="star" onclick="setRating(1)">★</span>
+        <span class="star" onclick="setRating(2)">★</span>
+        <span class="star" onclick="setRating(3)">★</span>
+        <span class="star" onclick="setRating(4)">★</span>
+        <span class="star" onclick="setRating(5)">★</span>
       </div>
+      <!-- Only revealed when a guide was actually assigned to this visitor
+           today. Most visits at Museo de Baler are unguided, so asking everyone
+           about a guide they never had would just collect noise. -->
+      <div id="guide-feedback" style="display:none;margin-bottom:16px;padding-top:14px;border-top:1px solid var(--es);">
+        <div id="guide-feedback-label" style="font-size:calc(13px * var(--fs));color:var(--tl);margin-bottom:8px;">How was your guide?</div>
+        <div class="stars" id="guide-star-row">
+          <span class="star guide-star" onclick="setGuideRating(1)">★</span>
+          <span class="star guide-star" onclick="setGuideRating(2)">★</span>
+          <span class="star guide-star" onclick="setGuideRating(3)">★</span>
+          <span class="star guide-star" onclick="setGuideRating(4)">★</span>
+          <span class="star guide-star" onclick="setGuideRating(5)">★</span>
+        </div>
+      </div>
+      <div id="survey-app-questions"></div>
+      <textarea id="feedback-text" class="fi" rows="3" placeholder="Suggestions on how we can improve (optional)" data-fil-ph="Mga suhestiyon kung paano pa mapapabuti ang aming serbisyo (opsyonal)" data-en-ph="Suggestions on how we can improve (optional)" style="resize:none;margin-bottom:14px;"></textarea>
     </div>
 
-    <textarea id="feedback-text" class="fi" rows="4" placeholder="Tell us about your visit..." style="resize:none;margin-bottom:14px;"></textarea>
-    <button class="btn btn-green btn-full" style="margin-bottom:10px;" onclick="submitFeedback()">
-      <span class="material-icons-round">send</span>Submit Feedback
-    </button>
-    <button class="btn btn-outline btn-full" onclick="closeFeedback()">Cancel</button>
+    <div id="survey-nav" style="display:none;">
+      <div style="display:flex;gap:8px;margin-bottom:10px;">
+        <button class="btn btn-outline" id="survey-back" style="flex:1;" onclick="surveyBack()">
+          <span class="material-icons-round">arrow_back</span><span data-fil="Bumalik" data-en="Back">Back</span>
+        </button>
+        <button class="btn btn-green" id="survey-next" style="flex:2;" onclick="surveyNext()">
+          <span data-fil="Susunod" data-en="Next">Next</span><span class="material-icons-round">arrow_forward</span>
+        </button>
+      </div>
+      <button class="btn btn-outline btn-full" onclick="closeFeedback()" data-fil="Kanselahin" data-en="Cancel">Cancel</button>
+    </div>
   </div>
 </div>
 

@@ -30,28 +30,36 @@ img{max-width:100%}
 .main-content::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:3px}
 
 /* ── SIDEBAR ── */
-.sidebar-brand{display:flex;align-items:center;gap:10px;padding:18px 16px;border-bottom:1px solid var(--border)}
+.sidebar-brand{display:flex;align-items:center;gap:10px;padding:18px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
 .brand-icon{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--green-dark),var(--green));display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0}
 .brand-icon svg{width:16px;height:16px}
 .brand-name{font-family:'Young Serif',serif;font-size:13px;color:var(--text)}
 .brand-sub{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em}
-.sidebar-nav{flex:1;padding:12px 10px;display:flex;flex-direction:column;gap:2px}
-.nav-item{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:var(--r-sm);border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text-3);transition:all .15s;text-align:left;width:100%;text-decoration:none}
+.sidebar-nav{flex:1;min-height:0;overflow-y:auto;padding:10px 10px;display:flex;flex-direction:column;gap:1px;scrollbar-width:thin;scrollbar-color:#d1d5db transparent}
+.nav-item{display:flex;align-items:center;gap:9px;padding:8px 10px;flex-shrink:0;border-radius:var(--r-sm);border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text-3);transition:all .15s;text-align:left;width:100%;text-decoration:none}
 .nav-item:hover{background:#f3f4f6;color:var(--text)}
 .nav-item.active{background:var(--green-pale);color:var(--green-dark);font-weight:700}
 .nav-item svg{width:15px;height:15px;flex-shrink:0}
-.sidebar-footer{padding:12px 14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px}
-.user-info{flex:1;display:flex;align-items:center;gap:8px;min-width:0}
-.avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--gold),#f59e0b);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
-.user-name{font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.user-role{font-size:10px;color:var(--text-3)}
-/* The three controls beside the avatar share one size and one hover, so
-   they read as a set. Logout keeps its red hover as the one destructive act. */
-.icon-btn,.logout-btn{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;color:var(--text-3);transition:all .15s;flex-shrink:0;background:none;border:none;cursor:pointer;text-decoration:none;position:relative}
-.icon-btn:hover{background:var(--border-light);color:var(--text)}
-.logout-btn:hover{background:#fee2e2;color:var(--red)}
-.icon-btn svg,.logout-btn svg{width:15px;height:15px}
-.icon-btn .dot{position:absolute;top:5px;right:5px;width:7px;height:7px;background:var(--red);border-radius:50%;border:1.5px solid var(--surface)}
+/* Two rows, not one. The sidebar is 220px; with three action buttons
+   beside the avatar the name and role were left about 46px, so the role
+   ran underneath the icons. */
+/* Two rows: who is signed in, then what they can do about it. The three
+   controls are equal labelled tiles so nothing crowds the name; logout keeps
+   its red hover as the one destructive act. */
+.sidebar-footer{padding:12px 12px 14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:10px;flex-shrink:0;background:#fff}
+.user-info{display:flex;align-items:center;gap:10px;min-width:0;padding:8px 10px;background:var(--border-light);border-radius:10px}
+.user-text{min-width:0;flex:1}
+.user-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.user-actions form{display:contents}
+.avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--gold),#f59e0b);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0}
+.user-name{font-size:12.5px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-role{font-size:10.5px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.icon-btn,.logout-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;height:48px;border-radius:10px;color:var(--text-3);transition:all .15s;background:none;border:1px solid var(--border);cursor:pointer;text-decoration:none;position:relative;font:inherit;padding:0}
+.icon-btn span:not(.dot),.logout-btn span{font-size:10px;font-weight:600;letter-spacing:.02em;line-height:1}
+.icon-btn:hover{background:var(--border-light);color:var(--text);border-color:var(--text-3)}
+.logout-btn:hover{background:#fee2e2;color:var(--red);border-color:#fca5a5}
+.icon-btn svg,.logout-btn svg{width:16px;height:16px}
+.icon-btn .dot{position:absolute;top:6px;right:calc(50% - 14px);width:7px;height:7px;background:var(--red);border-radius:50%;border:1.5px solid var(--surface)}
 
 /* ── PAGE HEADER ── */
 .ph{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap}
@@ -95,6 +103,21 @@ img{max-width:100%}
 
 /* ── STAT CARDS ── */
 .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:22px}
+/* Fixed rows of three, so the cards line up instead of wrapping wherever
+   the width happens to land. .stats-3-2 is five cards: three on top, and
+   the two below stretched to fill the same width. */
+.stats-row.stats-3{grid-template-columns:repeat(3,1fr)}
+.stats-row.stats-3-2{grid-template-columns:repeat(6,1fr)}
+.stats-row.stats-3-2>*{grid-column:span 2}
+.stats-row.stats-3-2>*:nth-child(n+4){grid-column:span 3}
+@media (max-width:900px){
+  .stats-row.stats-3{grid-template-columns:repeat(2,1fr)}
+  .stats-row.stats-3-2{grid-template-columns:repeat(2,1fr)}
+  .stats-row.stats-3-2>*,.stats-row.stats-3-2>*:nth-child(n+4){grid-column:span 1}
+}
+@media (max-width:520px){
+  .stats-row.stats-3,.stats-row.stats-3-2{grid-template-columns:1fr}
+}
 .stat{background:var(--surface);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--shadow-sm);padding:18px 20px;display:flex;align-items:center;gap:14px;transition:box-shadow .15s,transform .15s}
 .stat:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
 .stat-ico{width:44px;height:44px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
@@ -177,17 +200,21 @@ img{max-width:100%}
 .inner-panel.active{display:block}
 
 /* ── EXHIBIT GRID ── */
-.ex-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
-.ex-card{background:var(--surface);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--shadow-sm);overflow:hidden;transition:box-shadow .15s,transform .15s}
-.ex-card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px)}
-.ex-card.archived{opacity:.55}
-.ex-thumb{height:130px;display:flex;align-items:center;justify-content:center;font-size:52px;position:relative;background:linear-gradient(135deg,#f0fdf4,#dcfce7)}
-.ex-thumb img{width:100%;height:100%;object-fit:cover}
-.arch-tag{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.55);color:#fff;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:20px}
-.ex-body{padding:14px 16px}
-.ex-title{font-family:'Young Serif',serif;font-size:14.5px;margin-bottom:8px;color:var(--text)}
-.ex-meta{font-size:11.5px;color:var(--text-3);line-height:1.8;margin-bottom:12px}
-.ex-meta strong{color:var(--green-dark)}
+/* Exhibit tiles: the picture is the card, the name is printed on it. */
+.ex-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.ex-card{position:relative;border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow-sm);transition:box-shadow .2s,transform .2s;background:#1f2937}
+.ex-card:hover{box-shadow:var(--shadow-md);transform:translateY(-3px)}
+.ex-card.archived{opacity:.55;filter:grayscale(.6)}
+.ex-thumb{position:relative;aspect-ratio:16/10;background:#1f2937}
+.ex-thumb.no-image{background:linear-gradient(135deg,var(--green-dark),var(--green-mid))}
+.ex-thumb img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .35s ease}
+.ex-card:hover .ex-thumb img{transform:scale(1.05)}
+.ex-code{position:absolute;top:10px;left:10px;background:rgba(255,255,255,.9);color:var(--green-dark);font-size:10px;font-weight:700;letter-spacing:.06em;padding:3px 8px;border-radius:20px;z-index:2}
+.arch-tag{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.55);color:#fff;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:20px;z-index:2}
+.ex-overlay{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:flex-end;padding:14px 16px;background:linear-gradient(to top,rgba(0,0,0,.82) 0%,rgba(0,0,0,.45) 45%,rgba(0,0,0,0) 75%);color:#fff}
+.ex-title{font-family:'Young Serif',serif;font-size:17px;line-height:1.2;text-transform:uppercase;letter-spacing:.02em;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+.ex-meta{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11px;color:rgba(255,255,255,.75);margin-top:6px;max-height:0;overflow:hidden;opacity:0;transition:max-height .25s ease,opacity .25s ease,margin-top .25s ease}
+.ex-card:hover .ex-meta{max-height:40px;opacity:1}
 .ex-actions{display:flex;gap:6px;flex-wrap:wrap}
 
 /* ── MODAL ── */
@@ -260,7 +287,12 @@ textarea.fi{resize:vertical;min-height:80px}
   .brand-name,.brand-sub,.nav-item span,.user-name,.user-role{display:none}
   .sidebar-brand{justify-content:center;padding:14px 0}
   .nav-item{justify-content:center;padding:10px 0}
-  .sidebar-footer{justify-content:center}
+  .sidebar-footer{align-items:stretch;padding:10px 8px}
+  .user-info{justify-content:center;padding:6px}
+  .user-actions{grid-template-columns:1fr}
+  .icon-btn span:not(.dot),.logout-btn span{display:none}
+  .icon-btn,.logout-btn{height:34px}
+  .icon-btn .dot{right:6px}
   .main-content{padding:16px}
   .charts-grid{grid-template-columns:1fr}
   .fi-row{grid-template-columns:1fr}

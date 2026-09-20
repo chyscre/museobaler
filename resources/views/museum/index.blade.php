@@ -36,6 +36,10 @@
 <div class="ph">
   <div class="ph-left"><h2>Museum Info</h2><p>Manage content shown in the visitor app</p></div>
   <div class="ph-right">
+    <a href="{{ route('museum.map') }}" class="btn btn-outline btn-sm">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+      Floor Map
+    </a>
     <button class="btn btn-green btn-sm" onclick="document.getElementById('museumForm').submit()">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
       Save All Changes
@@ -291,7 +295,11 @@ function previewAdmission() {
         btn.disabled = false;
         // Accuracy is worth showing: a fix vaguer than the radius would put
         // the pin somewhere the staff standing here are not.
-        say('Filled in — accurate to about ' + acc + 'm. Save to apply.', 'good');
+        // A laptop has no GPS: its position is a Wi-Fi/IP guess that has
+        // landed 1.8 km from the door. Warn hard, and point at the phone.
+        say(acc > 100
+          ? 'Filled in, but only accurate to about ' + acc + 'm — a computer guesses its position from Wi-Fi. Set the pin from a phone instead: My Attendance → Set museum pin.'
+          : 'Filled in — accurate to about ' + acc + 'm. Save to apply.', acc > 100 ? 'bad' : 'good');
       },
       function (err) {
         btn.disabled = false;

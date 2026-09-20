@@ -7,8 +7,119 @@
 <div class="tot">
   <div><span class="k">Responses</span><span class="v">{{ number_format($total) }}</span></div>
   <div><span class="k">Average rating</span><span class="v">{{ $average ? $average . ' / 5' : '—' }}</span></div>
-  <div><span class="k">About the museum</span><span class="v">{{ number_format($unattributed) }}</span></div>
+  <div><span class="k">CSM respondents</span><span class="v">{{ number_format($csm['respondents']) }}</span></div>
+  <div><span class="k">Overall SQD score</span><span class="v">{{ $csm['sqd_score'] !== null ? $csm['sqd_score'] . '%' : '—' }}{{ $csmRating ? ' · ' . $csmRating : '' }}</span></div>
+  <div><span class="k">CC awareness</span><span class="v">{{ $csm['cc_awareness'] !== null ? $csm['cc_awareness'] . '%' : '—' }}</span></div>
 </div>
+
+{{-- ── ARTA Client Satisfaction Measurement ──────────────────────────
+     Computed as the ARTA guidelines define them: the overall score is the
+     share of Agree + Strongly Agree across every SQD answer, N/A excluded;
+     CC awareness is the share of CC1 answers that were 1, 2 or 3. Anyone
+     who filed feedback from the old star-only sheet is in the totals above
+     but not in these tables. --}}
+<h2>Client Satisfaction Measurement (ARTA)</h2>
+
+@if($csm['respondents'] === 0)
+  <p class="note">No survey responses in this range.</p>
+@else
+  @if($csm['client_types']->isNotEmpty() || $csm['regions']->isNotEmpty())
+    <table>
+      <thead><tr><th>Client type</th><th style="width:90px">Count</th><th>Region</th><th style="width:90px">Count</th></tr></thead>
+      <tbody>
+        @php
+          $ct = $csm['client_types']->map(fn ($n, $k) => [ucfirst($k), $n])->values();
+          $rg = $csm['regions']->map(fn ($n, $k) => [$k, $n])->values();
+        @endphp
+        @for($i = 0; $i < max($ct->count(), $rg->count()); $i++)
+          <tr>
+            <td>{{ $ct[$i][0] ?? '' }}</td><td>{{ $ct[$i][1] ?? '' }}</td>
+            <td>{{ $rg[$i][0] ?? '' }}</td><td>{{ $rg[$i][1] ?? '' }}</td>
+          </tr>
+        @endfor
+      </tbody>
+    </table>
+  @endif
+
+  <h2>Citizen's Charter</h2>
+  @foreach($csm['cc'] as $cc)
+    <table>
+      <thead><tr><th colspan="3">{{ $cc['code'] }}. {{ $cc['text'] }}</th></tr></thead>
+      <tbody>
+        @foreach($cc['counts'] as $c)
+          <tr>
+            <td>{{ $c['label'] }}</td>
+            <td style="width:90px">{{ $c['count'] }}</td>
+            <td style="width:90px">{{ $cc['total'] ? round($c['count'] / $cc['total'] * 100, 1) : 0 }}%</td>
+          </tr>
+        @endforeach
+      </tbody>
+    </table>
+  @endforeach
+
+  <h2>Service Quality Dimensions</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Item</th>
+        <th style="width:52px" title="Strongly disagree">SD</th>
+        <th style="width:52px" title="Disagree">D</th>
+        <th style="width:52px" title="Neither">N</th>
+        <th style="width:52px" title="Agree">A</th>
+        <th style="width:52px" title="Strongly agree">SA</th>
+        <th style="width:52px">N/A</th>
+        <th style="width:80px">Responses</th>
+        <th style="width:80px">Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      @foreach($csm['sqd'] as $row)
+        <tr>
+          <td><strong>{{ $row['code'] }}</strong> {{ $row['text'] }}@if(!$row['active']) <span class="tag t-gold">retired</span>@endif</td>
+          @foreach([1,2,3,4,5] as $v)<td>{{ $row['counts'][$v] }}</td>@endforeach
+          <td>{{ $row['na'] }}</td>
+          <td>{{ $row['responses'] }}</td>
+          <td>{{ $row['score'] !== null ? $row['score'] . '%' : '—' }}</td>
+        </tr>
+      @endforeach
+      <tr>
+        <td><strong>Overall</strong></td>
+        <td colspan="6"></td>
+        <td><strong>{{ $csm['sqd_responses'] }}</strong></td>
+        <td><strong>{{ $csm['sqd_score'] !== null ? $csm['sqd_score'] . '%' : '—' }}</strong></td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="note">
+    Score = share of Agree and Strongly Agree answers, with N/A left out of the denominator.
+    ARTA bands: 95%+ Outstanding · 90–94.9% Very Satisfactory · 80–89.9% Satisfactory · 60–79.9% Fair · below 60% Poor.
+  </p>
+
+  @if(count($csm['app']))
+    <h2>About the museum and the app</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th style="width:52px">SD</th><th style="width:52px">D</th><th style="width:52px">N</th><th style="width:52px">A</th><th style="width:52px">SA</th>
+          <th style="width:52px">N/A</th><th style="width:80px">Responses</th><th style="width:80px">Score</th>
+        </tr>
+      </thead>
+      <tbody>
+        @foreach($csm['app'] as $row)
+          <tr>
+            <td><strong>{{ $row['code'] }}</strong> {{ $row['text'] }}@if(!$row['active']) <span class="tag t-gold">retired</span>@endif</td>
+            @foreach([1,2,3,4,5] as $v)<td>{{ $row['counts'][$v] }}</td>@endforeach
+            <td>{{ $row['na'] }}</td>
+            <td>{{ $row['responses'] }}</td>
+            <td>{{ $row['score'] !== null ? $row['score'] . '%' : '—' }}</td>
+          </tr>
+        @endforeach
+      </tbody>
+    </table>
+    <p class="note">The museum's own questions, scored the same way. They are not part of the ARTA submission.</p>
+  @endif
+@endif
 
 <h2>Rating breakdown</h2>
 <table>

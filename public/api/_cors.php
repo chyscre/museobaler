@@ -64,6 +64,18 @@ function apiCors(string $methods = 'GET, POST, OPTIONS'): void
 {
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 
+    // SECURITY: headers every API answer carries, allowed origin or not.
+    // nosniff stops a browser treating JSON as script; no-store keeps a
+    // visitor's profile out of shared caches and the back button on a
+    // borrowed phone; CORP refuses to be embedded by another site even
+    // where CORS would not apply; and the API has no reason to advertise
+    // the PHP version.
+    header('X-Content-Type-Options: nosniff');
+    header('Cache-Control: no-store');
+    header('Cross-Origin-Resource-Policy: same-origin');
+    header('Referrer-Policy: no-referrer');
+    header_remove('X-Powered-By');
+
     if (apiOriginAllowed($origin)) {
         header("Access-Control-Allow-Origin: $origin");
         // Without this a shared cache could hand one origin's allowed

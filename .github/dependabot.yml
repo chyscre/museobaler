@@ -1,0 +1,36 @@
+# Dependency updates, once a week, as pull requests.
+#
+# CI runs the test suite against each one, so an update that breaks
+# something shows up as a red pull request, not as a broken server. The
+# groups keep the noise down: one PR for all patch/minor Composer updates,
+# one for npm, rather than one per package.
+version: 2
+updates:
+  - package-ecosystem: composer
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: Asia/Manila
+    open-pull-requests-limit: 5
+    groups:
+      composer-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: Asia/Manila
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

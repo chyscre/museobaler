@@ -51,6 +51,44 @@ class FrontDeskTest extends TestCase
         $this->assertFalse($visitor->id_verified);
     }
 
+    public function test_a_local_is_a_baler_resident_and_names_a_barangay(): void
+    {
+        $desk = Staff::factory()->administrator()->create();
+
+        // Free admission is for Baler only, so the town is not the desk's to
+        // type: whatever was sent, a local lives in Baler, Aurora.
+        $this->actingAs($desk)->post('/desk/visitors', [
+            'first_name' => 'Ana', 'last_name' => 'Reyes', 'visitor_type' => 'Local',
+            'barangay' => 'Sabang', 'city' => 'Casiguran',
+        ]);
+
+        $ana = Visitor::firstWhere('first_name', 'Ana');
+        $this->assertSame('Sabang', $ana->barangay);
+        $this->assertSame('Baler', $ana->city);
+        $this->assertSame('Sabang, Baler', $ana->location);
+
+        // A made-up barangay is dropped rather than stored; a tourist never has one.
+        $this->actingAs($desk)->post('/desk/visitors', [
+            'first_name' => 'Ben', 'last_name' => 'Reyes', 'visitor_type' => 'Local', 'barangay' => 'Nowhere',
+        ]);
+        $this->actingAs($desk)->post('/desk/visitors', [
+            'first_name' => 'Cai', 'last_name' => 'Reyes', 'visitor_type' => 'Tourist', 'barangay' => 'Sabang', 'city' => 'Manila',
+        ]);
+        $this->assertNull(Visitor::firstWhere('first_name', 'Ben')->barangay);
+        $this->assertNull(Visitor::firstWhere('first_name', 'Cai')->barangay);
+        $this->assertSame('Manila', Visitor::firstWhere('first_name', 'Cai')->location);
+
+        // A tourist reads city and province; a foreign visitor city and country.
+        $this->actingAs($desk)->post('/desk/visitors', [
+            'first_name' => 'Dee', 'last_name' => 'Reyes', 'visitor_type' => 'Tourist', 'city' => 'Tagaytay', 'province' => 'Cavite',
+        ]);
+        $this->actingAs($desk)->post('/desk/visitors', [
+            'first_name' => 'Eli', 'last_name' => 'Sato', 'visitor_type' => 'Foreign', 'city' => 'Osaka', 'country' => 'Japan',
+        ]);
+        $this->assertSame('Tagaytay, Cavite', Visitor::firstWhere('first_name', 'Dee')->location);
+        $this->assertSame('Osaka, Japan', Visitor::firstWhere('first_name', 'Eli')->location);
+    }
+
     public function test_a_party_of_five_is_one_entry_with_one_fee(): void
     {
         $desk = Staff::factory()->administrator()->create();

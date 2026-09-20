@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Cache\RateLimiter;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -31,6 +32,16 @@ class LoginRateLimiter
         // Already locked out — show remaining time
         if ($this->limiter->tooManyAttempts($key, 5)) {
             $seconds = $this->limiter->availableIn($key);
+
+            // Five wrong passwords in a minute is the shape of a guessing
+            // script, not a person. Logged per refused attempt so the
+            // security log shows how long the attempt kept going.
+            Log::channel('security')->warning('Login locked out', [
+                'email'    => $request->input('email'),
+                'ip'       => $request->ip(),
+                'retry_in' => $seconds,
+            ]);
+
             return back()
                 ->withErrors(['email' => 'Too many login attempts. Please wait.'])
                 ->with('lockout_seconds', $seconds)

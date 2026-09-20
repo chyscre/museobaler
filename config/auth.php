@@ -26,7 +26,13 @@ return [
         'users' => [
             'provider' => 'users',
             'table'    => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
-            'expire'   => 60,
+            // A reset link is a password that arrives by email. Thirty
+            // minutes is long enough to read the mail and act on it, and
+            // short enough that a message found later in a shared inbox is
+            // already dead. (There is no self-service reset screen today -
+            // Tourism issues passwords by hand - but the broker is wired,
+            // so the ceiling is set for whoever adds one.)
+            'expire'   => 30,
             'throttle' => 60,
         ],
     ],

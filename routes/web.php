@@ -20,6 +20,7 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\StaffAttendanceController;
 use App\Http\Controllers\AttendanceCorrectionController;
 use App\Http\Controllers\TourController;
+use App\Http\Controllers\SurveyQuestionController;
 
 // Role shorthands.
 //
@@ -37,29 +38,6 @@ use App\Http\Controllers\TourController;
 $museum  = 'role:Administrator';
 $tourism = 'role:TourismHead';
 $shared  = 'role:TourismHead,Administrator';
-
-// ── TEMP DIAGNOSTIC — remove once the Cloudflare Tunnel CSRF issue is
-// confirmed fixed. No auth needed since we're diagnosing pre-login behavior.
-// Compare output when loaded via yeppie.test vs. via the Cloudflare tunnel URL.
-Route::get('/debug-proxy', function (\Illuminate\Http\Request $request) {
-    return response()->json([
-        'scheme'              => $request->getScheme(),
-        'isSecure'            => $request->isSecure(),
-        'host'                => $request->getHost(),
-        'ip_seen_by_laravel'  => $request->ip(),
-        'remote_addr_raw'     => $request->server('REMOTE_ADDR'),
-        'header_x_fwd_proto'  => $request->header('X-Forwarded-Proto'),
-        'header_x_fwd_for'    => $request->header('X-Forwarded-For'),
-        'header_x_fwd_host'   => $request->header('X-Forwarded-Host'),
-        'header_cf_visitor'   => $request->header('CF-Visitor'),
-        'header_cf_connecting_ip' => $request->header('CF-Connecting-IP'),
-        'session_cookie_name' => config('session.cookie'),
-        'session_domain_cfg'  => config('session.domain'),
-        'session_secure_cfg'  => config('session.secure'),
-        'session_same_site'   => config('session.same_site'),
-        'has_session_cookie'  => $request->hasCookie(config('session.cookie')),
-    ]);
-});
 
 // ── Auth ──────────────────────────────────────────────────────
 Route::get('/login', [LoginController::class, 'showLogin'])->name('login');
@@ -99,7 +77,7 @@ Route::get('/training-image/{filename}', function (string $filename) {
 // Outside the group below on purpose: this is the one screen a staff member
 // must be able to reach while still holding the password Tourism handed them,
 // and the one screen that has to work on a phone as well as a desk.
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth', 'throttle:panel'])->group(function () {
     Route::get('/my/password',  [PasswordController::class, 'edit'])->name('password.edit');
     Route::put('/my/password',  [PasswordController::class, 'update'])->name('password.update');
 });
@@ -110,7 +88,9 @@ Route::middleware(['auth'])->group(function () {
 //                  further than the change-password screen.
 // desktop          the panel is a desktop tool; a phone session is narrowed
 //                  to clocking in, which is the only part that needs one.
-Route::middleware(['auth', 'password.rotate', 'desktop'])->group(function () use ($shared, $tourism, $museum) {
+// throttle:panel   300 requests a minute per account - see
+//                  AppServiceProvider::rateLimitPanel().
+Route::middleware(['auth', 'throttle:panel', 'password.rotate', 'desktop'])->group(function () use ($shared, $tourism, $museum) {
 
     // ══ Museum staff only ═════════════════════════════════════
     // Running the museum: the desk, the exhibits, the map, the guiding, and
@@ -173,6 +153,9 @@ Route::middleware(['auth', 'password.rotate', 'desktop'])->group(function () use
         Route::post('/desk/visitors',            [DeskController::class, 'store'])->name('desk.visitors.store');
         Route::post('/desk/groups',              [DeskController::class, 'storeGroup'])->name('desk.groups.store');
         Route::post('/desk/groups/{group}/paid', [DeskController::class, 'markGroupPaid'])->name('desk.groups.paid');
+        // A local in a party that was charged for everyone. Re-prices the
+        // group and, if it had already paid, records the refund.
+        Route::post('/desk/groups/{group}/correct', [DeskController::class, 'correctGroup'])->name('desk.groups.correct');
 
         // Admission handling at the entrance — collecting the fee from
         // tourists and sighting a local's proof of residency.
@@ -184,9 +167,18 @@ Route::middleware(['auth', 'password.rotate', 'desktop'])->group(function () use
         Route::post('/tours',            [TourController::class, 'store'])->name('tours.store');
         Route::post('/tours/{tour}/end', [TourController::class, 'end'])->name('tours.end');
 
+        // Filing an attendance correction. Museum staff were on site and can
+        // vouch for a colleague; the Tourism office was not, so she reviews
+        // rather than files — otherwise one person could do both halves.
+        Route::post('/attendance/corrections', [AttendanceCorrectionController::class, 'store'])->name('corrections.store');
+
         // Own attendance. Only museum staff clock in.
         Route::get('/my/attendance',       [StaffAttendanceController::class, 'mine'])->name('my.attendance');
         Route::post('/my/attendance/scan', [StaffAttendanceController::class, 'scan'])->name('my.attendance.scan');
+        // Sets the museum pin from a phone's GPS. Museum Info is a desktop
+        // page, and a desktop's idea of where it is comes from Wi-Fi, which
+        // once put the pin 1.8 km from the door.
+        Route::post('/my/attendance/pin',  [StaffAttendanceController::class, 'setPin'])->name('my.attendance.pin');
 
         // The staff-room screen. Left running on a tablet; the code it shows
         // rotates every 60 seconds so a photo of it is worthless.
@@ -201,7 +193,8 @@ Route::middleware(['auth', 'password.rotate', 'desktop'])->group(function () use
         // Museum info, map, and the geofence that the visitor app and the
         // staff check-in both read.
         Route::get('/museum',  [MuseumController::class, 'index'])->name('museum.index');
-        Route::get('/map',     [MuseumController::class, 'map'])->name('museum.map');
+        Route::get('/map',            [MuseumController::class, 'map'])->name('museum.map');
+        Route::post('/map/positions', [MuseumController::class, 'savePositions'])->name('museum.map.positions');
         Route::post('/museum', [MuseumController::class, 'update'])->name('museum.update');
 
         // Live activity feed for the admin bell.
@@ -224,10 +217,9 @@ Route::middleware(['auth', 'password.rotate', 'desktop'])->group(function () use
         Route::get('/staff-attendance',         [StaffAttendanceController::class, 'index'])->name('staff-attendance.index');
         Route::get('/staff-attendance/{staff}', [StaffAttendanceController::class, 'show'])->name('staff-attendance.show');
 
-        // Corrections are filed here but only count once Tourism approves —
-        // see AttendanceCorrectionController for why that split exists.
+        // Both roles read the corrections list. Filing one is museum work
+        // (further down); approving one is Tourism's (further down still).
         Route::get('/attendance/corrections',  [AttendanceCorrectionController::class, 'index'])->name('corrections.index');
-        Route::post('/attendance/corrections', [AttendanceCorrectionController::class, 'store'])->name('corrections.store');
 
         // The individual reports keep their routes; there is no longer a
         // hub page listing them. Each is reached from the section it belongs
@@ -236,7 +228,8 @@ Route::middleware(['auth', 'password.rotate', 'desktop'])->group(function () use
         Route::get('/reports/logbook/csv', [ReportController::class, 'logbookCsv'])->name('reports.logbook.csv');
         Route::get('/reports/dtr/{staff}', [ReportController::class, 'dtr'])->name('reports.dtr');
         Route::get('/reports/visitors',    [ReportController::class, 'visitors'])->name('reports.visitors');
-        Route::get('/reports/feedback',    [ReportController::class, 'feedback'])->name('reports.feedback');
+        Route::get('/reports/feedback',     [ReportController::class, 'feedback'])->name('reports.feedback');
+        Route::get('/reports/feedback/csv', [ReportController::class, 'feedbackCsv'])->name('reports.feedback.csv');
         Route::get('/reports/exhibits',    [ReportController::class, 'exhibits'])->name('reports.exhibits');
     });
 
@@ -265,5 +258,12 @@ Route::middleware(['auth', 'password.rotate', 'desktop'])->group(function () use
         Route::post('/attendance/corrections/{correction}/review', [AttendanceCorrectionController::class, 'review'])->name('corrections.review');
 
         Route::get('/reports/audit/csv', [ReportController::class, 'auditCsv'])->name('reports.audit.csv');
+
+        // The visitor survey's question bank. The survey is the ARTA Client
+        // Satisfaction Measurement, which the Tourism office files with the
+        // LGU, so the office that answers for the numbers owns the questions.
+        Route::get('/survey',           [SurveyQuestionController::class, 'index'])->name('survey.index');
+        Route::post('/survey',          [SurveyQuestionController::class, 'save'])->name('survey.save');
+        Route::post('/survey/restore',  [SurveyQuestionController::class, 'restore'])->name('survey.restore');
     });
 });

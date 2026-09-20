@@ -10,14 +10,63 @@ apiRateLimit(60, 60);
 
 include '../auth/db.php';
 
+require_once '_sanitize.php';
+require_once '_visitor_auth.php';
+
+/**
+ * SECURITY: who this request is about.
+ *
+ * The visitor_id used to be read from the request body, so anyone could
+ * log, claim or close attendance for any visitor number they cared to
+ * type. Now the identity is whoever the bearer token resolves to, and the
+ * body's visitor_id is only accepted when it says the same thing. No token
+ * means an anonymous arrival - the geofence detected a phone that has not
+ * registered yet - which is a legitimate record and stays one.
+ */
+$self   = visitorFromToken($con);
+$selfId = $self ? (int)$self['visitor_id'] : null;
+
+/** The visitor id this caller may act as: their own, or nobody. */
+function ownVisitorId(?int $selfId, array $data): ?int
+{
+    $claimed = isset($data['visitor_id']) ? (int)$data['visitor_id'] : 0;
+
+    if ($selfId === null) return null;
+    if ($claimed > 0 && $claimed !== $selfId) return null;
+
+    return $selfId;
+}
+
+/** True when this attendance row is anonymous or belongs to the caller. */
+function mayTouchAttendance($con, int $aid, ?int $selfId): bool
+{
+    $stmt = mysqli_prepare($con, "SELECT visitor_id FROM attendances WHERE attendance_id=? LIMIT 1");
+    mysqli_stmt_bind_param($stmt, 'i', $aid);
+    mysqli_stmt_execute($stmt);
+    $row = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+
+    if (!$row) return false;
+    if ($row['visitor_id'] === null) return true;
+
+    return $selfId !== null && (int)$row['visitor_id'] === $selfId;
+}
+
 // ── PATCH: Claim anonymous OR log exit ───────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'PATCH') {
-    $data  = json_decode(file_get_contents('php://input'), true) ?: [];
+    $data  = apiSanitize(json_decode(file_get_contents('php://input'), true) ?: []);
     $aid   = isset($data['attendance_id']) ? (int)$data['attendance_id'] : 0;
     $event = $data['event'] ?? 'claim';
     $today = date('Y-m-d');
 
     if ($aid <= 0) { echo json_encode(['error' => 'missing_params']); exit; }
+
+    if (!mayTouchAttendance($con, $aid, $selfId)) {
+        // Somebody else's record. Answered as a no-op rather than an error:
+        // the app treats this call as fire-and-forget, and a 403 here would
+        // tell a probe which attendance ids are taken.
+        echo json_encode(['ok' => true, 'claimed' => false]);
+        exit;
+    }
 
     // ── Exit event ────────────────────────────────────────────────────────────
     if ($event === 'exit') {
@@ -52,10 +101,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'PATCH') {
     }
 
     // ── Claim anonymous record after registration ─────────────────────────────
-    $vid  = isset($data['visitor_id'])    ? (int)$data['visitor_id']    : 0;
+    $vid  = ownVisitorId($selfId, $data) ?? 0;
     $name = trim($data['visitor_name'] ?? '');
 
-    if ($vid <= 0) { echo json_encode(['error' => 'missing_params']); exit; }
+    if ($vid <= 0) { echo json_encode(['error' => 'unauthenticated']); exit; }
 
     $chk = mysqli_prepare($con,
         "SELECT attendance_id FROM attendances WHERE attendance_id=? AND visit_date=? AND visitor_id IS NULL LIMIT 1"
@@ -68,8 +117,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'PATCH') {
         echo json_encode(['ok' => true, 'claimed' => false]); exit;
     }
 
+    // `method` records how the arrival was detected and is left alone here.
+    // Claiming used to overwrite it with 'registered', which the attendance
+    // screen read as "not geofence" and labelled ✋ Manual — so every visitor
+    // who signed in after being detected showed up as a hand-entered record.
+    // Whether they registered is already visible from visitor_id.
     $stmt = mysqli_prepare($con,
-        "UPDATE attendances SET visitor_id=?, visitor_name=?, method='registered', updated_at=NOW() WHERE attendance_id=?"
+        "UPDATE attendances SET visitor_id=?, visitor_name=?, updated_at=NOW() WHERE attendance_id=?"
     );
     mysqli_stmt_bind_param($stmt, 'isi', $vid, $name, $aid);
     mysqli_stmt_execute($stmt);
@@ -79,8 +133,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'PATCH') {
 
 // ── POST: Log attendance ──────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $data     = json_decode(file_get_contents('php://input'), true) ?: $_POST;
-    $vid      = isset($data['visitor_id']) ? (int)$data['visitor_id'] : null;
+    $data     = apiSanitize(json_decode(file_get_contents('php://input'), true) ?: $_POST);
+    $vid      = ownVisitorId($selfId, $data);
     $name     = trim($data['visitor_name'] ?? '');
     $lat      = isset($data['latitude'])   ? (float)$data['latitude']  : null;
     $lng      = isset($data['longitude'])  ? (float)$data['longitude'] : null;

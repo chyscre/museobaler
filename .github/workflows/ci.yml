@@ -1,0 +1,88 @@
+# Continuous integration.
+#
+# Every push and pull request runs the full test suite and a vulnerability
+# audit of both dependency trees. A red run blocks a merge; nothing reaches
+# the server that the tests did not pass.
+#
+# The suite runs on in-memory sqlite (see phpunit.xml), so no database
+# service is needed here. The raw-PHP visitor API under public/api is
+# syntax-checked, since it has no test harness of its own.
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, gd, sodium, sqlite3, pdo_sqlite, zip
+          coverage: none
+
+      - name: Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Front-end build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate --force
+
+      - name: Lint the raw-PHP visitor API
+        run: find public/api public/auth -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Test suite
+        run: php artisan test --compact
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Composer install
+        run: composer install --no-interaction --prefer-dist --no-progress --no-scripts
+
+      # Fails on any known advisory in the locked versions - the same check
+      # that cleared 45 advisories in commit 071f7cc, now run on every push.
+      - name: Composer audit
+        run: composer audit --locked
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: npm audit
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=high

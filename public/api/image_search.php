@@ -109,7 +109,7 @@ include '../auth/db.php';
  * visitor who never paid could still walk the museum identifying exhibits.
  */
 require_once '_visitor_auth.php';
-requireClearedVisitor($con);
+$visitor = requireClearedVisitor($con);
 
 // Fetch all active exhibits with their primary image and gallery images
 $stmt = mysqli_prepare($con,
@@ -231,7 +231,8 @@ if (!$topMatch) {
 //
 // We log regardless of visitor_id so aggregate counts stay accurate.
 if ($topMatch['confidence'] >= HIGH_CONFIDENCE) {
-    $vid = (int)($_POST['visitor_id'] ?? 0);
+    // SECURITY: attributed to the token's visitor, never to a posted id.
+    $vid = (int)$visitor['visitor_id'];
     $vidParam = $vid > 0 ? $vid : null;
     $matchId  = (int)$topMatch['exhibit_id'];
     $scanType = 'image';
