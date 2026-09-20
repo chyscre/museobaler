@@ -23,5 +23,10 @@ class StaffAttendanceDay extends Model
 
     protected $fillable = ['work_date', 'day_secret', 'opened_by'];
 
+    public function openedBy()
+    {
+        return $this->belongsTo(Staff::class, 'opened_by', 'staff_id');
+    }
+
     protected $hidden = ['day_secret'];
 }

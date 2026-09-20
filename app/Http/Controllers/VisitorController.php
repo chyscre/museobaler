@@ -153,7 +153,7 @@ class VisitorController extends Controller
         $visitor->update([
             'id_verified' => true,
             'verified_at' => now(),
-            'verified_by' => auth()->user()->name,
+            'verified_by' => auth()->id(),
         ]);
 
         $this->log('ID Verified', "Verified residency ID for {$visitor->first_name} {$visitor->last_name} ({$visitor->city})");

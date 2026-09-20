@@ -219,6 +219,11 @@ class VisitGroup extends Model
         return $this->belongsTo(Staff::class, 'registered_by', 'staff_id');
     }
 
+    public function refundedBy()
+    {
+        return $this->belongsTo(Staff::class, 'refunded_by', 'staff_id');
+    }
+
     public function tour()
     {
         return $this->hasOne(Tour::class, 'group_id', 'group_id');

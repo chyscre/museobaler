@@ -66,6 +66,7 @@ class NotificationBellTest extends TestCase
     public function test_every_desk_event_reaches_the_bell(): void
     {
         $admin = Staff::factory()->create(['role' => 'Administrator']);
+        $rosa  = Staff::factory()->create(['role' => 'Administrator', 'name' => 'Rosa']);
 
         // Registered, then paid; a local whose ID was sighted; an anonymous
         // walk-in; a rating left on the way out.
@@ -76,7 +77,7 @@ class NotificationBellTest extends TestCase
         Visitor::create([
             'first_name' => 'Lita', 'last_name' => 'Bautista', 'visitor_type' => 'Local',
             'admission_fee' => 0, 'payment_status' => 'Free',
-            'id_verified' => true, 'verified_at' => now(), 'verified_by' => 'Rosa',
+            'id_verified' => true, 'verified_at' => now(), 'verified_by' => $rosa->staff_id,
         ]);
         \App\Models\VisitGroup::create([
             'group_name' => 'Baler NHS', 'group_type' => 'School', 'contact_name' => 'Sir Ben',

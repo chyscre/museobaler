@@ -141,6 +141,11 @@ class Visitor extends Model
         return $this->belongsTo(Staff::class, 'registered_by', 'staff_id');
     }
 
+    public function verifiedBy()
+    {
+        return $this->belongsTo(Staff::class, 'verified_by', 'staff_id');
+    }
+
     public function getFullNameAttribute(): string
     {
         return trim("{$this->first_name} {$this->last_name}");
