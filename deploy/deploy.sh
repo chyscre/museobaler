@@ -36,6 +36,12 @@ git clone --quiet --depth 1 --branch "$REF" "$REPO" "$NEW" 2>/dev/null \
   || { git clone --quiet "$REPO" "$NEW" && git -C "$NEW" checkout --quiet "$REF"; }
 git -C "$NEW" rev-parse --short HEAD > "$NEW/RELEASE"
 
+# Development-only pages that live in the repo because they are useful on the
+# build machine, and nowhere else. Anything under public/ is world-readable
+# once deployed, so they do not travel.
+rm -f "$NEW/public/visitor/preview.html" "$NEW/public/visitor/_uidebug"*.html
+rm -rf "$NEW/.git"
+
 # ── 2. Shared state: .env and storage are never inside a release ───────────
 # The database, uploaded exhibit images, the logs and the backups must all
 # survive a deploy and a rollback, so they live in shared/ and every release

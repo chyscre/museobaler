@@ -34,6 +34,17 @@ class AttendanceCorrection extends Model
         ];
     }
 
+    /**
+     * Stamp requested_at in the app's own clock rather than leaning on the
+     * column default, which follows the database's zone rather than Manila.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (AttendanceCorrection $correction) {
+            $correction->requested_at ??= now();
+        });
+    }
+
     public function staff()
     {
         return $this->belongsTo(Staff::class, 'staff_id', 'staff_id');

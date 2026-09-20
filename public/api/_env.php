@@ -40,3 +40,22 @@ function apiEnv(string $key, ?string $default = null): ?string
 
     return $value === '' ? $default : $value;
 }
+
+/**
+ * A writable directory under storage/app for this API's own scratch files -
+ * rate-limit counters, the reference-image hash cache. Returns the path with
+ * no trailing slash, creating it on first use.
+ *
+ * Not sys_get_temp_dir(): that is one machine's /tmp, which a systemd unit
+ * with PrivateTmp sees as its own empty copy, a tmp cleaner sweeps on a
+ * schedule, and no second server shares. storage/app is already the
+ * directory this app owns and the deploy script keeps across releases.
+ */
+function apiStoragePath(string $subdir = 'api-cache'): string
+{
+    $dir = dirname(__DIR__, 2) . '/storage/app/' . trim($subdir, '/');
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+    return $dir;
+}

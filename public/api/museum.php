@@ -27,4 +27,14 @@ $fee = museumAdmissionFee($con);
 $info['admission_fee'] = $fee;
 $info['admission']     = museumAdmissionSentence($fee);
 
+// Whether the visitor app must actually be inside the fence before it logs
+// an entry. Decided here, not by the client looking at its own hostname: a
+// production server reached by its LAN address is still production, and a
+// switch the phone can flip for itself is not a switch. Same rule as the
+// staff geofence (ATTENDANCE_GEOFENCE) - off only when VISITOR_GEOFENCE=false
+// and APP_ENV is not production, so the entry/exit flow can be walked through
+// at a desk that is nowhere near Baler.
+$info['geofence_enforced'] = apiEnv('APP_ENV', 'production') === 'production'
+    || strtolower((string) apiEnv('VISITOR_GEOFENCE', 'true')) !== 'false';
+
 echo json_encode(['info' => $info, 'halls' => $halls]);

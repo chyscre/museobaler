@@ -404,7 +404,7 @@ function normaliseConfidence(float $similarity): float
 /** Path to the cross-request cache of reference-image hashes. */
 function hashCachePath(): string
 {
-    return sys_get_temp_dir() . '/museobaler_phash_cache.json';
+    return apiStoragePath('api-cache') . '/phash_cache.json';
 }
 
 function loadHashCache(): array
