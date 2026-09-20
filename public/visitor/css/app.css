@@ -204,6 +204,12 @@ body.dark-mode .hall-ico .material-icons-round{color:var(--accent-text)}
 /* ── TOAST ── */
 #toast{position:fixed;bottom:calc(var(--nav-h) + 18px + var(--safe-b));left:50%;transform:translateX(-50%) translateY(20px);max-width:calc(100% - 32px);background:#1a1a1a;color:#fff;padding:10px 20px;border-radius:20px;font-size:calc(13px * var(--fs));font-weight:500;text-align:center;opacity:0;transition:all .3s;pointer-events:none;z-index:999}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#offline-notice{position:fixed;left:16px;right:16px;bottom:calc(var(--nav-h) + 18px + var(--safe-b));z-index:998;display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:14px;background:#1a1a1a;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.25);font-size:calc(13px * var(--fs));line-height:1.4}
+#offline-notice[hidden]{display:none}
+#offline-notice>.material-icons-round{font-size:22px;flex-shrink:0;opacity:.85}
+#offline-notice>div{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
+#offline-notice>div>span{opacity:.8;font-size:calc(12px * var(--fs))}
+#offline-notice>button{border:0;border-radius:10px;padding:9px 12px;font:inherit;font-weight:600;background:#fff;color:#1a1a1a;flex-shrink:0;cursor:pointer}
 
 /* ── LOADING OVERLAY ── */
 #loading{position:fixed;inset:0;background:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;z-index:9999;display:none}
@@ -409,6 +415,8 @@ body.dark-mode .btn-outline{background:var(--ew);border-color:var(--es);color:va
 body.dark-mode .sheet-overlay{background:rgba(0,0,0,.65)}
 body.dark-mode #loading{background:rgba(10,12,15,.85)}
 body.dark-mode #toast{background:#e8eaed;color:#15171a}
+body.dark-mode #offline-notice{background:#e8eaed;color:#15171a}
+body.dark-mode #offline-notice>button{background:#15171a;color:#e8eaed}
 /* The scanner screens are already near-black by design; leave them alone. */
 
 /* ══════════════════════════════════════════

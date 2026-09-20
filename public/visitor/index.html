@@ -112,6 +112,7 @@
             <div id="pw-strength-bar" style="height:100%;width:0;border-radius:4px;background:#ef4444;transition:width .2s,background .2s;"></div>
           </div>
           <div id="pw-rules" style="display:flex;flex-direction:column;gap:5px;"></div>
+          <div style="font-size:11px;color:var(--tl);line-height:1.5;margin-top:9px;padding-top:8px;border-top:1px solid rgba(0,0,0,.06);">Tip: a few words you'll remember, like <em>blue kayak tuesday</em>, is easier to type and stronger than symbols.</div>
         </div>
       </div>
 
@@ -1646,6 +1647,17 @@
      GLOBAL UI ELEMENTS
 ══════════════════════════════════════════ -->
 <div id="toast"></div>
+
+<!-- Shown when the museum's server cannot be reached and nothing is cached.
+     The app used to fill the gap with built-in demo exhibits; now it says so. -->
+<div id="offline-notice" hidden role="status" aria-live="polite">
+  <span class="material-icons-round" aria-hidden="true">cloud_off</span>
+  <div>
+    <strong>Can't reach the museum right now.</strong>
+    <span>Check your connection, then try again.</span>
+  </div>
+  <button type="button" onclick="retryOffline()">Try again</button>
+</div>
 <div id="loading"><div class="spinner"></div></div>
 
 <!-- PWA Install Prompt -->
