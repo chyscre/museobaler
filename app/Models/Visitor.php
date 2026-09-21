@@ -112,10 +112,18 @@ class Visitor extends Authenticatable
      */
     public static function passwordMatches(?self $visitor, string $password): bool
     {
-        $hash = $visitor?->password ?: '$2y$12$usesomesillystringfaketohashaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+        $hash = $visitor?->password ?: self::DUMMY_HASH;
 
         return Hash::check($password, $hash) && $visitor !== null;
     }
+
+    /**
+     * A real bcrypt hash of a value nobody has, verified against when the
+     * email is unknown so the reply takes as long as a wrong password. It
+     * has to be a well-formed hash: Laravel's hasher refuses to check
+     * anything else, and a refusal would be the timing tell.
+     */
+    private const DUMMY_HASH = '$2y$12$QllDVUk4FI76Qqpa9zKklOVuVqZEvtALffRNxp5TsQLiykfieZL5u';
 
     // -- Admission -----------------------------------------------------------
 
