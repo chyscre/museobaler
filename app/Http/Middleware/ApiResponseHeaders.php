@@ -14,9 +14,11 @@ use Symfony\Component\HttpFoundation\Response;
  * phone; CORP refuses to be embedded by another site even where CORS would
  * not apply; and the API has no reason to advertise the PHP version.
  *
- * no-store is the default, not the rule: a route that sets its own
- * Cache-Control (the exhibit list, with an ETag so an unchanged answer is a
- * 304) keeps it.
+ * no-store is the default, not the rule: a route that declares its own
+ * policy with cache.headers (the exhibit list, with an ETag so an unchanged
+ * answer is a 304) keeps it. Declared, rather than sniffed from the
+ * response, because Symfony's own default when nothing was set reads
+ * exactly like a deliberate no-cache.
  */
 class ApiResponseHeaders
 {
@@ -29,10 +31,21 @@ class ApiResponseHeaders
         $response->headers->set('Referrer-Policy', 'no-referrer');
         $response->headers->remove('X-Powered-By');
 
-        if (!$response->headers->has('Cache-Control') || $response->headers->get('Cache-Control') === 'no-cache, private') {
+        if (!$this->routeSetsItsOwnCachePolicy($request)) {
             $response->headers->set('Cache-Control', 'no-store');
         }
 
         return $response;
+    }
+
+    private function routeSetsItsOwnCachePolicy(Request $request): bool
+    {
+        foreach ($request->route()?->gatherMiddleware() ?? [] as $middleware) {
+            if (is_string($middleware) && str_starts_with($middleware, 'cache.headers')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

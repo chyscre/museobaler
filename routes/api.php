@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Controllers\Api\ExhibitController;
 use App\Http\Controllers\Api\MuseumController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\RecognitionController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -32,4 +34,21 @@ Route::prefix('v1')->name('api.')->group(function () {
     // -- Public ------------------------------------------------------------
     Route::get('museum', [MuseumController::class, 'show'])->name('museum');
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications');
+
+    // -- The museum: signed in and cleared by the desk -----------------------
+    Route::middleware(['visitor.auth', 'visitor.cleared'])->group(function () {
+        // Revalidated on every request, never served stale: the browser keeps
+        // the last answer and sends its ETag, and an unchanged list is a 304
+        // with no body. Private, because the answer is behind a token.
+        Route::get('exhibits', [ExhibitController::class, 'index'])
+            ->middleware('cache.headers:private;etag;no_cache')
+            ->name('exhibits.index');
+        Route::get('exhibits/{code}', [ExhibitController::class, 'show'])
+            ->middleware('cache.headers:private;etag;no_cache')
+            ->name('exhibits.show');
+
+        Route::post('recognition', [RecognitionController::class, 'search'])
+            ->middleware('throttle:visitor-recognition')
+            ->name('recognition');
+    });
 });

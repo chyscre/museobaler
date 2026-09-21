@@ -8,7 +8,7 @@ class Scan extends Model
 {
     protected $primaryKey = 'scan_id';
 
-    protected $fillable = ['exhibit_id', 'visitor_id', 'language_code', 'scanned_at'];
+    protected $fillable = ['exhibit_id', 'visitor_id', 'language_code', 'scan_type', 'scanned_at'];
 
     protected function casts(): array
     {
