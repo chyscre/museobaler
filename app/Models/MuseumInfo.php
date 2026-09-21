@@ -37,9 +37,8 @@ class MuseumInfo extends Model
      * The admission fee in pesos, as set on the Museum Info page.
      *
      * The single source for every screen that prints or charges it: the
-     * desk register, the poster, the visitor model, the reports. The visitor
-     * API reads the same row with its own connection - see
-     * public/api/_museum.php - and must stay in step with this.
+     * desk register, the poster, the visitor model, the reports, and the
+     * visitor API (ApiMuseumController).
      *
      * Resolved once per request (the desk asks on every arrival) and
      * forgotten whenever the row is saved.

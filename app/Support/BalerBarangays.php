@@ -7,8 +7,8 @@ namespace App\Support;
  *
  * Free admission is for Baler residents only, so a local names one of these
  * rather than a town. The visitor app carries the same list in its own
- * markup (public/visitor/index.html) and the visitor API checks against
- * public/api/_baler.php; keep the three in step.
+ * markup (public/visitor/index.html); the visitor API validates against
+ * this class (RegisterVisitorRequest). Keep the two in step.
  */
 class BalerBarangays
 {
