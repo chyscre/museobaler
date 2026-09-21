@@ -10,6 +10,7 @@ class Feedback extends Model
 
     protected $fillable = [
         'visitor_id', 'tour_id', 'staff_id',
+        'first_name', 'last_name', 'middle_name',
         'rating', 'guide_rating', 'attributed_by', 'comment', 'submitted_at',
         'client_type', 'region',
     ];
