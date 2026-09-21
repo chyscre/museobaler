@@ -53,6 +53,9 @@ jobs:
       - name: Test suite
         run: php artisan test --compact
 
+      - name: Service worker rules
+        run: node --check public/visitor/sw.js && npm test
+
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest

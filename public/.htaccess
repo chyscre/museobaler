@@ -24,13 +24,13 @@
     RewriteRule ^ index.php [L]
 </IfModule>
 
-# SECURITY: Block access to PHP files inside auth/ directory from the web.
-# db.php is an include-only file — it should never be requested directly.
-# If accessed directly, it would expose DB connection logic or errors.
-<FilesMatch "^db\.php$">
-    Order allow,deny
-    Deny from all
-</FilesMatch>
+# The visitor app's service worker must reach phones the moment a release
+# lands, so it is never held by an HTTP cache: the browser re-reads it on
+# every navigation, sees the new VERSION, and installs the new release.
+# Every other asset is cached by the worker itself, under a versioned name.
+<Files "sw.js">
+    Header set Cache-Control "no-cache, must-revalidate"
+</Files>
 
 # SECURITY: Prevent access to .env and other sensitive files if they end up in public/
 <FilesMatch "(\.env|\.htpasswd|\.DS_Store)$">
