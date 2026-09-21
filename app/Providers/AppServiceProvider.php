@@ -2,12 +2,14 @@
 
 namespace App\Providers;
 
+use App\Models\Visitor;
 use App\Services\Gemini;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -50,7 +52,57 @@ class AppServiceProvider extends ServiceProvider
 
         $this->rateLimitAiCalls();
         $this->rateLimitPanel();
+        $this->visitorGuard();
+        $this->rateLimitVisitorApi();
         $this->logSecurityEvents();
+    }
+
+    /**
+     * The `visitor` guard: a bearer token, resolved to a Visitor row.
+     *
+     * Only the Authorization header is read. The old raw-PHP API also took
+     * the token from a query string or the body, for a service worker that
+     * no longer exists; a token in a URL ends up in access logs and browser
+     * history, so that door is closed.
+     */
+    private function visitorGuard(): void
+    {
+        Auth::viaRequest('visitor-token', function (Request $request) {
+            return Visitor::findByToken($request->bearerToken());
+        });
+    }
+
+    /**
+     * SECURITY: ceilings on the visitor API.
+     *
+     * Keyed by address, so every phone behind the museum's Wi-Fi NAT shares
+     * one budget - the limits are set for a floor of visitors, not a phone.
+     * Keying on anything the client supplies would let an attacker mint
+     * unlimited buckets, which defeats the point.
+     *
+     * Sign-in gets its own, much tighter budget: enough requests for
+     * browsing is far too many password guesses. Keyed on the email being
+     * targeted as well as the address, so one attacker cannot lock out a
+     * museum's worth of visitors behind one NAT, and so spraying one guess
+     * across many accounts from one address is still caught.
+     */
+    private function rateLimitVisitorApi(): void
+    {
+        RateLimiter::for('visitor-api', fn (Request $request) => Limit::perMinute(60)->by('api:' . $request->ip()));
+
+        // Camera sampling every few seconds, several phones on one address.
+        RateLimiter::for('visitor-recognition', fn (Request $request) => Limit::perMinute(120)->by('recog:' . $request->ip()));
+
+        RateLimiter::for('visitor-register', fn (Request $request) => Limit::perMinute(10)->by('register:' . $request->ip()));
+
+        RateLimiter::for('visitor-login', function (Request $request) {
+            $email = mb_strtolower(trim((string) $request->input('email')));
+
+            return [
+                Limit::perMinute(6)->by('login:acct:' . md5($email)),
+                Limit::perMinutes(5, 30)->by('login:ip:' . $request->ip()),
+            ];
+        });
     }
 
     /**

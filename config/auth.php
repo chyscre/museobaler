@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Staff;
+use App\Models\Visitor;
 
 return [
     'defaults' => [
@@ -13,12 +14,25 @@ return [
             'driver'   => 'session',
             'provider' => 'users',
         ],
+
+        // The museum app on a visitor's phone. Stateless: a bearer token
+        // issued at sign-in, resolved to a Visitor row on every request.
+        // The driver is registered in AppServiceProvider::visitorGuard().
+        'visitor' => [
+            'driver'   => 'visitor-token',
+            'provider' => 'visitors',
+        ],
     ],
 
     'providers' => [
         'users' => [
             'driver' => 'eloquent',
             'model'  => env('AUTH_MODEL', Staff::class),
+        ],
+
+        'visitors' => [
+            'driver' => 'eloquent',
+            'model'  => Visitor::class,
         ],
     ],
 

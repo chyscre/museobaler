@@ -192,6 +192,16 @@ class VisitGroup extends Model
         return $this->visitors()->count() >= (int) $this->headcount;
     }
 
+    /** The visit_type a member inherits from the kind of party they joined. */
+    public function memberVisitType(): string
+    {
+        return match ($this->group_type) {
+            'School' => 'School',
+            'Family' => 'Family',
+            default  => 'Group',
+        };
+    }
+
     /**
      * Whether being in this group gets a member through the entrance today.
      *
