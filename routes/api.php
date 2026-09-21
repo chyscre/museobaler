@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\ExhibitController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\MuseumController;
@@ -47,6 +48,10 @@ Route::prefix('v1')->name('api.')->group(function () {
         ->middleware('throttle:visitor-login')
         ->name('visitors.login');
     Route::post('visitors/logout', [VisitorController::class, 'logout'])->name('visitors.logout');
+
+    // -- The fence: token read when present, never required -------------------
+    Route::post('attendance', [AttendanceController::class, 'store'])->name('attendance.store');
+    Route::patch('attendance/{id}', [AttendanceController::class, 'update'])->whereNumber('id')->name('attendance.update');
 
     // -- Signed in: their own standing with the desk --------------------------
     Route::middleware('visitor.auth')->group(function () {
