@@ -4,6 +4,8 @@ use App\Http\Controllers\Api\ExhibitController;
 use App\Http\Controllers\Api\MuseumController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\RecognitionController;
+use App\Http\Controllers\Api\ScanController;
+use App\Http\Controllers\Api\VisitorController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -35,8 +37,25 @@ Route::prefix('v1')->name('api.')->group(function () {
     Route::get('museum', [MuseumController::class, 'show'])->name('museum');
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications');
 
+    // -- Accounts ----------------------------------------------------------
+    Route::post('visitors', [VisitorController::class, 'register'])
+        ->middleware('throttle:visitor-register')
+        ->name('visitors.register');
+    Route::post('visitors/login', [VisitorController::class, 'login'])
+        ->middleware('throttle:visitor-login')
+        ->name('visitors.login');
+    Route::post('visitors/logout', [VisitorController::class, 'logout'])->name('visitors.logout');
+
+    // -- Signed in: their own standing with the desk --------------------------
+    Route::middleware('visitor.auth')->group(function () {
+        Route::get('visitors/me', [VisitorController::class, 'status'])->name('visitors.me');
+        Route::post('visitors/me/group', [VisitorController::class, 'joinGroup'])->name('visitors.join-group');
+    });
+
     // -- The museum: signed in and cleared by the desk -----------------------
     Route::middleware(['visitor.auth', 'visitor.cleared'])->group(function () {
+        Route::post('scans', [ScanController::class, 'store'])->name('scans.store');
+
         // Revalidated on every request, never served stale: the browser keeps
         // the last answer and sends its ETag, and an unchanged list is a 304
         // with no body. Private, because the answer is behind a token.
