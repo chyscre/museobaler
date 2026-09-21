@@ -1,6 +1,13 @@
+# SECURITY: no directory listings, unconditionally. Laravel's stock file
+# wraps this in <IfModule mod_negotiation.c>, and on an Apache that does
+# not load that module (Laragon's does not) the line silently never
+# applies - every folder under public/ was an index page, including the
+# recognition training photos and every exhibit picture by name.
+Options -Indexes
+
 <IfModule mod_rewrite.c>
     <IfModule mod_negotiation.c>
-        Options -MultiViews -Indexes
+        Options -MultiViews
     </IfModule>
 
     RewriteEngine On
@@ -52,6 +59,6 @@
     # SAMEORIGIN, not DENY: third-party sites still cannot frame this app, but
     # DENY also blocked our own pages from embedding it — which is what
     # visitor/preview.html does to show the app at several device sizes at once.
-    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-Frame-Options "DENY"
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
 </IfModule>
