@@ -45,6 +45,33 @@ class ArtaSurvey
     public const NA_LABEL = ['fil' => 'N/A', 'en' => 'N/A'];
 
     /**
+     * The "Rehiyon" field. The visitor's record already says whether they
+     * are foreign; a domestic tourist picks their own region from this list.
+     */
+    public const REGIONS = [
+        'NCR – National Capital Region',
+        'CAR – Cordillera',
+        'I – Ilocos',
+        'II – Cagayan Valley',
+        'III – Central Luzon',
+        'IV-A – CALABARZON',
+        'IV-B – MIMAROPA',
+        'V – Bicol',
+        'VI – Western Visayas',
+        'VII – Central Visayas',
+        'VIII – Eastern Visayas',
+        'IX – Zamboanga Peninsula',
+        'X – Northern Mindanao',
+        'XI – Davao',
+        'XII – SOCCSKSARGEN',
+        'XIII – Caraga',
+        'BARMM – Bangsamoro',
+        'Outside the Philippines',
+    ];
+
+    public const CLIENT_TYPES = ['citizen', 'business', 'government'];
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     public static function defaults(): array

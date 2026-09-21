@@ -1,10 +1,12 @@
 <?php
 
 use App\Http\Controllers\Api\ExhibitController;
+use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\MuseumController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\RecognitionController;
 use App\Http\Controllers\Api\ScanController;
+use App\Http\Controllers\Api\SurveyController;
 use App\Http\Controllers\Api\VisitorController;
 use Illuminate\Support\Facades\Route;
 
@@ -55,6 +57,8 @@ Route::prefix('v1')->name('api.')->group(function () {
     // -- The museum: signed in and cleared by the desk -----------------------
     Route::middleware(['visitor.auth', 'visitor.cleared'])->group(function () {
         Route::post('scans', [ScanController::class, 'store'])->name('scans.store');
+        Route::get('survey', [SurveyController::class, 'show'])->name('survey');
+        Route::post('feedback', [FeedbackController::class, 'store'])->name('feedback.store');
 
         // Revalidated on every request, never served stale: the browser keeps
         // the last answer and sends its ETag, and an unchanged list is a 304
