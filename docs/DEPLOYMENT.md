@@ -97,8 +97,8 @@ through both, in the order to do them.
 ## What CI guarantees before any of this
 
 `.github/workflows/ci.yml` runs on every push: the full test suite on
-in-memory sqlite, a syntax check of the raw-PHP visitor API, `composer audit`
-and `npm audit`. Deploy from a ref that is green. Dependabot opens a pull
+in-memory sqlite (the visitor API included, under `tests/Feature/Api`),
+`composer audit` and `npm audit`. Deploy from a ref that is green. Dependabot opens a pull
 request every Monday for dependency updates, which CI tests the same way.
 
 ## On the Windows machine this was built on

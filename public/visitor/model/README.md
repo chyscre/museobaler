@@ -14,7 +14,7 @@ trains the model and saves it into this folder. See
 `App\Services\Recognition` and `RecognitionController`.
 
 If the folder is empty or the files are unreadable, the visitor app falls
-back to the server-side photo matcher (`public/api/image_search.php`), which
+back to the server-side photo matcher (`POST /api/v1/recognition`, `AppServicesImageSearch`), which
 uses the ordinary exhibit gallery pictures and is much less accurate. The QR
 codes always work regardless.
 

@@ -416,8 +416,8 @@ function showRegError(msg) {
   box.style.display = msg ? 'block' : 'none';
 }
 
-// A mirror of App/Support/VisitorPasswordPolicy.php, for instant feedback while
-// A mirror of public/api/_password_policy.php, for instant feedback while
+// ── Password rules ─────────────────────────────────────────────────────────
+// A mirror of App\Support\VisitorPasswordPolicy, for instant feedback while
 // typing. The server runs the same checks and is the one that decides — this
 // copy only exists so the visitor is not made to guess what is wrong.
 

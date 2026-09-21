@@ -20,10 +20,14 @@ file *and* approve an attendance correction (`AttendanceCorrectionController`),
 and nobody can file one for themselves.
 
 Visitors are a separate population entirely: they never have a panel
-account. The visitor API (`public/api/`) identifies a visitor by a random
-64-hex bearer token issued at sign-in, stored only as a SHA-256 hash, valid
-for 24 hours (`_visitor_auth.php`). Every write — attendance, scans,
-feedback, bookmarks — is attributed to the visitor the token resolves to.
+account. The visitor API (`routes/api.php`, under `/api/v1`) identifies a
+visitor by a random 64-hex bearer token issued at sign-in, stored only as a
+SHA-256 hash, valid for 24 hours (the `visitor` guard in
+`AppServiceProvider`, `Visitor::findByToken`). Exhibit content sits behind
+`EnsureVisitorCleared` as well: a token gets a visitor as far as the desk,
+and only a collected fee or a sighted residency ID gets them past it.
+Every write — attendance, scans, feedback — is attributed to the visitor
+the token resolves to.
 A `visitor_id` in the request body is ignored unless it agrees with the
 token, so no visitor can read or write another visitor's record.
 
@@ -33,8 +37,9 @@ pins both directions.
 
 ## Sign-in
 
-- Passwords: bcrypt, 12 rounds (`BCRYPT_ROUNDS`). Visitor passwords bcrypt
-  via `password_hash`, with a common-password blocklist (`_password_policy.php`).
+- Passwords: bcrypt, 12 rounds (`BCRYPT_ROUNDS`). Visitor passwords the
+  same, under `VisitorPasswordPolicy`: length and a common-password
+  blocklist, deliberately without character-class rules (NIST SP 800-63B).
 - Staff passwords are issued by Tourism and **must be changed at first
   sign-in** (`RequirePasswordChange`); changing one signs out every other
   session on that account (`AuthenticateSession` pins a session to the password hash it was opened with).
@@ -49,11 +54,11 @@ pins both directions.
 ## Input and output
 
 - Every string field in every panel request has HTML tags and control
-  characters removed before validation (`SanitizeInput` middleware); the
-  visitor API applies the same rule (`public/api/_sanitize.php`). Passwords
-  are exempt.
-- All database access is parameterised: Eloquent in the panel, prepared
-  statements throughout `public/api/`.
+  characters removed before validation (`SanitizeInput` middleware), on the
+  visitor API's JSON bodies as well as the panel's forms. Passwords are
+  exempt.
+- All database access is parameterised: Eloquent throughout, panel and
+  visitor API alike. Request shapes are Form Requests (`app/Http/Requests/Api`).
 - Output is escaped: Blade `{{ }}` everywhere in the panel (the one `{!! !!}`
   renders a hard-coded SVG icon set), `escapeHtml()` in the visitor app.
 - Uploaded files are served through routes that `basename()` the filename
@@ -70,11 +75,15 @@ record saves as `alert(1)`, nothing executes anywhere.
   (self + the two CDNs the layout uses), `X-Frame-Options: DENY`,
   `nosniff`, `Referrer-Policy`, `Permissions-Policy` scoping camera and
   geolocation to this origin only, `X-Powered-By` removed.
-- The visitor API answers CORS only for its own origin (plus any listed in
-  `API_ALLOWED_ORIGINS`) and fails closed otherwise (`_cors.php`). Every API
-  response carries `nosniff`, `Cache-Control: no-store`,
-  `Cross-Origin-Resource-Policy: same-origin`.
-- Rate limits: 60 requests/minute/IP per API endpoint (`_rate_limit.php`),
+- The visitor API answers CORS only for origins listed in
+  `API_ALLOWED_ORIGINS` (`config/cors.php`); same-origin needs none. Every
+  API response carries `nosniff`, `Cross-Origin-Resource-Policy:
+  same-origin` and `Cache-Control: no-store`, except the exhibit list, which
+  is `private, no-cache` with an ETag so an unchanged museum is a 304
+  (`ApiResponseHeaders`).
+- Rate limits: 60 requests/minute/IP across the visitor API, 120 for camera
+  sampling, 10 registrations a minute, and sign-in at 6 a minute per account
+  and 30 per five minutes per address (`AppServiceProvider`);
   300/minute/account across the panel (`throttle:panel`), 20/minute and
   300/day on the two routes that spend money on AI (`throttle:ai`).
 - Proxy trust is explicit (loopback and Cloudflare's published ranges), so

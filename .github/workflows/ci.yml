@@ -5,8 +5,8 @@
 # the server that the tests did not pass.
 #
 # The suite runs on in-memory sqlite (see phpunit.xml), so no database
-# service is needed here. The raw-PHP visitor API under public/api is
-# syntax-checked, since it has no test harness of its own.
+# service is needed here. The visitor API is Laravel (routes/api.php) and
+# is covered by tests/Feature/Api like everything else.
 name: CI
 
 on:
@@ -49,9 +49,6 @@ jobs:
         run: |
           cp .env.example .env
           php artisan key:generate --force
-
-      - name: Lint the raw-PHP visitor API
-        run: find public/api public/auth -name '*.php' -print0 | xargs -0 -n1 php -l
 
       - name: Test suite
         run: php artisan test --compact
