@@ -16,6 +16,7 @@ class Attendance extends Model
     {
         return [
             'visit_date' => 'date',
+            'exited_at'  => 'datetime',
         ];
     }
 
