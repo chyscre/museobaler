@@ -122,12 +122,19 @@ record saves as `alert(1)`, nothing executes anywhere.
   `db:backup:decrypt` opens a dump. A backup that goes missing on a USB
   stick is then a lost stick, not a breach.
 - Visitor PII columns (name, email, age, address) are stored in the clear
-  in MySQL. They are read by both the Laravel panel and the raw-PHP visitor
-  API, and they drive search, grouping and the CSV reports; column-level
-  encryption would need both stacks to share a cipher and every report to
-  decrypt row by row. Mitigated by: no direct database exposure, scoped DB
+  in MySQL. They drive search, grouping and the CSV reports; column-level
+  encryption would need every report to decrypt row by row. Mitigated by: no direct database exposure, scoped DB
   user, encrypted backups, disk encryption on the host. Recorded as a known
   limitation rather than a hidden one.
+- **On the phone:** the visitor app's service worker (`public/visitor/sw.js`)
+  keeps the app shell, pictures and audio, and the last good copy of the
+  gated content - exhibit list, single exhibits, the visitor's own
+  clearance - so a dropped signal mid-tour does not empty the museum. That
+  copy is only ever served when the network fails outright; a live 401 or
+  403, or signing out, deletes it. Nothing that identifies or changes a
+  visitor (sign-in, registration, scans, feedback, attendance, the survey)
+  is cached at all. The token lives in localStorage as before; the worker
+  does not read it.
 
 ## Backups
 

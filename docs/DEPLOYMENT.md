@@ -101,6 +101,16 @@ in-memory sqlite (the visitor API included, under `tests/Feature/Api`),
 `composer audit` and `npm audit`. Deploy from a ref that is green. Dependabot opens a pull
 request every Monday for dependency updates, which CI tests the same way.
 
+## The visitor app's service worker
+
+Phones cache the app (`public/visitor/sw.js`) under a name that carries
+the release: step 1 of `deploy.sh` writes the release hash into `VERSION`
+in `sw.js`, and `sw.js` is served `no-cache` (`public/.htaccess`), so a
+phone that opens the app after a deploy installs the new release into a
+fresh cache and drops the old one. Nothing to do by hand. If a phone ever
+does look stuck, the release hash is visible at
+`DevTools > Application > Cache Storage` as `museobaler-shell-<hash>`.
+
 ## On the Windows machine this was built on
 
 There is no blue/green on a Laragon laptop; there is just the working tree.
@@ -112,3 +122,8 @@ powershell -ExecutionPolicy Bypass -File deploy\windows\install-scheduler-task.p
 
 registers a Task Scheduler entry that calls `php artisan schedule:run` every
 minute as SYSTEM. Run it once from an elevated PowerShell.
+
+The service worker's `VERSION` stays `dev` here; the shell is refreshed in
+the background on every open anyway, so an edited `app.js` shows up on the
+next load. Only a precached file being *removed* needs a bump: change
+`VERSION` in `sw.js`, or unregister the worker in DevTools.
