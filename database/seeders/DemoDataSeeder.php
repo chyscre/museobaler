@@ -9,6 +9,7 @@ use App\Models\StaffSchedule;
 use App\Models\Tour;
 use App\Models\Visitor;
 use App\Models\VisitGroup;
+use App\Support\PasswordPolicy;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
@@ -28,6 +29,13 @@ class DemoDataSeeder extends Seeder
 {
     public function run(): void
     {
+        // SECURITY: this seeder invents four Administrator accounts. On a
+        // production database that is four more ways in, so it refuses
+        // outright rather than warning and carrying on.
+        if (app()->environment('production')) {
+            throw new \RuntimeException('DemoDataSeeder is for development and demos only and will not run in production.');
+        }
+
         $this->command?->warn('Seeding DEMO data - not for production.');
 
         $staff = $this->staff();
@@ -36,7 +44,7 @@ class DemoDataSeeder extends Seeder
         $this->attendance($staff);
         $this->visitors($staff);
 
-        $this->command?->info('Demo data ready. Sign in as tourism@baler.gov.ph');
+        $this->command?->info('Demo data ready. The passwords above were printed once; each account must change it at first sign-in.');
     }
 
     /** @return array<string, Staff> */
@@ -56,10 +64,17 @@ class DemoDataSeeder extends Seeder
         $made = [];
 
         foreach ($people as $key => [$name, $email, $role]) {
+            // SECURITY: a random password per account, printed once, and a
+            // forced change at first sign-in - the same rule as the real
+            // seeder. "Password1!" was in this file, and this file is public.
+            $password    = PasswordPolicy::generateTemporary();
             $made[$key] = Staff::firstOrCreate(
                 ['email' => $email],
-                ['name' => $name, 'password' => Hash::make('Password1!'), 'role' => $role, 'status' => true]
+                ['name' => $name, 'password' => Hash::make($password), 'role' => $role, 'status' => true, 'must_change_password' => true]
             );
+            if ($made[$key]->wasRecentlyCreated) {
+                $this->command?->line("  $email  password: $password");
+            }
         }
 
         return $made;
