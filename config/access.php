@@ -38,4 +38,19 @@ return [
 
     'geofence' => (bool) env('ATTENDANCE_GEOFENCE', true),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Visitor app geofence
+    |--------------------------------------------------------------------------
+    |
+    | The app's own fence: it logs a visitor's entry and exit and shows the
+    | welcome toast only inside the museum's circle. Same rule as above -
+    | off only for a desk far from Baler, and never consulted in production.
+    | The app asks GET /api/v1/museum whether to enforce it; the phone does
+    | not decide for itself.
+    |
+    */
+
+    'visitor_geofence' => (bool) env('VISITOR_GEOFENCE', true),
+
 ];

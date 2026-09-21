@@ -48,6 +48,9 @@ $trustedProxies = [
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
+        // The visitor app's API, under /api/v1. Stateless: no session, no
+        // CSRF, a bearer token per visitor. See routes/api.php.
+        api: __DIR__.'/../routes/api.php',
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
@@ -78,6 +81,18 @@ return Application::configure(basePath: dirname(__DIR__))
             'role'            => \App\Http\Middleware\EnsureRole::class,
             'password.rotate' => \App\Http\Middleware\RequirePasswordChange::class,
             'desktop'         => \App\Http\Middleware\DesktopOnly::class,
+            'visitor.auth'    => \App\Http\Middleware\AuthenticateVisitor::class,
+            'visitor.cleared' => \App\Http\Middleware\EnsureVisitorCleared::class,
+        ]);
+
+        // The visitor API. The same input sanitiser as the panel (JSON
+        // bodies included), the response headers the raw-PHP API used to
+        // set by hand, and a per-address ceiling - see the limiters in
+        // AppServiceProvider. CORS is handled by HandleCors from config/cors.php.
+        $middleware->throttleApi('visitor-api');
+        $middleware->api(append: [
+            \App\Http\Middleware\SanitizeInput::class,
+            \App\Http\Middleware\ApiResponseHeaders::class,
         ]);
 
         // Trust Cloudflare as a reverse proxy — fixes scheme/cookie handling
@@ -93,6 +108,12 @@ return Application::configure(basePath: dirname(__DIR__))
         );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // The visitor app is a fetch() client that does not always say
+        // Accept: application/json. Anything under /api is JSON regardless:
+        // a validation failure is a 422 with the errors, never a redirect
+        // to a page a phone has no use for.
+        $exceptions->shouldRenderJsonWhen(fn (Request $request) => $request->is('api/*') || $request->expectsJson());
+
         // An unhandled error in production is worth an email, not just a
         // log line nobody opens. Laravel has already filtered out the
         // routine ones (404, 403, validation, expired sessions) before this
