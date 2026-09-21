@@ -160,6 +160,48 @@ record saves as `alert(1)`, nothing executes anywhere.
   backup before migrating and health-checks the new release before it goes
   live.
 
+## Before production hosting: the checklist
+
+What the code cannot do for you. Each is a line in `.env` or the web
+server, and `tests/Feature/ProductionConfigTest` covers only the first.
+
+- **HTTPS, everywhere.** A TLS certificate on the server or Cloudflare in
+  front. Without it the visitor app has no camera, no location and no
+  service worker, and the staff session cookie travels in the clear.
+  Then `SESSION_SECURE_COOKIE=true`, and uncomment the
+  `Strict-Transport-Security` line in `public/.htaccess` (or set it in
+  nginx) once every subdomain is on TLS.
+- **`APP_ENV=production`, `APP_DEBUG=false`.** Both geofences and the
+  CORS dev origins switch off on the first; the second is forced off in
+  production anyway, but set it.
+- **CORS:** leave `API_ALLOWED_ORIGINS` empty unless a front end on
+  another origin exists. Same-origin needs nothing.
+- **Proxies:** if the origin is reached through Cloudflare's edge rather
+  than a `cloudflared` tunnel, the trusted ranges in `bootstrap/app.php`
+  must be current, or every visitor shares one IP for rate limiting.
+- **`ext-zip` on**, `mysqldump` on PATH or `MYSQLDUMP_PATH` set, the
+  scheduler woken by cron, `BACKUP_ENCRYPTION_KEY` set and copied off the
+  machine, `BACKUP_COPY_TO` on a different disk, `ALERT_EMAIL` and real
+  `MAIL_*` so someone hears when a backup fails.
+- **Directory listings** are off in `public/.htaccess`; on nginx,
+  `autoindex` defaults to off - do not turn it on.
+- **Never run `DemoDataSeeder`** on the production database; it refuses,
+  but do not make it try.
+- **`robots.txt`** allows everything. The panel is behind sign-in, so
+  indexing finds only the login page; add `Disallow: /` with an
+  `Allow: /visitor/` if the museum would rather not appear in search
+  results at all.
+
+## Audit log
+
+- **2026-09-21 (Phase 5).** Git history scanned for keys and credentials:
+  none. Found and fixed: directory listings on (the `-Indexes` directive
+  was inside an `<IfModule>` for a module Laragon does not load); the demo
+  seeder minting Administrators with `Password1!`; two unescaped HTML sinks
+  for staff-typed captions and fun facts; the offline API cache surviving
+  a change of visitor on a shared phone; `X-Frame-Options` sent with two
+  different values. Boundaries pinned by `tests/Feature/Api/AuthBoundaryTest`.
+
 ## Data Privacy Act (RA 10173) notes
 
 - Collected from visitors: name, age, sex, email, city/barangay/province/
