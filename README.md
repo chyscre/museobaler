@@ -1,59 +1,129 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Museo de Baler
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+The visitor and operations system for Museo de Baler, the municipal museum
+of Baler, Aurora. One codebase, three faces:
 
-## About Laravel
+| | What | Who uses it | Where |
+|---|---|---|---|
+| **Admin panel** | Front desk, exhibits, translations and narration, QR labels, the map, staff attendance, reports, the ARTA survey | Museum staff and the Tourism office, on a computer or tablet | `/` — Laravel + Blade, `app/Http/Controllers` |
+| **Visitor app** | A PWA visitors open on their own phone: register, pay at the desk, then scan or point the camera at exhibits, read and listen in their language, leave feedback | Visitors | `/visitor/` — `public/visitor/` (plain HTML/CSS/JS, no build step), with a service worker for weak signal |
+| **API v1** | What the visitor app talks to; JSON, bearer tokens, behind an admission gate | The visitor app | `/api/v1/` — `routes/api.php`, `app/Http/Controllers/Api` |
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+Laravel 12, PHP 8.2+, MySQL 8. Tests run on in-memory SQLite.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## How it fits together
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+```
+visitor's phone                       museum's computer / tablet
+┌──────────────────┐                  ┌──────────────────────┐
+│ public/visitor/  │                  │ admin panel (Blade)  │
+│ index.html       │                  │ /desk /exhibits /map │
+│ app.js + sw.js   │                  └──────────┬───────────┘
+└────────┬─────────┘                             │ session
+         │ bearer token                          │
+         ▼                                       ▼
+┌────────────────────────────────────────────────────────────┐
+│ Laravel                                                    │
+│  routes/api.php  ──  visitor.auth ── visitor.cleared ──►   │
+│  routes/web.php  ──  auth ── role:Administrator|TourismHead│
+│  Eloquent models, one database                             │
+└──────────────────────────┬─────────────────────────────────┘
+                           ▼
+                        MySQL           + nightly encrypted backup
+                                          (db + media) to storage/app/backups
+                                          and BACKUP_COPY_TO
+```
 
-## Learning Laravel
+The admission gate is the one idea to understand first: a visitor's phone
+gets a token at registration, but exhibit content is only served once the
+desk has marked the fee paid or a local's ID verified
+(`app/Http/Middleware/EnsureVisitorCleared.php`). The app's waiting screen
+is a rendering of that answer, never the check itself.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+## Running it locally
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+Needs PHP 8.2+ with `mbstring gd sodium pdo_mysql zip`, Composer, Node 20+,
+MySQL 8. On Laragon: uncomment `extension=zip` in `php.ini` (it ships
+disabled) and restart Apache.
 
-## Laravel Sponsors
+```bash
+composer install
+npm ci
+cp .env.example .env            # DB_* for a local MySQL; the rest can wait
+php artisan key:generate
+php artisan migrate --seed      # schema, the ARTA survey, sample exhibits with pictures
+npm run build                   # the panel's stylesheet (Vite)
+php artisan serve               # http://127.0.0.1:8000  — or point Apache/Laragon at public/
+```
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+The seeder prints the two starting logins (an Administrator and a Tourism
+Head) once; both must change their password at first sign-in. Set
+`SEED_ADMIN_PASSWORD` / `SEED_TOURISM_PASSWORD` in `.env` first to choose
+them instead.
 
-### Premium Partners
+The visitor app is at `http://127.0.0.1:8000/visitor/`. On a phone it needs
+HTTPS for the camera, the service worker and location — use a
+`cloudflared` tunnel to your local server, or test those parts on the
+deployed site. `VISITOR_GEOFENCE=false` and `ATTENDANCE_GEOFENCE=false` in
+`.env` let you exercise the entry flow and staff clock-in from a desk that
+is not in Baler; production ignores both.
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+Optional: `GEMINI_API_KEY` (Google AI Studio) for AI translations and
+narration. Without it those buttons say so and everything else works.
 
-## Contributing
+```bash
+php artisan test        # 310 PHPUnit tests, incl. tests/Feature/Api
+npm test                # the service worker's routing rules (node --test)
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Backups and restore
 
-## Code of Conduct
+```bash
+php artisan db:backup:key        # once; put the output in .env as BACKUP_ENCRYPTION_KEY,
+                                 # and a copy OFF the machine — see docs/OWNERSHIP.md
+php artisan db:backup            # a dump + a media tarball into storage/app/backups
+php artisan db:backup:decrypt storage/app/backups/museobaler-<stamp>.sql.gz.enc
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+The nightly run is `Schedule::command('db:backup')` at 02:30
+(`routes/console.php`); the OS has to wake the scheduler every minute
+(`deploy/windows/install-scheduler-task.ps1`, or a cron line). There is no
+`db:restore` command by design — restoring is a person's decision, and
+`docs/RESTORE.md` walks through it step by step.
 
-## Security Vulnerabilities
+## Deploying
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+`deploy/deploy.sh <ref>` does a blue/green deploy on a Linux host and
+`deploy/rollback.sh` undoes it in a second. `docs/DEPLOYMENT.md` has the
+first-time server setup, the `.env` keys that are not optional, and what
+CI guarantees before any of it.
 
-## License
+## Documentation
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+| For | Read |
+|---|---|
+| Museum staff and the Tourism office — how to do the job | [docs/STAFF_MANUAL.md](docs/STAFF_MANUAL.md) |
+| Whoever holds the keys — accounts, credentials, the backup key, who to call | [docs/OWNERSHIP.md](docs/OWNERSHIP.md) |
+| The person holding the backup drive on a bad morning | [docs/RESTORE.md](docs/RESTORE.md) |
+| Putting it on a server, updating it, rolling back | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) |
+| What is protected how; Data Privacy Act notes | [docs/SECURITY.md](docs/SECURITY.md) |
+| What it deliberately does not do, and what will trip a developer | [docs/LIMITATIONS.md](docs/LIMITATIONS.md) |
+| The recognition model the camera uses | [public/visitor/model/README.md](public/visitor/model/README.md) |
+
+## Layout
+
+```
+app/Http/Controllers/       the panel
+app/Http/Controllers/Api/   the visitor API (/api/v1)
+app/Http/Middleware/        roles, the admission gate, sanitising, headers
+app/Models/                 Eloquent; Visitor carries the door's logic
+app/Services/               Gemini, geofence, recognition, image search, QR
+app/Support/                the ARTA survey, password policies, backups, alerts
+database/seeders/media/     the seeded exhibits' pictures and audio
+public/visitor/             the app: index.html, js/app.js, sw.js, model/
+public/images, public/audio uploads (git-ignored; shared across deploys)
+deploy/                     deploy.sh, rollback.sh, the Windows scheduler task
+docs/                       everything listed above
+tests/Feature/Api/          the visitor API
+tests/js/                   the service worker
+```
