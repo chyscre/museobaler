@@ -63,7 +63,7 @@
         'floor' => $e->floor ?? '',
         'hall'  => $e->hall  ?? '',
     ];
-})->values()) !!}</script>
+})->values(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!}</script>
 @endsection
 
 @push('scripts')
