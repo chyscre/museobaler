@@ -21,26 +21,32 @@
    now" -- blaming the network for what was really a wrong path.
 
    The app is always served out of a 'visitor/' directory and the API is always
-   its sibling 'api/', whatever depth the pair sits at. Deriving one from the
+   its sibling 'api/v1', whatever depth the pair sits at. Deriving one from the
    other holds at every entry point -- localhost, yeppie.test, the LAN IP, a
-   cloudflared or ngrok tunnel -- and needs no list of hostnames to maintain. */
-const API_BASE = (function () {
+   cloudflared or ngrok tunnel -- and needs no list of hostnames to maintain.
+
+   /api/v1 is Laravel (routes/api.php). The raw PHP scripts that used to sit
+   in public/api are gone; every call below is a route there. */
+const PUBLIC_BASE = (function () {
   const path = window.location.pathname;
   const i = path.lastIndexOf('/visitor/');
-  const base = i >= 0
+  return window.location.origin + (i >= 0
     ? path.slice(0, i)                        // .../visitor/index.html -> ...
-    : path.replace(/\/[^/]*$/, '') + '/..';   // opened from somewhere unexpected
-  return window.location.origin + base + '/api';
+    : path.replace(/\/[^/]*$/, '') + '/..');  // opened from somewhere unexpected
 })();
 
 // Pictures and audio guides sit beside api/ in public/, so the same base
 // serves them. The API hands back root-relative paths built the same way;
-// this only exists for the odd cached record that still carries a bare filename.
-const PUBLIC_BASE = API_BASE.replace(/\/api$/, '');
+// PUBLIC_BASE only exists for the odd cached record that still carries a
+// bare filename.
+const API_BASE = PUBLIC_BASE + '/api/v1';
 
-// Helper: fetch with ngrok bypass header always included
+// Helper: fetch with the headers every API call needs.
 function apiFetch(url, options = {}) {
   const headers = {
+    // Laravel answers JSON on /api regardless, but saying so keeps any
+    // proxy in between from negotiating something else.
+    'Accept': 'application/json',
     'ngrok-skip-browser-warning': 'true'
   };
   // The session token proves who we are to every gated endpoint. Sending it
@@ -239,11 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (STATE.token) {
     setAuthMode('signin');
     showLoading(true);
-    apiFetch(`${API_BASE}/visitor.php`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'status' })
-    })
+    apiFetch(`${API_BASE}/visitors/me`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data || data.error) { handleSessionLost(); return; }
@@ -414,7 +416,7 @@ function showRegError(msg) {
   box.style.display = msg ? 'block' : 'none';
 }
 
-// ── Password rules ─────────────────────────────────────────────────────────
+// A mirror of App/Support/VisitorPasswordPolicy.php, for instant feedback while
 // A mirror of public/api/_password_policy.php, for instant feedback while
 // typing. The server runs the same checks and is the one that decides — this
 // copy only exists so the visitor is not made to guess what is wrong.
@@ -571,10 +573,10 @@ function doSignIn() {
   showRegError('');
 
   showLoading(true);
-  apiFetch(`${API_BASE}/visitor.php`, {
+  apiFetch(`${API_BASE}/visitors/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'login', email, password })
+    body: JSON.stringify({ email, password })
   })
     .then(r => r.status === 429
       ? { error: 'rate_limited' }
@@ -796,11 +798,7 @@ function checkClearance(manual) {
   const spinner = document.getElementById('pending-spinner');
   if (manual && status) status.textContent = 'Checking…';
 
-  return apiFetch(`${API_BASE}/visitor.php`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'status' })
-  })
+  return apiFetch(`${API_BASE}/visitors/me`)
     .then(r => r.ok ? r.json() : null)
     .then(data => {
       if (!data || data.error) return;
@@ -960,11 +958,10 @@ function submitRegistration() {
   STATE.visitorType = visitorType;
 
   showLoading(true);
-  apiFetch(`${API_BASE}/visitor.php`, {
+  apiFetch(`${API_BASE}/visitors`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      action:           'register',
       first_name:       pendingSignup.first,
       last_name:        pendingSignup.last,
       middle_name:      STATE.middleName,
@@ -977,8 +974,8 @@ function submitRegistration() {
       barangay:         STATE.barangay,
       province:         STATE.province,
       email:            pendingSignup.email,
-      password:         pendingSignup.password,
-      password_confirm: pendingSignup.password,
+      password:              pendingSignup.password,
+      password_confirmation: pendingSignup.password,
       explore_mode:     STATE.mode === 'free' ? 'Free Roam' : 'Storyline',
       // Blank unless they are joining a party the desk signed in. The server
       // decides what the code is worth; the fee is never sent from here.
@@ -992,8 +989,9 @@ function submitRegistration() {
       showToast(message, 3800);
       // A rejected password, a taken email or a bogus email domain has to be
       // fixed on the welcome screen, so send the visitor back there rather
-      // than leaving them stuck on the details form.
-      if (data && (data.error === 'email_taken' || data.error === 'email_domain_invalid' || String(data.error).startsWith('password'))) {
+      // than leaving them stuck on the details form. The server names the
+      // field that failed, so this does not have to guess from the code.
+      if (data && (data.error === 'email_taken' || data.field === 'email' || data.field === 'password')) {
         showRegError(message);
         setAuthMode(data.error === 'email_taken' ? 'signin' : 'signup');
         showScreen('s-register');
@@ -1084,10 +1082,10 @@ function joinGroupFromPending() {
   if (!STATE.token)    { handleSessionLost(); return; }
 
   showLoading(true);
-  apiFetch(`${API_BASE}/visitor.php`, {
+  apiFetch(`${API_BASE}/visitors/me/group`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'join_group', group_code: code })
+    body: JSON.stringify({ group_code: code })
   })
     .then(r => r.json())
     .then(data => {
@@ -1248,8 +1246,14 @@ function populateHome() {
 let _exhibitCache = [];
 
 function loadExhibits(lang) {
-  return apiFetch(`${API_BASE}/exhibits.php?lang=${lang || STATE.lang}&_=${Date.now()}`)
-    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+  return apiFetch(`${API_BASE}/exhibits?lang=${encodeURIComponent(lang || STATE.lang)}`)
+    .then(r => {
+      // 401 and 403 have already been handled by apiFetch: the session is
+      // gone or the desk has not cleared us. Neither is the network's fault.
+      if (r.status === 401 || r.status === 403) return [];
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
     .then(data => {
       const raw = Array.isArray(data) ? data : (data.exhibits || []);
       _exhibitCache = raw.map(normalizeExhibit);
@@ -1666,7 +1670,7 @@ const ImageSearchEngine = (() => {
 
   // ── Load model ─────────────────────────────────────────────────────────────
   // Called once at page load. If no trained Teachable Machine model is
-  // present, fall back to the server-side pHash matcher (/api/image_search.php)
+  // present, fall back to the server-side pHash matcher (POST /api/v1/recognition)
   // instead of leaving image search dark — it needs no training data since it
   // matches against exhibit photos already in the admin panel, just with a
   // lower accuracy ceiling than a properly trained model.
@@ -1790,7 +1794,7 @@ const ImageSearchEngine = (() => {
     }
   }
 
-  // ── Fallback tick: server-side pHash match via /api/image_search.php ──────
+  // ── Fallback tick: server-side pHash match via POST /api/v1/recognition ──────
   // Used when no trained Teachable Machine model is present. Slower cadence
   // than _tick() (network round trip + server-side work per frame) and a
   // lower accuracy ceiling than a trained model, but works immediately with
@@ -1812,7 +1816,7 @@ const ImageSearchEngine = (() => {
       form.append('frame', blob, 'frame.jpg');
       if (STATE.visitorId) form.append('visitor_id', STATE.visitorId);
 
-      const res = await apiFetch(`${API_BASE}/image_search.php`, { method: 'POST', body: form });
+      const res = await apiFetch(`${API_BASE}/recognition`, { method: 'POST', body: form });
 
       // Everyone on the museum's Wi-Fi shares one rate-limit budget, so a busy
       // floor can hit the ceiling through ordinary use. Backing off for the
@@ -2040,9 +2044,14 @@ function handleScan(code, scanType = 'qr', alreadyLogged = false) {
   showToast('Looking up exhibit…', 1500);
 
   // Always fetch from API so admin changes (translations, audio) are reflected
-  apiFetch(`${API_BASE}/exhibits.php?code=${encodeURIComponent(code)}&lang=${STATE.lang}&_=${Date.now()}`)
-    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+  apiFetch(`${API_BASE}/exhibits/${encodeURIComponent(code)}?lang=${encodeURIComponent(STATE.lang)}`)
+    .then(r => {
+      if (r.status === 401 || r.status === 403) return null; // apiFetch has acted
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
     .then(data => {
+      if (!data) return;
       // A 200 with {error} is the API's "no such code" - a wrong label, not
       // a lost connection, so it gets a toast rather than the offline notice.
       if (data.error) { showToast('Exhibit not found: ' + code); return; }
@@ -2074,13 +2083,12 @@ function logScan(exhibit, scanType = 'qr', postToServer = true) {
 
   if (!postToServer) return;
 
-  apiFetch(`${API_BASE}/visitor.php`, {
+  apiFetch(`${API_BASE}/scans`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       // The server attributes the scan to whoever the token belongs to, so no
       // visitor_id is sent — it would be ignored anyway.
-      action:      'scan',
       exhibit_id:  exhibit.exhibit_id || parseInt(String(exhibit.id).replace(/\D/g,'')) || null,
       scan_type:   scanType,
     })
@@ -2619,7 +2627,7 @@ function setLang(lang) {
     showToast('Language: ' + (labels[lang] || lang));
     var code = currentExhibit.code || currentExhibit.exhibit_code;
     if (code) {
-      apiFetch(API_BASE + '/exhibits.php?code=' + encodeURIComponent(code) + '&lang=' + lang + '&_=' + Date.now())
+      apiFetch(API_BASE + '/exhibits/' + encodeURIComponent(code) + '?lang=' + encodeURIComponent(lang))
         .then(function(r){ return r.json(); })
         .then(function(data){
           if (!data.error) {
@@ -3549,11 +3557,7 @@ function openFeedback() {
 
   if (!STATE.visitorId) return;
 
-  apiFetch(`${API_BASE}/visitor.php`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'survey' })
-  })
+  apiFetch(`${API_BASE}/survey`)
     .then(r => r.json())
     .then(data => {
       SURVEY.questions = (data && data.questions) || [];
@@ -3786,7 +3790,6 @@ function submitFeedback() {
   // key at all, which the API treats as a star-only submission.
   const body = {
     // Authorship comes from the session token, not from the body.
-    action: 'feedback',
     rating: feedbackRating,
     guide_rating: guideRating,
     comment: text,
@@ -3801,25 +3804,36 @@ function submitFeedback() {
   }
 
   showLoading(true);
-  apiFetch(`${API_BASE}/visitor.php`, {
+  apiFetch(`${API_BASE}/feedback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   })
-  .then(r => r.json())
+  .then(r => {
+    if (r.status === 401 || r.status === 403) return null; // apiFetch has acted
+    if (r.status >= 500) throw new Error('HTTP ' + r.status);
+    return r.json();
+  })
   .then(d => {
-    if (d && d.error === 'missing_answer') {
+    if (!d) return;
+    if (d.error === 'missing_answer') {
       // The question bank changed while the sheet was open; reload it.
       showToast(lang === 'fil' ? 'May kulang na sagot — pakisubukang muli' : 'An answer is missing — please try again');
       openFeedback();
+      return;
+    }
+    if (d.error) {
+      showToast(d.message || (lang === 'fil' ? 'Hindi naipadala ang sagot' : 'Your feedback could not be sent'), 3500);
       return;
     }
     closeFeedback();
     showToast(lang === 'fil' ? 'Maraming salamat sa iyong sagot!' : 'Thank you for your feedback!');
   })
   .catch(() => {
+    // This used to thank the visitor anyway. Their answers are still on
+    // the sheet; say so and let them try again when the museum is back.
     closeFeedback();
-    showToast(lang === 'fil' ? 'Maraming salamat sa iyong sagot!' : 'Thank you for your feedback!');
+    showOfflineNotice(openFeedback);
   })
   .finally(() => showLoading(false));
 }
@@ -3839,11 +3853,7 @@ function doLogout() {
   // Tell the server to forget the token too, so signing out on a borrowed
   // handset actually ends the session rather than just hiding it locally.
   if (STATE.token) {
-    apiFetch(`${API_BASE}/visitor.php`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'logout' })
-    }).catch(() => {});
+    apiFetch(`${API_BASE}/visitors/logout`, { method: 'POST' }).catch(() => {});
   }
 
   STATE = {
@@ -3876,7 +3886,7 @@ function doLogout() {
 // NOTIFICATIONS
 // ═══════════════════════════════════════════════════════════
 function loadNotifications() {
-  return apiFetch(`${API_BASE}/notifications.php?visitorId=${STATE.visitorId}`)
+  return apiFetch(`${API_BASE}/notifications`)
     .then(r => r.json())
     .catch(() => []);
 }
@@ -3995,7 +4005,7 @@ function loadMuseumInfo() {
   // The About screen's story/hours/contact/halls. This used to point at a
   // /controller/ path that never existed, so it 404'd silently and the screen
   // showed its built-in text forever.
-  apiFetch(`${API_BASE}/museum.php`)
+  apiFetch(`${API_BASE}/museum`)
     .then(r => r.json())
     .then(data => {
       const info  = data.info  || {};
@@ -4070,7 +4080,7 @@ let MUSEUM_LNG      = 121.56169583726937;
 let GEOFENCE_RADIUS  = 150; // meters — production
 
 function _loadMuseumConfig() {
-  apiFetch(`${API_BASE}/museum.php`)
+  apiFetch(`${API_BASE}/museum`)
     .then(r => r.json())
     .then(data => {
       const info = data && data.info;
@@ -4095,7 +4105,7 @@ function _loadMuseumConfig() {
 }
 
 // True only when the server said so: VISITOR_GEOFENCE=false on a non-
-// production install (see api/museum.php). Used to be a hostname sniff —
+// production install (see GET /api/v1/museum). Used to be a hostname sniff —
 // localhost, any IP address, tunnel domains — which would have switched the
 // fence off for every visitor the day the museum served the app on its LAN.
 let _geoServerRelaxed = false;
@@ -4224,7 +4234,7 @@ function logAttendance(lat, lng, accuracy) {
   // and inflated the day's count.
   if (_sameVisitInProgress()) return;
 
-  apiFetch(`${API_BASE}/attendance.php`, {
+  apiFetch(`${API_BASE}/attendance`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -4261,7 +4271,7 @@ function markLastSeen() {
   const aid = STATE._attendanceId;
   if (!aid) return;
 
-  apiFetch(`${API_BASE}/attendance.php`, {
+  apiFetch(`${API_BASE}/attendance/${aid}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     // keepalive lets the request outlive the page being hidden or closed. A
@@ -4269,7 +4279,6 @@ function markLastSeen() {
     // which is the whole reason dwell time was going unrecorded.
     keepalive: true,
     body: JSON.stringify({
-      attendance_id: aid,
       event:         'exit',
       duration_mins: Math.round((Date.now() - _entryTime) / 60000),
     })
@@ -4286,11 +4295,10 @@ window.addEventListener('pagehide', markLastSeen);
 function logAttendanceExit(durationMins) {
   const aid = STATE._attendanceId;
   if (!aid) return;
-  apiFetch(`${API_BASE}/attendance.php`, {
+  apiFetch(`${API_BASE}/attendance/${aid}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      attendance_id: aid,
       event:         'exit',
       duration_mins: durationMins,
     })
@@ -4300,11 +4308,10 @@ function logAttendanceExit(durationMins) {
 function claimAttendance(visitorId, visitorName) {
   const aid = STATE._attendanceId;
   if (!aid || !visitorId || STATE._attendanceClaimed) return;
-  apiFetch(`${API_BASE}/attendance.php`, {
+  apiFetch(`${API_BASE}/attendance/${aid}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      attendance_id: aid,
       visitor_id:    parseInt(visitorId),
       visitor_name:  visitorName,
     })
