@@ -36,6 +36,12 @@ git clone --quiet --depth 1 --branch "$REF" "$REPO" "$NEW" 2>/dev/null \
   || { git clone --quiet "$REPO" "$NEW" && git -C "$NEW" checkout --quiet "$REF"; }
 git -C "$NEW" rev-parse --short HEAD > "$NEW/RELEASE"
 
+# The visitor app's service worker names its cache after the release. A
+# phone that already has the app sees the new hash on its next open,
+# installs into a fresh cache and drops the old one - which is what stops
+# anyone being stuck on a previous copy of the app.
+sed -i "s/^const VERSION = .*/const VERSION = '$(cat "$NEW/RELEASE")';/" "$NEW/public/visitor/sw.js"
+
 # The release has no use for its own history once RELEASE is written, and a
 # misconfigured docroot must not be able to serve it.
 rm -rf "$NEW/.git"

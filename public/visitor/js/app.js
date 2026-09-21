@@ -220,7 +220,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Apply saved preferences immediately
   applyAllPreferences();
   startClock();
-  retireServiceWorker();
+  registerServiceWorker();
   setupInstallPrompt();
   // Preferences that reach past the DOM: the narration gate and the ambient track.
   applyNarrationUI();
@@ -253,8 +253,9 @@ document.addEventListener('DOMContentLoaded', () => {
         routeAfterAuth(data);
       })
       .catch(() => {
-        // The museum could not be reached. There is no cached copy of the app
-        // to fall back on, so say so and let a reload retry. The token is kept.
+        // The museum could not be reached and the service worker had no last
+        // good answer to stand in (a first open with no signal). Say so and
+        // let a reload retry. The token is kept.
         setAuthMode('signin');
         showScreen('s-register');
         showRegError('Could not reach the museum. Check your connection and reload.');
@@ -3855,6 +3856,8 @@ function doLogout() {
   if (STATE.token) {
     apiFetch(`${API_BASE}/visitors/logout`, { method: 'POST' }).catch(() => {});
   }
+  // And the offline copies of what that session was allowed to see.
+  clearOfflineApiCache();
 
   STATE = {
     visitorId: null, name: '', email: '', provider: 'manual',
@@ -3894,22 +3897,29 @@ function loadNotifications() {
 // ═══════════════════════════════════════════════════════════
 // SERVICE WORKER RETIREMENT + PWA INSTALL
 // ═══════════════════════════════════════════════════════════
-/* The app no longer ships a service worker: offline support was removed. A
-   phone that installed the old one still has it, though, and a registered
-   worker keeps answering from its cache until something unregisters it —
-   including serving the *old* app that still tries to register it. This runs
-   on every boot and is a no-op once the device is clean. */
-function retireServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations()
-      .then(regs => regs.forEach(r => r.unregister()))
-      .catch(() => {});
-  }
-  if (window.caches) {
-    caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k.indexOf('museobaler') === 0).map(k => caches.delete(k))))
-      .catch(() => {});
-  }
+/* The service worker (sw.js) is what keeps the tour going where the stone
+   walls eat the signal: the app shell, the pictures and audio guides, and
+   the last good copy of the museum's content are all held on the phone.
+   See the note at the top of sw.js for what is cached and, more to the
+   point, what is deliberately not.
+
+   An earlier worker was retired because a phone could get stuck on an old
+   copy of the app. This one is versioned per release and refreshes the
+   shell in the background on every use, so the next open is the new app;
+   sw.js itself is served no-cache, so the browser sees a new release the
+   moment it is deployed. Registration needs a secure context - HTTPS, or
+   localhost - and quietly does nothing over plain HTTP on a LAN address. */
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+
+/* The worker keeps the last good answers from the gated API so a dropped
+   signal mid-tour does not empty the museum. Those answers belong to the
+   visitor who was signed in; signing out takes them with it. */
+function clearOfflineApiCache() {
+  if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return;
+  navigator.serviceWorker.controller.postMessage({ type: 'clear-api-cache' });
 }
 
 let _installPromptEvent = null;
