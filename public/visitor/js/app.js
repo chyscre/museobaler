@@ -642,6 +642,12 @@ function authErrorText(code) {
 
 // ── Session handling ───────────────────────────────────────────────────────
 function applySession(v) {
+  // A different person than before on this phone: whatever the service
+  // worker kept for the last visitor was theirs, not this one's. Online
+  // the server's 403 would wipe it on the first request; offline, this does.
+  if (STATE.visitorId && v.visitor_id && String(STATE.visitorId) !== String(v.visitor_id)) {
+    clearOfflineApiCache();
+  }
   STATE.token       = v.token || STATE.token;
   STATE.visitorId   = v.visitor_id;
   STATE.firstName   = v.first_name || STATE.firstName;
@@ -2373,7 +2379,7 @@ function renderExhibit(ex, opts) {
     factsList.innerHTML = facts.length ? facts.map((f, i) => `
       <div style="background:var(--ew);border-radius:12px;padding:14px;display:flex;gap:12px;align-items:flex-start">
         <div style="width:28px;height:28px;border-radius:50%;background:${STATE.mode==='free'?'var(--bm)':'var(--gm)'};color:#fff;font-size:calc(12px * var(--fs));font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
-        <p style="font-size:calc(13px * var(--fs));color:var(--tm);line-height:1.6">${f}</p>
+        <p style="font-size:calc(13px * var(--fs));color:var(--tm);line-height:1.6">${escapeHtml(f)}</p>
       </div>`).join('')
       // Same wording style as the empty gallery tab: honest, and it tells
       // staff where the content comes from.
@@ -2406,11 +2412,17 @@ function renderExhibit(ex, opts) {
   if (galleryGrid) {
     const imgs = ex.gallery && ex.gallery.length ? ex.gallery : (ex.image ? [{ url: ex.image, caption: ex.title }] : []);
     if (imgs.length) {
+      // Captions are staff-typed text going into HTML: escaped, and the
+      // lightbox reads them back from data attributes rather than from a
+      // hand-built onclick string.
       galleryGrid.innerHTML = imgs.map(g => `
-        <div style="border-radius:10px;overflow:hidden;background:#000;cursor:pointer;" onclick="openLightbox('${g.url}','${(g.caption||'').replace(/'/g,"\\'")}')">
-          <img src="${g.url}" alt="${g.caption||''}" style="width:100%;height:110px;object-fit:cover;display:block;">
-          ${g.caption ? `<div style="padding:4px 8px;font-size:calc(10px * var(--fs));color:var(--tl);background:var(--ew);">${g.caption}</div>` : ''}
+        <div style="border-radius:10px;overflow:hidden;background:#000;cursor:pointer;" data-lightbox-url="${escapeHtml(g.url)}" data-lightbox-caption="${escapeHtml(g.caption || '')}">
+          <img src="${escapeHtml(g.url)}" alt="${escapeHtml(g.caption || '')}" style="width:100%;height:110px;object-fit:cover;display:block;">
+          ${g.caption ? `<div style="padding:4px 8px;font-size:calc(10px * var(--fs));color:var(--tl);background:var(--ew);">${escapeHtml(g.caption)}</div>` : ''}
         </div>`).join('');
+      galleryGrid.querySelectorAll('[data-lightbox-url]').forEach(tile => {
+        tile.addEventListener('click', () => openLightbox(tile.dataset.lightboxUrl, tile.dataset.lightboxCaption));
+      });
       const note = galleryGrid.nextElementSibling;
       if (note) note.style.display = 'none';
     } else {
@@ -4070,8 +4082,8 @@ function openLightbox(url, caption) {
     '<button onclick="document.getElementById(\'app-lightbox\').remove()" style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.15);border:none;border-radius:50%;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;">' +
       '<span class="material-icons-round" style="color:white;font-size:20px;">close</span>' +
     '</button>' +
-    '<img src="' + url + '" style="max-width:100%;max-height:75vh;border-radius:10px;object-fit:contain;" alt="' + (caption||'') + '">' +
-    (caption ? '<div style="color:rgba(255,255,255,0.75);font-size:calc(13px * var(--fs));margin-top:12px;text-align:center;">' + caption + '</div>' : '');
+    '<img src="' + escapeHtml(url) + '" style="max-width:100%;max-height:75vh;border-radius:10px;object-fit:contain;" alt="' + escapeHtml(caption||'') + '">' +
+    (caption ? '<div style="color:rgba(255,255,255,0.75);font-size:calc(13px * var(--fs));margin-top:12px;text-align:center;">' + escapeHtml(caption) + '</div>' : '');
 
   lb.addEventListener('click', function(e) { if (e.target === lb) lb.remove(); });
   document.getElementById('app').appendChild(lb);
