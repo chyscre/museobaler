@@ -50,6 +50,13 @@ jobs:
           cp .env.example .env
           php artisan key:generate --force
 
+      # Run before the suite, because it is the fastest way to a clear answer
+      # when the reason everything else is failing is simply that a file the
+      # code needs was never committed. Checks the tracked file list, not the
+      # working tree - see tests/Feature/SelfContainedTest.php.
+      - name: Repository self-containment
+        run: php artisan test --filter=SelfContainedTest
+
       - name: Test suite
         run: php artisan test --compact
 

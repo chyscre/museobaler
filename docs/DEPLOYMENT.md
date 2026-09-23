@@ -14,7 +14,10 @@ downtime, and how it comes back off if the update is bad.
 ├── shared/
 │   ├── .env                                ← secrets; never inside a release
 │   ├── storage/                            ← logs, sessions, backups
-│   └── public/{images/exhibits,images/training,audio}   ← uploaded media
+│   └── public/                             ← uploaded media + trained model
+│       ├── images/{exhibits,training,branding}
+│       ├── audio/
+│       └── visitor/model/                  ← seeded from the release, then staff's
 └── PREVIOUS                                ← path of the release before this one
 ```
 

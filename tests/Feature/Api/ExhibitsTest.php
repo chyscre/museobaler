@@ -104,7 +104,6 @@ class ExhibitsTest extends TestCase
             ->assertJsonPath('visitor.group.label', 'Baler Central School');
 
         $group->update(['payment_status' => 'Paid']);
-        fwrite(STDERR, "\nG=" . VisitGroup::find($group->group_id)->payment_status . " changes=" . json_encode($group->getChanges()) . "\n");
 
         $this->getJson('/api/v1/exhibits', $this->token($v->fresh()))->assertOk();
     }

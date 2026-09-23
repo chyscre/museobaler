@@ -8,7 +8,6 @@ use App\Models\Visitor;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 /**
  * The geofence's own record of who walked in and when they left.

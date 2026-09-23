@@ -9,7 +9,6 @@ use App\Models\Staff;
 use App\Models\Tour;
 use App\Models\Visitor;
 use App\Models\VisitGroup;
-use App\Models\SurveyQuestion;
 use App\Services\AttendanceStatusService;
 use App\Support\CsmReport;
 use App\Support\Reports\CsvExporter;
@@ -19,7 +18,6 @@ use App\Support\Reports\ReportBuilder;
 use App\Support\Reports\XlsxExporter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Reports for the Tourism office.
