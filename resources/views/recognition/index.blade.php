@@ -18,16 +18,25 @@
 .rc-steps{font-size:13px;color:var(--text-2);line-height:1.65;margin:0;padding-left:20px}
 .rc-steps li{margin-bottom:6px}
 .rc-steps b{color:var(--text)}
-.tbl-wrap table{min-width:0}
-.rc-photos{display:inline-flex;align-items:center;gap:8px}
+/* Fixed column widths so every row lines up under its heading; the
+   name column takes whatever is left. */
+.rc-table{min-width:0;table-layout:fixed}
+.rc-table col.c-code{width:110px}
+.rc-table col.c-photos{width:230px}
+.rc-table col.c-model{width:140px}
+.rc-table col.c-act{width:150px}
+.rc-table th,.rc-table td{vertical-align:middle}
+.rc-table td.num,.rc-table th.num{text-align:right}
+.rc-table .name{font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rc-table .sub{font-size:11.5px;color:var(--text-4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rc-photos{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.rc-photos .n{font-weight:600;color:var(--text);min-width:24px;text-align:right}
 .rc-mini{width:80px;height:6px;border-radius:4px;background:var(--border-light);overflow:hidden;flex-shrink:0}
 .rc-mini > div{height:100%}
 </style>
 @endpush
 
 @section('content')
-@if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
-@if(session('error'))<div class="alert alert-error">{{ session('error') }}</div>@endif
 
 <div class="ph">
   <div class="ph-left">
@@ -120,14 +129,15 @@
 
 {{-- Per-exhibit photo counts --}}
 <div class="tbl-wrap" style="margin-bottom:20px">
-  <table>
+  <table class="rc-table">
+    <colgroup><col><col class="c-code"><col class="c-photos"><col class="c-model"><col class="c-act"></colgroup>
     <thead>
       <tr>
         <th>Exhibit</th>
         <th>Code</th>
-        <th>Photos</th>
+        <th>Training photos</th>
         <th>In current model</th>
-        <th style="text-align:right">Photos</th>
+        <th class="num"></th>
       </tr>
     </thead>
     <tbody>
@@ -141,12 +151,12 @@
       @foreach($exhibits as $e)
         @php $r = $row($e->name, $e->hall ?: '', $e->training_images_count, $e->in_model, route('recognition.photos', $e)); @endphp
         <tr>
-          <td><div style="font-weight:600;color:var(--text)">{{ $r['name'] }}</div>@if($r['sub'])<div style="font-size:11.5px;color:var(--text-4)">{{ $r['sub'] }}</div>@endif</td>
+          <td><div class="name">{{ $r['name'] }}</div>@if($r['sub'])<div class="sub">{{ $r['sub'] }}</div>@endif</td>
           <td><span style="font-weight:700;color:var(--green-dark);font-size:12px">{{ $e->exhibit_code }}</span></td>
           <td>
             <span class="rc-photos">
               <span class="rc-mini"><div style="width:{{ $r['pct'] }}%;background:{{ $r['tone'] }}"></div></span>
-              <span style="font-weight:600;color:var(--text)">{{ $r['count'] }}</span>
+              <span class="n">{{ $r['count'] }}</span>
               @if($r['count'] < $minPhotos)<span class="badge b-red">too few</span>@endif
             </span>
           </td>
@@ -155,17 +165,17 @@
             @elseif($r['inModel'])<span class="badge b-green">yes</span>
             @else<span class="badge b-gold">not yet</span>@endif
           </td>
-          <td style="text-align:right"><a href="{{ $r['url'] }}" class="btn btn-outline btn-xs">Manage photos</a></td>
+          <td class="num"><a href="{{ $r['url'] }}" class="btn btn-outline btn-xs">Manage photos</a></td>
         </tr>
       @endforeach
       @php $r = $row('Background', 'Walls, floors, cases — not an exhibit', $backgroundCount, $model && in_array('BACKGROUND', array_map('strtoupper', $model['labels']), true), route('recognition.background'), true); @endphp
       <tr style="background:#fafafa">
-        <td><div style="font-weight:600;color:var(--text)">{{ $r['name'] }}</div><div style="font-size:11.5px;color:var(--text-4)">{{ $r['sub'] }}</div></td>
+        <td><div class="name">{{ $r['name'] }}</div><div class="sub">{{ $r['sub'] }}</div></td>
         <td><span style="font-size:12px;color:var(--text-4)">—</span></td>
         <td>
           <span class="rc-photos">
             <span class="rc-mini"><div style="width:{{ $r['pct'] }}%;background:{{ $r['tone'] }}"></div></span>
-            <span style="font-weight:600;color:var(--text)">{{ $r['count'] }}</span>
+            <span class="n">{{ $r['count'] }}</span>
             @if($r['count'] < $minPhotos)<span class="badge b-red">too few</span>@endif
           </span>
         </td>
@@ -174,7 +184,7 @@
           @elseif($r['inModel'])<span class="badge b-green">yes</span>
           @else<span class="badge b-gold">not yet</span>@endif
         </td>
-        <td style="text-align:right"><a href="{{ $r['url'] }}" class="btn btn-outline btn-xs">Manage photos</a></td>
+        <td class="num"><a href="{{ $r['url'] }}" class="btn btn-outline btn-xs">Manage photos</a></td>
       </tr>
     </tbody>
   </table>
@@ -196,7 +206,18 @@
   'save'    => route('recognition.model.save'),
   'csrf'    => csrf_token(),
   'min'     => $minPhotos,
-  'base'    => asset('js/vendor/mobilenet-base/model.json'),
+  // Every file the trainer needs, each with a fallback: this server first,
+  // the public CDN second. Whichever answers is used, so the button works
+  // on the museum's network (no CDN) and on a copy missing the vendor
+  // files (no local) alike.
+  'libs'    => [
+    ['tf',      asset('js/vendor/tf.min.js'),                    'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js'],
+    ['tmImage', asset('js/vendor/teachablemachine-image.min.js'), 'https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.5/dist/teachablemachine-image.min.js'],
+  ],
+  'bases'   => [
+    asset('js/vendor/mobilenet-base/model.json'),
+    'https://storage.googleapis.com/teachable-machine-models/mobilenet_v2_weights_tf_dim_ordering_tf_kernels_0.35_224_no_top/model.json',
+  ],
 ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!}</script>
 @endsection
 
@@ -206,8 +227,6 @@
      museum's own network could not reach jsDelivr, which left the trainer
      showing "Unavailable" and the visitor app silently on the photo-match
      fallback. TensorFlow.js 4.20.0 and @teachablemachine/image 0.8.5. --}}
-<script src="{{ asset('js/vendor/tf.min.js') }}"></script>
-<script src="{{ asset('js/vendor/teachablemachine-image.min.js') }}"></script>
 <script>
 (function () {
   var cfg    = JSON.parse(document.getElementById('rc-config').textContent);
@@ -226,14 +245,65 @@
   function log(msg) { logEl.style.display = 'block'; logEl.textContent += msg + '\n'; logEl.scrollTop = logEl.scrollHeight; }
   function progress(p) { bar.style.width = Math.max(0, Math.min(100, p)) + '%'; }
 
-  if (typeof tf === 'undefined' || typeof tmImage === 'undefined') {
-    say('The trainer could not load. This computer needs internet access to train — check the connection and reload.');
-    label.textContent = 'Unavailable';
-    return;
+  // ── Library loading ─────────────────────────────────────────────────────
+  // Each library is tried from every source in cfg.libs until one runs.
+  // Nothing here is fatal: a failure leaves a Retry button and a line saying
+  // what was tried, never a dead "Unavailable".
+  // A library that throws while it starts still fires onload, and the
+  // browser only tells the console. Catching window errors during the load
+  // keeps the reason - it goes into the status line, where whoever is
+  // standing at the screen can read it out.
+  var lastScriptError = null;
+  window.addEventListener('error', function (ev) {
+    if (ev && ev.message) lastScriptError = ev.message + (ev.filename ? ' [' + ev.filename.split('/').pop() + ':' + ev.lineno + ']' : '');
+  });
+  function loadScript(url) {
+    return new Promise(function (resolve, reject) {
+      lastScriptError = null;
+      var el = document.createElement('script');
+      el.src = url; el.async = true;
+      el.onload = function () { setTimeout(function () { resolve(url); }, 0); };
+      el.onerror = function () { el.remove(); reject(new Error(url)); };
+      document.head.appendChild(el);
+    });
   }
-  btn.disabled = false;
-  label.textContent = 'Train';
-  say('Ready.');
+  async function loadLib(name, sources) {
+    if (window[name]) return 'already loaded';
+    var tried = [];
+    for (var i = 0; i < sources.length; i++) {
+      try {
+        await loadScript(sources[i]);
+        if (window[name]) return sources[i];
+        tried.push(sources[i] + ' (ran, but did not define ' + name + (lastScriptError ? ' - it stopped with: ' + lastScriptError : '') + ')');
+      } catch (e) {
+        tried.push(sources[i] + ' (could not load)');
+      }
+    }
+    throw new Error(name + ' could not be loaded. Tried: ' + tried.join('; '));
+  }
+  var libsReady = null;
+  function ensureLibs() {
+    if (libsReady) return libsReady;
+    btn.disabled = true; label.textContent = 'Loading…';
+    say('Preparing the trainer…');
+    libsReady = (async function () {
+      for (var i = 0; i < cfg.libs.length; i++) {
+        var from = await loadLib(cfg.libs[i][0], cfg.libs[i].slice(1));
+        if (from.indexOf('https://cdn.') === 0 || from.indexOf('https://storage.') === 0) log('Loaded ' + cfg.libs[i][0] + ' from the internet (the copy on this server did not load).');
+      }
+    })();
+    return libsReady.then(function () {
+      btn.disabled = false; label.textContent = 'Train';
+      say('Ready.');
+    }, function (e) {
+      libsReady = null;
+      btn.disabled = false; label.textContent = 'Retry loading';
+      say('The trainer could not load. ' + e.message + '. Check the connection, then press Retry loading.');
+      log('Browser: ' + navigator.userAgent);
+      throw e;
+    });
+  }
+  ensureLibs().catch(function () {});
 
   function loadImage(url) {
     return new Promise(function (resolve, reject) {
@@ -292,10 +362,19 @@
       // 'out_relu' is the library's own default layer for MobileNet v2, and
       // the file is the exact v2 / alpha 0.35 / 224px checkpoint it would
       // otherwise download.
-      var model = await tmImage.createTeachable(
-        { tfjsVersion: tf.version.tfjs },
-        { version: 2, alpha: 0.35, checkpointUrl: cfg.base, trainingLayer: 'out_relu' }
-      );
+      var model = null, baseErrors = [];
+      for (var b = 0; b < cfg.bases.length && !model; b++) {
+        try {
+          model = await tmImage.createTeachable(
+            { tfjsVersion: tf.version.tfjs },
+            { version: 2, alpha: 0.35, checkpointUrl: cfg.bases[b], trainingLayer: 'out_relu' }
+          );
+          if (b > 0) log('Model base loaded from the internet (the copy on this server did not load).');
+        } catch (e) {
+          baseErrors.push(cfg.bases[b] + ' (' + (e && e.message ? e.message : e) + ')');
+        }
+      }
+      if (!model) throw new Error('The model base could not be loaded. Tried: ' + baseErrors.join('; '));
       model.setLabels(classes.map(function (c) { return c.label; }));
       model.setName('museo-de-baler');
 
@@ -372,7 +451,7 @@
 
   btn.addEventListener('click', function () {
     if (btn.disabled) return;
-    train();
+    ensureLibs().then(train, function () {});
   });
 })();
 </script>

@@ -96,7 +96,7 @@ class RecognitionTest extends TestCase
 
         $this->on(self::PHONE)->get(route('recognition.photos', $exhibit))
             ->assertOk()
-            ->assertSee('Take a photo')
+            ->assertSee('Upload photos')
             // Phone chrome, not the desktop sidebar.
             ->assertDontSee('sidebar-nav');
 
@@ -139,6 +139,72 @@ class RecognitionTest extends TestCase
 
         $this->assertDatabaseMissing('exhibit_training_images', ['training_image_id' => $photo->training_image_id]);
         $this->assertFileDoesNotExist($path);
+    }
+
+    public function test_selected_photos_can_be_removed_together(): void
+    {
+        $exhibit = $this->exhibit();
+        $this->on(self::LAPTOP)->post(route('recognition.photos.upload', $exhibit), ['photos' => [$this->photo('a.jpg'), $this->photo('b.jpg'), $this->photo('c.jpg')]]);
+        $this->rememberPhotos();
+        [$a, $b, $c] = ExhibitTrainingImage::orderBy('training_image_id')->get()->all();
+
+        $this->on(self::PHONE)
+            ->withHeader('Accept', 'application/json')
+            ->post(route('recognition.photos.remove', $exhibit), ['ids' => [$a->training_image_id, $c->training_image_id]])
+            ->assertOk()
+            ->assertJson(['ok' => true, 'removed' => 2, 'count' => 1]);
+
+        $this->assertFileDoesNotExist($a->path);
+        $this->assertFileExists($b->path);
+        $this->assertSame([$b->training_image_id], ExhibitTrainingImage::pluck('training_image_id')->all());
+    }
+
+    public function test_remove_all_clears_only_that_set(): void
+    {
+        $exhibit = $this->exhibit();
+        $this->on(self::LAPTOP)->post(route('recognition.photos.upload', $exhibit), ['photos' => [$this->photo('a.jpg'), $this->photo('b.jpg')]]);
+        $this->on(self::LAPTOP)->post(route('recognition.background.upload'), ['photos' => [$this->photo('wall.jpg')]]);
+        $this->rememberPhotos();
+
+        $this->on(self::LAPTOP)->post(route('recognition.photos.remove', $exhibit), ['all' => 1])->assertRedirect();
+
+        $this->assertSame(0, $exhibit->trainingImages()->count());
+        $this->assertSame(1, ExhibitTrainingImage::whereNull('exhibit_id')->count());
+    }
+
+    public function test_bulk_removal_ignores_ids_from_another_set(): void
+    {
+        $mine  = $this->exhibit('EXH-001');
+        $other = $this->exhibit('EXH-002');
+        $this->on(self::LAPTOP)->post(route('recognition.photos.upload', $other), ['photos' => [$this->photo()]]);
+        $this->rememberPhotos();
+        $theirs = ExhibitTrainingImage::first();
+
+        $this->on(self::LAPTOP)
+            ->withHeader('Accept', 'application/json')
+            ->post(route('recognition.photos.remove', $mine), ['ids' => [$theirs->training_image_id]])
+            ->assertOk()
+            ->assertJson(['removed' => 0]);
+
+        $this->assertFileExists($theirs->path);
+    }
+
+    public function test_a_batch_at_phps_file_cap_is_refused_rather_than_trimmed(): void
+    {
+        // PHP drops files past max_file_uploads before Laravel sees them, so
+        // a request that arrives full is most likely one that lost some.
+        $exhibit = $this->exhibit();
+        $cap = (int) ini_get('max_file_uploads') ?: 20;
+        $photos = array_map(fn ($i) => $this->photo("p$i.jpg"), range(1, $cap));
+
+        $this->on(self::LAPTOP)
+            ->withHeader('Accept', 'application/json')
+            ->post(route('recognition.photos.upload', $exhibit), ['photos' => $photos])
+            ->assertStatus(422)
+            ->assertJsonFragment(['ok' => false]);
+        $this->rememberPhotos();
+
+        $this->assertSame(0, ExhibitTrainingImage::count());
     }
 
     public function test_a_non_image_is_refused(): void

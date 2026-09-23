@@ -7,6 +7,14 @@
 .rp-thumb{position:relative;border-radius:8px;overflow:hidden;background:var(--border-light);aspect-ratio:1}
 .rp-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .rp-del{position:absolute;top:4px;right:4px;background:rgba(220,38,38,.85);border:none;border-radius:50%;width:24px;height:24px;color:#fff;cursor:pointer;font-size:13px;line-height:24px;text-align:center;padding:0}
+/* Select mode: the x gives way to a tick box on every photo; tapping the
+   photo toggles it. Big enough for a thumb. */
+.rp-pick{display:none;position:absolute;inset:0;cursor:pointer}
+.rp-pick input{position:absolute;top:6px;left:6px;width:22px;height:22px;margin:0;accent-color:var(--green-dark)}
+.rp-grid.selecting .rp-pick{display:block}
+.rp-grid.selecting .rp-del{display:none}
+.rp-grid.selecting .rp-thumb:has(input:checked){outline:3px solid var(--green);outline-offset:-3px}
+.rp-grid.selecting .rp-thumb:has(input:checked) img{opacity:.6}
 .rp-count{font-family:'Young Serif',serif;font-size:34px;line-height:1;color:var(--text)}
 .rp-shoot{display:flex;flex-direction:column;gap:10px;margin-top:14px}
 .rp-shoot label.btn{cursor:pointer;justify-content:center}
@@ -37,7 +45,10 @@
     <p>{{ $exhibit ? 'Recognition photos · ' . $exhibit->exhibit_code : 'What the camera sees when it is not pointed at an exhibit' }}</p>
   </div>
   <div class="ph-right">
-    <a href="{{ route('recognition.index') }}" class="btn btn-outline btn-sm">← Back to Recognition</a>
+    <a href="{{ route('recognition.index') }}" class="btn btn-outline btn-sm">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      Back to Recognition
+    </a>
   </div>
 </div>
 @else
@@ -63,14 +74,12 @@
 
     <form method="POST" action="{{ $target }}" enctype="multipart/form-data" id="rpForm" class="rp-shoot">
       @csrf
+      {{-- One button: the file picker. On a phone the picker itself offers
+           the camera as well as the gallery, so a separate "take a photo"
+           button only got in the way of uploading a batch. --}}
       <label class="btn btn-green">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-        Take a photo
-        <input type="file" name="photos[]" accept="image/*" capture="environment" data-rp-input>
-      </label>
-      <label class="btn btn-outline">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-        Choose from gallery
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Upload photos
         <input type="file" name="photos[]" accept="image/*" multiple data-rp-input>
       </label>
       <noscript><button type="submit" class="btn btn-outline">Upload</button></noscript>
@@ -98,18 +107,32 @@
   </div>
 
   <div class="card card-p">
-    <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px">Photos</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <div style="font-size:14px;font-weight:700;color:var(--text)">Photos</div>
+      {{-- Two buttons. Select toggles tick boxes on the photos (and turns
+           into Select all / Cancel); Remove is "Remove all" outside select
+           mode and "Remove (n)" inside it. Without JS the form removes all. --}}
+      <div style="display:{{ $count ? 'flex' : 'none' }};gap:6px;flex-wrap:wrap" id="rpTools">
+        <button type="button" class="btn btn-outline btn-xs" id="rpSelectBtn">Select</button>
+        <button type="button" class="btn btn-outline btn-xs" id="rpCancelBtn" style="display:none">Cancel</button>
+        <form method="POST" action="{{ $exhibit ? route('recognition.photos.remove', $exhibit) : route('recognition.background.remove') }}" id="rpRemoveForm" style="margin:0">
+          @csrf <input type="hidden" name="all" value="1">
+          <button type="submit" class="btn btn-red btn-xs" id="rpRemoveBtn">Remove all</button>
+        </form>
+      </div>
+    </div>
     <div class="rp-grid" id="rpGrid">
       @forelse($photos as $p)
       <div class="rp-thumb" data-photo-id="{{ $p->training_image_id }}">
         <img src="{{ $p->url }}" alt="" loading="lazy">
+        <label class="rp-pick"><input type="checkbox" value="{{ $p->training_image_id }}"></label>
         <form method="POST" action="{{ route('recognition.photo.destroy', $p) }}" data-rp-delete>
           @csrf @method('DELETE')
           <button type="submit" class="rp-del" title="Remove">×</button>
         </form>
       </div>
       @empty
-      <p id="rpEmpty" style="font-size:13px;color:var(--text-3);grid-column:1/-1">No photos yet. Take the first one.</p>
+      <p id="rpEmpty" style="font-size:13px;color:var(--text-3);grid-column:1/-1">No photos yet. Upload the first ones.</p>
       @endforelse
     </div>
   </div>
@@ -153,37 +176,127 @@
 
   function addThumb(p) {
     var empty = document.getElementById('rpEmpty'); if (empty) empty.remove();
+    var tools = document.getElementById('rpTools'); if (tools) tools.style.display = 'flex';
     var d = document.createElement('div');
     d.className = 'rp-thumb'; d.dataset.photoId = p.id;
-    d.innerHTML = '<img src="' + p.url + '" alt=""><form method="POST" action="' + deleteUrl.replace('__ID__', p.id) + '" data-rp-delete>' +
+    d.innerHTML = '<img src="' + p.url + '" alt=""><label class="rp-pick"><input type="checkbox" value="' + p.id + '"></label>' +
+      '<form method="POST" action="' + deleteUrl.replace('__ID__', p.id) + '" data-rp-delete>' +
       '<input type="hidden" name="_token" value="' + csrf + '"><input type="hidden" name="_method" value="DELETE">' +
       '<button type="submit" class="rp-del" title="Remove">×</button></form>';
     grid.insertBefore(d, grid.firstChild);
   }
 
+  // Status line. Stays up until the next action - a message that vanishes
+  // after a second is a message nobody can check against what happened.
+  function status(msg, kind) {
+    busy.style.display = 'block';
+    busy.textContent = msg;
+    busy.style.color = kind === 'error' ? '#b91c1c' : kind === 'ok' ? 'var(--green-dark)' : '';
+  }
+
+  // Uploads go in batches of ten. PHP takes at most twenty files in one
+  // request (max_file_uploads) and silently drops the rest, which is how
+  // "uploading 31" once became twenty photos with a "Saved" on top.
+  var BATCH = 10;
+
   Array.prototype.forEach.call(form.querySelectorAll('[data-rp-input]'), function (input) {
     input.addEventListener('change', async function () {
-      if (!input.files.length) return;
-      busy.style.display = 'block';
-      busy.textContent = 'Uploading ' + input.files.length + ' photo' + (input.files.length > 1 ? 's' : '') + '…';
+      var files = Array.prototype.slice.call(input.files);
+      input.value = '';
+      if (!files.length) return;
+      var total = files.length, added = 0, count = null;
       try {
-        var fd = new FormData();
-        fd.append('_token', csrf);
-        for (var i = 0; i < input.files.length; i++) fd.append('photos[]', await shrink(input.files[i]));
-        var res = await fetch(form.action, { method: 'POST', body: fd, headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-        var data = await res.json().catch(function () { return {}; });
-        if (!res.ok || !data.ok) throw new Error(data.message || (data.errors && Object.values(data.errors)[0][0]) || 'Upload failed.');
-        data.photos.forEach(addThumb);
-        setCount(data.count);
-        busy.textContent = 'Saved.';
+        for (var start = 0; start < total; start += BATCH) {
+          var batch = files.slice(start, start + BATCH);
+          status('Uploading ' + Math.min(start + batch.length, total) + ' of ' + total + '…');
+          var fd = new FormData();
+          fd.append('_token', csrf);
+          for (var i = 0; i < batch.length; i++) fd.append('photos[]', await shrink(batch[i]));
+          var res = await fetch(form.action, { method: 'POST', body: fd, headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+          var data = await res.json().catch(function () { return {}; });
+          if (!res.ok || !data.ok) throw new Error(data.message || (data.errors && Object.values(data.errors)[0][0]) || 'The server refused the upload.');
+          data.photos.forEach(addThumb);
+          added += data.photos.length;
+          count = data.count;
+          setCount(count);
+          if (data.photos.length !== batch.length) throw new Error('The server kept ' + data.photos.length + ' of ' + batch.length + ' in that batch.');
+        }
+        status('Added ' + added + ' photo' + (added === 1 ? '' : 's') + '. This set now has ' + count + '.', 'ok');
       } catch (e) {
-        busy.textContent = e.message;
-      } finally {
-        input.value = '';
-        setTimeout(function () { busy.style.display = 'none'; }, 1500);
+        status('Added ' + added + ' of ' + total + ', then stopped: ' + e.message + ' Try the rest again.', 'error');
       }
     });
   });
+
+  // ── Select / Remove ──────────────────────────────────────────────────────
+  // Outside select mode: Select, Remove all. Inside: Select all, Cancel,
+  // Remove (n) - the same Remove button, counting what is ticked.
+  var selectBtn  = document.getElementById('rpSelectBtn');
+  var cancelBtn  = document.getElementById('rpCancelBtn');
+  var removeForm = document.getElementById('rpRemoveForm');
+  var removeBtn  = document.getElementById('rpRemoveBtn');
+  var removeUrl  = removeForm ? removeForm.action : null;
+
+  function selecting() { return grid.classList.contains('selecting'); }
+  function picked() { return Array.prototype.map.call(grid.querySelectorAll('.rp-pick input:checked'), function (i) { return i.value; }); }
+  function refresh() {
+    var n = picked().length;
+    if (selecting()) {
+      removeBtn.textContent = 'Remove (' + n + ')';
+      removeBtn.disabled = n === 0;
+    } else {
+      removeBtn.textContent = 'Remove all';
+      removeBtn.disabled = false;
+    }
+  }
+  function setSelecting(on) {
+    grid.classList.toggle('selecting', on);
+    selectBtn.textContent = on ? 'Select all' : 'Select';
+    cancelBtn.style.display = on ? '' : 'none';
+    if (!on) grid.querySelectorAll('.rp-pick input').forEach(function (i) { i.checked = false; });
+    refresh();
+  }
+  async function removeMany(body, what) {
+    var fd = new FormData(); fd.append('_token', csrf);
+    Object.keys(body).forEach(function (k) {
+      if (Array.isArray(body[k])) body[k].forEach(function (v) { fd.append(k + '[]', v); }); else fd.append(k, body[k]);
+    });
+    status('Removing ' + what + '…');
+    var res = await fetch(removeUrl, { method: 'POST', body: fd, headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+    var data = await res.json().catch(function () { return {}; });
+    if (!res.ok || !data.ok) { status(data.message || 'Could not remove. Nothing was changed.', 'error'); return; }
+    if (body.all) grid.querySelectorAll('.rp-thumb').forEach(function (t) { t.remove(); });
+    else body.ids.forEach(function (id) { var t = grid.querySelector('.rp-thumb[data-photo-id="' + id + '"]'); if (t) t.remove(); });
+    setCount(data.count);
+    if (!data.count) {
+      grid.innerHTML = '<p id="rpEmpty" style="font-size:13px;color:var(--text-3);grid-column:1/-1">No photos yet. Upload the first ones.</p>';
+      document.getElementById('rpTools').style.display = 'none';
+    }
+    setSelecting(false);
+    status('Removed ' + data.removed + ' photo' + (data.removed === 1 ? '' : 's') + '. This set now has ' + data.count + '.', 'ok');
+  }
+
+  if (selectBtn) {
+    selectBtn.addEventListener('click', function () {
+      if (!selecting()) return setSelecting(true);
+      grid.querySelectorAll('.rp-pick input').forEach(function (i) { i.checked = true; });
+      refresh();
+    });
+    cancelBtn.addEventListener('click', function () { setSelecting(false); });
+    grid.addEventListener('change', function (ev) { if (ev.target.matches('.rp-pick input')) refresh(); });
+    removeForm.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      if (selecting()) {
+        var ids = picked(); if (!ids.length) return;
+        if (!confirm('Remove ' + ids.length + ' selected photo' + (ids.length === 1 ? '' : 's') + '?')) return;
+        removeMany({ ids: ids }, ids.length + ' photos');
+      } else {
+        var n = grid.querySelectorAll('.rp-thumb').length;
+        if (!confirm('Remove all ' + n + ' photos for this set? The next training will not know it until new photos are taken.')) return;
+        removeMany({ all: 1 }, 'all photos');
+      }
+    });
+  }
 
   grid.addEventListener('submit', async function (ev) {
     var f = ev.target.closest('[data-rp-delete]'); if (!f) return;
@@ -193,7 +306,11 @@
     var res = await fetch(f.action, { method: 'POST', body: new FormData(f), headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
     if (res.ok) {
       thumb.remove();
-      setCount(grid.querySelectorAll('.rp-thumb').length);
+      var left = grid.querySelectorAll('.rp-thumb').length;
+      setCount(left);
+      status('Removed 1 photo. This set now has ' + left + '.', 'ok');
+    } else {
+      status('Could not remove that photo. Nothing was changed.', 'error');
     }
   });
 })();

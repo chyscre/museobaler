@@ -1,1 +1,1 @@
-{"tfjsVersion":"1.7.4","tmVersion":"2.4.16","packageVersion":"0.8.4-alpha2","packageName":"@teachablemachine/image","timeStamp":"2026-09-12T07:38:50.648Z","userMetadata":{},"modelName":"tm-my-image-model","labels":["EXH-2026-005","EXH-2026-009"],"imageSize":224}
+{"tfjsVersion":"4.20.0","packageVersion":"0.8.4-alpha2","packageName":"@teachablemachine/image","timeStamp":"2026-09-22T12:33:28.792Z","userMetadata":{},"modelName":"museo-de-baler","labels":["EXH-001","EXH-002","EXH-003","EXH-004","EXH-005","EXH-006","EXH-007","EXH-008","EXH-009","Background"],"imageSize":224}
