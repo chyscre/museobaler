@@ -63,9 +63,12 @@ img{max-width:100%}
 
 /* ── PAGE HEADER ── */
 .ph{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap}
-.ph-left h2{font-size:22px;color:var(--text);margin-bottom:3px}
-.ph-left p{font-size:12px;color:var(--text-3)}
-.ph-right{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+/* The title gives way, never the buttons: a long exhibit name used to push
+   the actions off the row or wrap them under it. */
+.ph-left{flex:1 1 260px;min-width:0}
+.ph-left h2{font-size:22px;color:var(--text);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ph-left p{font-size:12px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ph-right{display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0}
 
 /* ── BUTTONS ── */
 .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--r-sm);border:none;font-size:13px;font-weight:600;transition:all .15s;white-space:nowrap;cursor:pointer;text-decoration:none}

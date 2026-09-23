@@ -71,7 +71,7 @@
   }
   @media print {
     /* The poster is the only thing that should reach the paper. */
-    .head, .note, .poster + p, body > .sheet > div:first-child { display: none !important; }
+    .head, .foot, .note, .poster + p, body > .sheet > div:first-child { display: none !important; }
     .poster { border-width: 4px; padding: 60px 40px; max-width: none; }
     .poster-title { font-size: 72px; }
     .poster-qr { width: 360px; height: 360px; }

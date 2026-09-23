@@ -142,6 +142,8 @@ Route::middleware(['auth', 'throttle:panel', 'password.rotate', 'desktop'])->gro
         Route::get('/recognition/{exhibit}',        [RecognitionController::class, 'photos'])->name('recognition.photos');
         Route::post('/recognition/{exhibit}',       [RecognitionController::class, 'upload'])->name('recognition.photos.upload');
         Route::delete('/recognition/photo/{photo}', [RecognitionController::class, 'destroyPhoto'])->name('recognition.photo.destroy');
+        Route::post('/recognition/background/remove', [RecognitionController::class, 'destroyMany'])->name('recognition.background.remove');
+        Route::post('/recognition/{exhibit}/remove',  [RecognitionController::class, 'destroyMany'])->name('recognition.photos.remove');
 
         // Front desk — replaces the paper logbook. Three ways in, and only the
         // last has staff typing: the visitor's own phone, the counter tablet,
@@ -225,12 +227,39 @@ Route::middleware(['auth', 'throttle:panel', 'password.rotate', 'desktop'])->gro
         // hub page listing them. Each is reached from the section it belongs
         // to — the logbook from Records, the DTR from Staff Attendance.
         Route::get('/reports/logbook',     [ReportController::class, 'logbook'])->name('reports.logbook');
-        Route::get('/reports/logbook/csv', [ReportController::class, 'logbookCsv'])->name('reports.logbook.csv');
         Route::get('/reports/dtr/{staff}', [ReportController::class, 'dtr'])->name('reports.dtr');
         Route::get('/reports/visitors',    [ReportController::class, 'visitors'])->name('reports.visitors');
-        Route::get('/reports/feedback',     [ReportController::class, 'feedback'])->name('reports.feedback');
-        Route::get('/reports/feedback/csv', [ReportController::class, 'feedbackCsv'])->name('reports.feedback.csv');
+        Route::get('/reports/feedback',    [ReportController::class, 'feedback'])->name('reports.feedback');
         Route::get('/reports/exhibits',    [ReportController::class, 'exhibits'])->name('reports.exhibits');
+
+        // One download endpoint for every report and every format it allows.
+        // The `where` is what makes an unknown format a 404 at the router
+        // rather than a match that reaches the controller and falls through
+        // a match() with no arm for it.
+        //
+        // SECURITY: `audit` is deliberately absent from this list. The audit
+        // trail is Tourism-only and has its own route further down, inside
+        // the Tourism group. A wildcard that matched it here would be
+        // declared before that group and would win, quietly handing the
+        // museum staff the log kept on them.
+        Route::get('/reports/{report}/export/{format}', [ReportController::class, 'export'])
+            ->where('report', 'logbook|dtr|visitors|exhibits|feedback')
+            ->where('format', 'csv|xlsx|docx|pdf')
+            ->name('reports.export');
+
+        // What the chosen format will contain, before committing to a
+        // download. Same wall as the export above: no audit here either.
+        Route::get('/reports/{report}/preview/{format}', [ReportController::class, 'preview'])
+            ->where('report', 'logbook|dtr|visitors|exhibits|feedback')
+            ->where('format', 'csv|xlsx|docx|pdf')
+            ->name('reports.preview');
+
+        // The CSV links that existed before the other formats did. They
+        // still serve the file rather than redirecting: a bookmarked export
+        // is exactly the kind of thing an office keeps, and anything
+        // fetching one on a schedule may not follow a 302.
+        Route::get('/reports/logbook/csv',  [ReportController::class, 'logbookCsv'])->name('reports.logbook.csv');
+        Route::get('/reports/feedback/csv', [ReportController::class, 'feedbackCsv'])->name('reports.feedback.csv');
     });
 
     // ══ Tourism office only ═══════════════════════════════════
@@ -256,6 +285,16 @@ Route::middleware(['auth', 'throttle:panel', 'password.rotate', 'desktop'])->gro
         Route::post('/staff-attendance/{staff}/schedule', [StaffAttendanceController::class, 'saveSchedules'])->name('staff-attendance.schedule.save');
 
         Route::post('/attendance/corrections/{correction}/review', [AttendanceCorrectionController::class, 'review'])->name('corrections.review');
+
+        // The audit trail stays Tourism-only: it is the record of what
+        // everyone else did, including the museum staff it is kept on.
+        Route::get('/reports/audit/export/{format}', [ReportController::class, 'exportAudit'])
+            ->where('format', 'csv|pdf')
+            ->name('reports.audit.export');
+
+        Route::get('/reports/audit/preview/{format}', [ReportController::class, 'previewAudit'])
+            ->where('format', 'csv|pdf')
+            ->name('reports.audit.preview');
 
         Route::get('/reports/audit/csv', [ReportController::class, 'auditCsv'])->name('reports.audit.csv');
 

@@ -170,11 +170,13 @@
       <span id="toastMsg"></span>
     </div>
 
-    @if(session('success'))
-      <div class="alert alert-success" id="flashAlert">{{ session('success') }}</div>
-    @endif
-    @if(session('error'))
-      <div class="alert alert-error" id="flashAlert">{{ session('error') }}</div>
+    {{-- Saved / failed messages go to the toast in the corner, not a banner
+         above the page: a banner pushed the whole page down as it appeared
+         and again as it left, which moved whatever was being read or clicked.
+         The text is still in the HTML, so it is there for anything reading
+         the page rather than looking at it. --}}
+    @if(session('success') || session('error'))
+      <div id="flashMsg" hidden data-kind="{{ session('error') ? 'red' : 'green' }}">{{ session('error') ?: session('success') }}</div>
     @endif
 
     @yield('content')
@@ -184,6 +186,58 @@
 @stack('scripts')
 <script>
   lucide.createIcons();
+
+  // Textareas that grow with their text (description, fun facts). A fixed
+  // three-row box hid everything past the third line; now the box is as
+  // tall as what is in it, never shorter than its rows attribute.
+  // Exposed as window.autogrow(root) so forms loaded into a modal can call
+  // it after they arrive.
+  window.autogrow = function (root) {
+    (root || document).querySelectorAll('textarea[data-autogrow]').forEach(function (ta) {
+      if (ta._autogrow) return;
+      ta._autogrow = true;
+      var fit = function () { ta.style.height = 'auto'; ta.style.height = (ta.scrollHeight + 2) + 'px'; };
+      ta.style.overflowY = 'hidden';
+      ta.addEventListener('input', fit);
+      // Hidden at first (a closed modal, a folded section) - measure once
+      // it is visible: when a fold above it opens, or on first focus.
+      ta._fit = fit;
+      if (ta.offsetParent) fit(); else ta.addEventListener('focus', fit, { once: true });
+    });
+  };
+  autogrow();
+
+  // A textarea inside a closed <details> has no size to measure, so fit the
+  // ones in a section as it opens.
+  document.addEventListener('toggle', function (ev) {
+    var d = ev.target;
+    if (!d || d.tagName !== 'DETAILS' || !d.open) return;
+    d.querySelectorAll('textarea[data-autogrow]').forEach(function (ta) { if (ta._fit) ta._fit(); });
+  }, true);
+
+  // Gallery pictures in the exhibit form: x takes the picture off the list
+  // straight away, as removing should, but only by ticking a hidden box the
+  // form carries - the file goes when the form is saved, and Cancel or
+  // "Put them back" brings it back. A one-line note keeps count.
+  document.addEventListener('click', function (ev) {
+    var btn = ev.target.closest('[data-gallery-remove], [data-gallery-undo]');
+    if (!btn) return;
+    var gallery = btn.closest('form').querySelector('[data-gallery]');
+    var note    = btn.closest('form').querySelector('[data-gallery-note]');
+    if (btn.hasAttribute('data-gallery-remove')) {
+      var item = btn.closest('[data-gallery-item]');
+      item.querySelector('input[type=checkbox]').checked = true;
+      item.style.display = 'none';
+    } else {
+      gallery.querySelectorAll('[data-gallery-item]').forEach(function (it) {
+        it.querySelector('input[type=checkbox]').checked = false;
+        it.style.display = '';
+      });
+    }
+    var n = gallery.querySelectorAll('input[type=checkbox]:checked').length;
+    note.querySelector('[data-gallery-count]').textContent = n;
+    note.style.display = n ? '' : 'none';
+  });
 
   // Filter bar. At phone width the search box is an icon until tapped, then
   // the full-width field; it folds back on blur if nothing was typed. Each
@@ -207,9 +261,9 @@
     sel.addEventListener('change', mark); mark();
   });
 
-  // Auto-dismiss flash alerts
-  var fa = document.getElementById('flashAlert');
-  if (fa) setTimeout(function(){ fa.style.opacity='0'; fa.style.transition='opacity .4s'; setTimeout(function(){ fa.remove(); }, 400); }, 3000);
+  // Flash messages from the last request, shown as a toast.
+  var fm = document.getElementById('flashMsg');
+  if (fm) setTimeout(function () { toast(fm.textContent.trim(), fm.dataset.kind); }, 60);
 
   // Toast helper
   var _toastTimer;

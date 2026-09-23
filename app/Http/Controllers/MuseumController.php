@@ -39,18 +39,42 @@ class MuseumController extends Controller
             'closed_on'         => 'nullable|string|max:100',
             'phone'             => 'nullable|string|max:30',
             'email'             => 'nullable|email|max:150',
+            // Report letterhead. SVG is left out on purpose: it can carry
+            // script, and a logo does not need it.
+            'report_logo'       => 'nullable|image|mimes:png,jpg,jpeg,webp|max:2048',
+            'remove_logo'       => 'nullable|boolean',
+            // The uploaded letterhead. Allowed larger than the logo because
+            // it spans the page and a banner scaled up from 2 MB of pixels
+            // prints soft, which is the one thing an office notices.
+            'report_header_image' => 'nullable|image|mimes:png,jpg,jpeg,webp|max:4096',
+            'remove_header'       => 'nullable|boolean',
             'admission_fee'     => 'required|numeric|min:0|max:99999.99',
             'latitude'          => 'nullable|numeric|between:-90,90',
             'longitude'         => 'nullable|numeric|between:-180,180',
             'geofence_radius_m' => 'nullable|integer|min:20|max:2000',
+        ], [
+            'report_logo.mimes' => 'The logo must be a PNG, JPG or WEBP image.',
+            'report_logo.max'   => 'The logo must be 2 MB or smaller.',
+            'report_header_image.mimes' => 'The letterhead must be a PNG, JPG or WEBP image.',
+            'report_header_image.max'   => 'The letterhead must be 4 MB or smaller.',
         ]);
 
         $info = MuseumInfo::firstOrCreate(['info_id' => 1]);
-        $info->update($request->only([
+        $info->fill($request->only([
             'name', 'tagline', 'story', 'story2',
             'address', 'hours', 'closed_on', 'phone', 'email', 'admission_fee',
             'latitude', 'longitude', 'geofence_radius_m',
         ]));
+
+        $info->report_logo = $this->swapBrandingFile(
+            $request, 'report_logo', 'remove_logo', 'report-logo', $info->report_logo
+        );
+
+        $info->report_header_image = $this->swapBrandingFile(
+            $request, 'report_header_image', 'remove_header', 'report-header', $info->report_header_image
+        );
+
+        $info->save();
 
         // Sync halls
         if ($request->has('halls')) {
@@ -138,6 +162,57 @@ class MuseumController extends Controller
         $this->log('Museum Map Updated', 'Repositioned ' . count($data['positions']) . ' exhibit pin(s) on the floor plan');
 
         return response()->json(['ok' => true, 'saved' => count($data['positions'])]);
+    }
+
+    /**
+     * Replace, clear or keep one branding image, returning what to store.
+     *
+     * The old file is deleted whenever it stops being referenced, because
+     * the alternative is a branding folder that only ever grows and that
+     * nobody will ever be sure is safe to empty.
+     *
+     * The stored name carries a timestamp rather than the uploaded
+     * filename: the uploaded one is attacker-controlled, and two uploads
+     * called logo.png a month apart must not collide - nor share a cached
+     * copy in the browser of everyone who printed last month's reports.
+     */
+    private function swapBrandingFile(
+        Request $request,
+        string $field,
+        string $removeField,
+        string $prefix,
+        ?string $current,
+    ): ?string {
+        $uploaded = $request->file($field);
+
+        if (!$request->boolean($removeField) && !$uploaded) {
+            return $current;
+        }
+
+        $this->deleteLogo($current);
+
+        if (!$uploaded) {
+            return null;
+        }
+
+        $dir = public_path(MuseumInfo::LOGO_DIR);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
+
+        $name = $prefix . '-' . time() . '.' . strtolower($uploaded->getClientOriginalExtension());
+        $uploaded->move($dir, $name);
+
+        return $name;
+    }
+
+    private function deleteLogo(?string $file): void
+    {
+        if (!$file) return;
+        $path = public_path(MuseumInfo::LOGO_DIR . '/' . basename($file));
+        if (is_file($path)) {
+            @unlink($path);
+        }
     }
 
     private function log(string $action, string $details): void

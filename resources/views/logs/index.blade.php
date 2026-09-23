@@ -15,7 +15,8 @@
         'id'      => 'logsReportMenu',
         'mode'    => 'range',
         'reports' => [
-          ['label' => 'Export audit trail (CSV)', 'url' => route('reports.audit.csv'), 'download' => true],
+          ['label' => 'Audit trail (CSV)', 'url' => route('reports.audit.export', ['format' => 'csv']), 'download' => true],
+          ['label' => 'Audit trail (PDF)', 'url' => route('reports.audit.export', ['format' => 'pdf'])],
         ],
       ])
     @endif
