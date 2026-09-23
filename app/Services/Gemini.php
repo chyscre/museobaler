@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Support\ExhibitLanguages;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -198,14 +199,38 @@ class Gemini
 
     private function post(string $model, array $body, int $timeout): Response
     {
-        $res = Http::timeout($timeout)
-            ->withHeaders(['x-goog-api-key' => $this->key])
-            ->acceptJson()
-            ->post("{$this->endpoint}/models/{$model}:generateContent", $body);
+        try {
+            $res = Http::timeout($timeout)
+                ->withHeaders(['x-goog-api-key' => $this->key])
+                ->acceptJson()
+                ->post("{$this->endpoint}/models/{$model}:generateContent", $body);
+        } catch (ConnectionException $e) {
+            // The museum lost its connection, or Google is unreachable from
+            // here. Unlike every other failure below, this one arrives as a
+            // thrown exception rather than a status to read, and it is not a
+            // RuntimeException - so without this it escapes the controller's
+            // catch blocks entirely and the curator sees a bare server error
+            // on a screen that was working a moment ago.
+            //
+            // It is a GeminiBusy because it is worth retrying: the request was
+            // never refused, it never arrived. No retryAfter - nothing knows
+            // when the line comes back, so the form offers the button rather
+            // than counting down to a guess.
+            throw new GeminiBusy(
+                'The AI service could not be reached. Check the museum internet connection '
+                . 'and try again - nothing was lost, the text in the form is still here.'
+            );
+        }
 
         if ($res->failed()) {
-            $msg = $res->json('error.message') ?: ('HTTP ' . $res->status());
-            throw new RuntimeException('Gemini refused the request: ' . $msg);
+            $status = $res->status();
+            $wait   = self::retryAfter($res, (string) ($res->json('error.message') ?: ''));
+
+            if ($status === 429 || $status >= 500) {
+                throw new GeminiBusy(self::explain($res), $wait);
+            }
+
+            throw new RuntimeException(self::explain($res));
         }
 
         if ($res->json('promptFeedback.blockReason')) {
@@ -213,6 +238,46 @@ class Gemini
         }
 
         return $res;
+    }
+
+    /**
+     * Turn Google's refusal into a sentence the person at the screen can act on.
+     *
+     * The raw text is a paragraph of quota metrics and three documentation
+     * links - accurate, and useless to whoever is writing an exhibit label.
+     * The cases that actually happen get a plain line and, where Google says
+     * how long to wait, the wait.
+     */
+    private static function explain(Response $res): string
+    {
+        $status = $res->status();
+        $raw    = (string) ($res->json('error.message') ?: '');
+
+        $wait = self::retryAfter($res, $raw);
+        $in   = $wait ? " Try again in about {$wait} second" . ($wait === 1 ? '' : 's') . '.' : ' Wait a moment and try again.';
+
+        return match (true) {
+            $status === 429 => 'The AI service is busy: this key has used up its allowance for the minute.' . $in
+                . ' Nothing was lost - the text in the form is still here.',
+            $status === 401 || $status === 403 => 'The AI service refused the key. Check GEMINI_API_KEY in the .env file.',
+            $status >= 500 => 'The AI service is having trouble at its end (HTTP ' . $status . ').' . $in,
+            $status === 400 && str_contains($raw, 'API key') => 'The AI service refused the key. Check GEMINI_API_KEY in the .env file.',
+            default => 'The AI service refused the request: ' . ($raw !== '' ? $raw : 'HTTP ' . $status),
+        };
+    }
+
+    /** Seconds Google asks us to wait, from the header or its own message. */
+    private static function retryAfter(Response $res, string $raw): ?int
+    {
+        $header = $res->header('Retry-After');
+        if (is_numeric($header)) {
+            return (int) ceil((float) $header);
+        }
+        if (preg_match('/retry in ([\d.]+)s/i', $raw, $m)) {
+            return (int) ceil((float) $m[1]);
+        }
+
+        return null;
     }
 
     private function requireKey(): void

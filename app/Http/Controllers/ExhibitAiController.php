@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\Gemini;
+use App\Services\GeminiBusy;
 use App\Support\ExhibitLanguages;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -45,6 +46,8 @@ class ExhibitAiController extends Controller
                 'description' => $data['description'],
                 'fun_facts'   => $data['fun_facts'] ?? '',
             ], $data['from'], array_values($targets));
+        } catch (GeminiBusy $e) {
+            return self::busy($e);
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }
@@ -68,6 +71,8 @@ class ExhibitAiController extends Controller
 
         try {
             $wav = $gemini->narrate($data['text'], $data['language']);
+        } catch (GeminiBusy $e) {
+            return self::busy($e);
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }
@@ -85,6 +90,18 @@ class ExhibitAiController extends Controller
             'draft' => $token,
             'url'   => asset(self::DRAFT_DIR . "/$token.wav") . '?t=' . time(),
         ]);
+    }
+
+    /**
+     * "Come back in a moment" - 503 rather than 422 so the form can tell a
+     * wait apart from a refusal, with the seconds Google named.
+     */
+    private static function busy(GeminiBusy $e): JsonResponse
+    {
+        return response()->json([
+            'error'       => $e->getMessage(),
+            'retry_after' => $e->retryAfter,
+        ], 503);
     }
 
     /** Resolve a draft token to its file, or null if it has gone. */

@@ -82,6 +82,20 @@ class RecognitionController extends Controller
 
     public function upload(Request $request, ?Exhibit $exhibit = null)
     {
+        // PHP keeps at most max_file_uploads files from one request and drops
+        // the rest without a word - Laravel never sees them. The page uploads
+        // in batches of ten, so this only bites a browser without JavaScript;
+        // it still deserves a sentence rather than a short count.
+        $cap  = (int) ini_get('max_file_uploads') ?: 20;
+        $sent = count((array) ($request->file('photos') ?? []));
+        if ($sent >= $cap) {
+            $msg = "Only $cap photos can be sent at once. Choose fewer and try again.";
+            if ($request->expectsJson()) {
+                return response()->json(['ok' => false, 'message' => $msg], 422);
+            }
+            return back()->with('error', $msg);
+        }
+
         $request->validate(['photos' => 'required|array|min:1', 'photos.*' => self::PHOTO_RULE], [
             'photos.required' => 'Take or choose at least one photo.',
             'photos.*.image'  => 'One of the files is not a photo.',
@@ -116,6 +130,45 @@ class RecognitionController extends Controller
         }
 
         return back()->with('success', count($saved) . ' photo(s) added.');
+    }
+
+    /**
+     * Several at once, or the whole set. Only photos in this exhibit's own
+     * set (or the Background set) can go through here, whatever ids arrive.
+     */
+    public function destroyMany(Request $request, ?Exhibit $exhibit = null)
+    {
+        $request->validate([
+            'all'   => 'nullable|boolean',
+            'ids'   => 'nullable|array',
+            'ids.*' => 'integer',
+        ]);
+
+        $query = $this->photosFor($exhibit);
+        if (!$request->boolean('all')) {
+            $ids = $request->input('ids', []);
+            if (!$ids) {
+                if ($request->expectsJson()) {
+                    return response()->json(['ok' => false, 'message' => 'Nothing selected.'], 422);
+                }
+                return back()->with('error', 'Nothing selected.');
+            }
+            $query->whereIn('training_image_id', $ids);
+        }
+
+        $n = 0;
+        foreach ($query->get() as $photo) {
+            Recognition::deletePhoto($photo);
+            $n++;
+        }
+
+        $label = $exhibit ? $exhibit->exhibit_code : Recognition::BACKGROUND;
+        $this->log('Recognition photos removed', "$n photo(s) for $label");
+
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true, 'removed' => $n, 'count' => $this->photosFor($exhibit)->count()]);
+        }
+        return back()->with('success', "$n photo(s) removed.");
     }
 
     public function destroyPhoto(Request $request, ExhibitTrainingImage $photo)

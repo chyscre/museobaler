@@ -3,10 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\Exhibit;
+use App\Models\ExhibitTranslation;
 use App\Models\Staff;
 use App\Services\ExhibitQr;
 use App\Services\Gemini;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -113,13 +115,123 @@ class ExhibitAiTest extends TestCase
             ->assertJsonPath('error', 'AI generation is not set up: add GEMINI_API_KEY to the .env file (a Google AI Studio key).');
     }
 
+    /**
+     * An audio guide reading a description the label no longer has is worse
+     * than none: it plays perfectly and says the wrong thing, so nothing
+     * about it looks broken. Two exhibits were narrated in April and
+     * rewritten in September before anybody noticed.
+     */
+    public function test_a_narration_goes_stale_when_the_text_is_rewritten(): void
+    {
+        $exhibit = Exhibit::create(['exhibit_code' => 'EXH-050', 'name' => 'Ship', 'description' => 'd', 'status' => true]);
+        $t = ExhibitTranslation::create([
+            'exhibit_id'      => $exhibit->exhibit_id,
+            'language_code'   => 'en',
+            'language_label'  => 'English',
+            'title'           => 'European Ship',
+            'description'     => 'The ship that brought them.',
+            'fun_facts'       => 'One',
+            'audio_file'      => 'exhibit_50_en_1776787738.mp3',
+            'audio_made_at'   => now(),
+            'audio_text_hash' => ExhibitTranslation::hashFor('European Ship', 'The ship that brought them.', 'One'),
+        ]);
+
+        $this->assertFalse($t->audio_stale, 'untouched text must not be called stale');
+
+        $t->update(['description' => 'A rewritten description.']);
+
+        $this->assertTrue($t->fresh()->audio_stale, 'the audio still reads the old description');
+    }
+
+    /** No audio, or audio from before this was recorded: claim nothing. */
+    public function test_staleness_is_unknown_rather_than_guessed(): void
+    {
+        $exhibit = Exhibit::create(['exhibit_code' => 'EXH-051', 'name' => 'X', 'description' => 'd', 'status' => true]);
+
+        $none = ExhibitTranslation::create([
+            'exhibit_id' => $exhibit->exhibit_id, 'language_code' => 'en', 'language_label' => 'English',
+        ]);
+        $this->assertNull($none->audio_stale);
+
+        $old = ExhibitTranslation::create([
+            'exhibit_id' => $exhibit->exhibit_id, 'language_code' => 'fil', 'language_label' => 'Filipino',
+            'audio_file' => 'exhibit_51_fil_1776787738.mp3',
+        ]);
+        $this->assertNull($old->audio_stale, 'no timestamp and no hash means nothing can be claimed');
+    }
+
     public function test_a_refusal_from_gemini_is_passed_on_in_plain_words(): void
     {
         Http::fake(['*' => Http::response(['error' => ['message' => 'API key not valid']], 400)]);
 
         $this->staff()->postJson('/exhibits/ai/translate', ['title' => 'X', 'description' => 'Y', 'from' => 'en'])
             ->assertStatus(422)
-            ->assertJsonPath('error', 'Gemini refused the request: API key not valid');
+            ->assertJsonPath('error', 'The AI service refused the key. Check GEMINI_API_KEY in the .env file.');
+    }
+
+    /**
+     * Google's free tier allows a score of calls a minute and one exhibit
+     * uses several, so staff meet this often. It is a wait, not a failure:
+     * 503 and the seconds, which the form counts down and retries by itself
+     * rather than showing the quota paragraph and its three links.
+     */
+    public function test_running_out_of_quota_is_a_wait_rather_than_a_refusal(): void
+    {
+        Http::fake(['*' => Http::response(['error' => ['message' =>
+            'You exceeded your current quota. Quota exceeded for metric: '
+            . 'generativelanguage.googleapis.com/generate_content_free_tier_requests, '
+            . 'limit: 20. Please retry in 43.68s.',
+        ]], 429)]);
+
+        $res = $this->staff()->postJson('/exhibits/ai/translate', ['title' => 'X', 'description' => 'Y', 'from' => 'en']);
+
+        $res->assertStatus(503)->assertJsonPath('retry_after', 44);
+        $this->assertStringContainsString('busy', $res->json('error'));
+        $this->assertStringNotContainsString('https://', $res->json('error'));
+        $this->assertStringContainsString('44 seconds', $res->json('error'));
+    }
+
+    /**
+     * The likeliest failure of all, and the one the museum cannot do anything
+     * about: the building loses its connection, so Google is not refusing
+     * anything - it simply cannot be reached.
+     *
+     * Every other Gemini failure arrives as an HTTP status this code reads.
+     * This one arrives as a thrown ConnectionException before there is any
+     * response to read, so it has to be caught separately or it reaches the
+     * staff member as a bare server error on a screen that was working a
+     * second ago.
+     */
+    public function test_losing_the_connection_says_so_instead_of_failing_hard(): void
+    {
+        Http::fake(fn () => throw new ConnectionException('cURL error 6: Could not resolve host: generativelanguage.googleapis.com'));
+
+        $res = $this->staff()->postJson('/exhibits/ai/translate', ['title' => 'X', 'description' => 'Y', 'from' => 'en']);
+
+        $res->assertStatus(503);
+        $this->assertStringContainsString('could not be reached', $res->json('error'));
+        // The text the staff member typed is still in the form behind this.
+        $this->assertStringNotContainsString('cURL', $res->json('error'));
+    }
+
+    public function test_losing_the_connection_while_narrating_says_the_text_is_safe(): void
+    {
+        Http::fake(fn () => throw new ConnectionException('cURL error 28: Operation timed out'));
+
+        $res = $this->staff()->postJson('/exhibits/ai/narrate', ['language' => 'fil', 'text' => 'Ang simbahan.']);
+
+        $res->assertStatus(503);
+        $this->assertStringContainsString('could not be reached', $res->json('error'));
+    }
+
+    public function test_narration_hitting_the_quota_says_the_text_is_safe(): void
+    {
+        Http::fake(['*' => Http::response(['error' => ['message' => 'Resource exhausted']], 429)]);
+
+        $res = $this->staff()->postJson('/exhibits/ai/narrate', ['language' => 'fil', 'text' => 'Ang simbahan.']);
+
+        $res->assertStatus(503);
+        $this->assertStringContainsString('still here', $res->json('error'));
     }
 
     // -- Narration ---------------------------------------------------------

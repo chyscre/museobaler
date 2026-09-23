@@ -25,7 +25,28 @@
     return m ? m.content : '';
   }
 
-  async function postJson(url, body) {
+  // Google's free tier allows a limited number of calls a minute, and one
+  // exhibit with three languages uses several. Hitting it is a wait, not an
+  // error, so the form waits it out and tries again rather than handing the
+  // quota paragraph to whoever is writing an exhibit label. onWait is called
+  // each second so the card can show the countdown.
+  async function postJson(url, body, onWait) {
+    for (let attempt = 0; ; attempt++) {
+      const out = await postOnce(url, body);
+      if (!out.busy || attempt >= 2) {
+        if (out.error) throw out.error;
+        return out.data;
+      }
+      let left = Math.min(90, Math.max(5, out.retryAfter || 30));
+      while (left > 0) {
+        if (onWait) onWait(left, out.message);
+        await new Promise(r => setTimeout(r, 1000));
+        left--;
+      }
+    }
+  }
+
+  async function postOnce(url, body) {
     const r = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf() },
@@ -33,14 +54,17 @@
     });
     let data = null;
     try { data = await r.json(); } catch (e) { /* fall through */ }
+    if (r.status === 503 && data && data.error) {
+      return { busy: true, retryAfter: data.retry_after, message: data.error };
+    }
     if (!r.ok) {
       const msg = (data && (data.error || data.message)) ||
         (r.status === 419 ? 'Your session expired. Reload the page and try again.' : 'Request failed (' + r.status + ').');
       // Laravel validation payload: surface the first field message.
       const first = data && data.errors && Object.values(data.errors)[0];
-      throw new Error(first ? first[0] : msg);
+      return { error: new Error(first ? first[0] : msg) };
     }
-    return data;
+    return { data };
   }
 
   /** What gets read aloud: title, description, then the facts. */
@@ -145,7 +169,9 @@
       btn.disabled = true;
       this.say('Translating…', 'info');
       try {
-        const data = await postJson(this.urls.translate, { ...src, from });
+        const data = await postJson(this.urls.translate, { ...src, from }, (left) => {
+          this.say('The AI service is at its limit for the minute. Retrying in ' + left + 's… nothing is lost.', 'warn');
+        });
         (data.translations || []).forEach(t => {
           const card = this.ensureCard(t.language_code, t, true);
           card.querySelector('[data-f="title"]').value = t.title || '';
@@ -162,11 +188,13 @@
       }
     }
 
+    // Every language at once. The wait is the speech service generating a
+    // minute or more of audio per language; three of those back to back was
+    // three times the wait for no reason. The per-account ceiling on these
+    // calls (throttle:ai) has room for it.
     async narrateAll() {
-      const cards = Array.from(this.cards.querySelectorAll('.ai-card'));
-      for (const c of cards) {
-        if (narrationText(c)) await this.narrate(c);
-      }
+      const cards = Array.from(this.cards.querySelectorAll('.ai-card')).filter(narrationText);
+      await Promise.all(cards.map(c => this.narrate(c)));
     }
 
     async narrate(card) {
@@ -174,16 +202,32 @@
       if (!text) { this.setAudioNote(card, 'Nothing to narrate yet.', 'warn'); return; }
       const btn = card.querySelector('.ai-narrate');
       btn.disabled = true;
-      this.setAudioNote(card, 'Narrating… this takes a few seconds.', 'info');
+      // A running clock, because a still message over a long wait reads as
+      // a hang. The estimate comes from the text: a person reads about 150
+      // words a minute, and the service takes roughly a third of the
+      // finished audio's length to make it.
+      const words = text.split(/\s+/).length;
+      const guess = Math.max(10, Math.round(words / 150 * 60 / 3));
+      const t0 = Date.now();
+      const tick = () => {
+        const s = Math.round((Date.now() - t0) / 1000);
+        this.setAudioNote(card, `Narrating… ${s}s (usually about ${guess}s for this much text). You can keep editing the other fields meanwhile.`, 'info');
+      };
+      tick();
+      const timer = setInterval(tick, 1000);
       try {
-        const data = await postJson(this.urls.narrate, { language: card.dataset.lang, text });
+        const data = await postJson(this.urls.narrate, { language: card.dataset.lang, text }, (left) => {
+          clearInterval(timer);
+          this.setAudioNote(card, 'The AI service is at its limit for the minute. Retrying in ' + left + 's…', 'warn');
+        });
         card.querySelector('[data-f="draft"]').value = data.draft;
         card.querySelector('[data-f="upload"]').value = '';
-        this.setAudio(card, data.url, 'New narration — listen before saving.');
+        this.setAudio(card, data.url, `New narration, ready in ${Math.round((Date.now() - t0) / 1000)}s — listen before saving.`);
         card.dataset.narrated = narrationText(card);
       } catch (e) {
         this.setAudioNote(card, e.message, 'error');
       } finally {
+        clearInterval(timer);
         btn.disabled = false;
       }
     }
@@ -241,7 +285,12 @@
             <span>Upload</span>
           </label>
         </div>
-        <div class="ai-audio-note ai-status-info">${data.audio_url ? 'Current recording.' : 'No audio yet.'}</div>`;
+        <div class="ai-audio-note ai-status-${data.audio_stale ? 'warn' : 'info'}">${
+          !data.audio_url ? 'No audio yet.'
+            : data.audio_stale
+              ? 'This recording reads the older text' + (data.audio_made_at ? ' from ' + esc(data.audio_made_at) : '') + '. Narrate again so it matches what visitors now read.'
+              : 'Current recording' + (data.audio_made_at ? ', made ' + esc(data.audio_made_at) : '') + '.'
+        }</div>`;
 
       card.querySelector('.ai-narrate').addEventListener('click', () => this.narrate(card));
       card.querySelector('.ai-remove').addEventListener('click', () => {
