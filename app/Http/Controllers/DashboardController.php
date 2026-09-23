@@ -7,7 +7,6 @@ use App\Models\Visitor;
 use App\Models\Feedback;
 use App\Models\Scan;
 use App\Models\Attendance;
-use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {

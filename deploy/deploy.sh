@@ -57,8 +57,24 @@ ln -sfn "$SHARED/storage" "$NEW/storage"
 mkdir -p "$SHARED/storage"/{app/public,app/backups,framework/{cache,sessions,views},logs}
 
 # Uploaded media lives under public/ in this app. Keep it shared too.
-for dir in images/exhibits images/training audio; do
+#
+# images/branding holds the letterhead and seal the museum uploads for its
+# reports (MuseumInfo::LOGO_DIR). It is gitignored like the rest of the
+# uploads, so a release never carries it - without it being shared, every
+# deploy silently reverted every report to unbranded.
+#
+# visitor/model is the recognition model. The panel writes it at runtime
+# (RecognitionController::saveModel), so a retrained model is museum data and
+# must outlive a release - but a baseline copy is also committed, which is
+# what a fresh install recognises with. So it is seeded rather than simply
+# linked: the first deploy copies the release's baseline into shared/ and
+# every deploy after that leaves whatever staff has since trained alone.
+for dir in images/exhibits images/training images/branding audio visitor/model; do
   mkdir -p "$SHARED/public/$dir"
+  # Seed once, from whatever the release carries, if shared/ is still empty.
+  if [ -z "$(ls -A "$SHARED/public/$dir" 2>/dev/null)" ] && [ -d "$NEW/public/$dir" ]; then
+    cp -a "$NEW/public/$dir/." "$SHARED/public/$dir/" 2>/dev/null || true
+  fi
   rm -rf "$NEW/public/$dir"
   ln -sfn "$SHARED/public/$dir" "$NEW/public/$dir"
 done
