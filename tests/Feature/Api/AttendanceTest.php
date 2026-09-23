@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\Attendance;
 use App\Models\Visitor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -119,5 +120,50 @@ class AttendanceTest extends TestCase
         $this->patchJson('/api/v1/attendance/999999', ['event' => 'exit'])->assertOk()->assertJsonPath('claimed', false);
         $this->patchJson('/api/v1/attendance/abc', ['event' => 'exit'])->assertNotFound();
         $this->postJson('/api/v1/attendance', ['latitude' => 999])->assertStatus(422);
+    }
+
+    /**
+     * Two check-ins for the same visitor landing at the same moment.
+     *
+     * The phone guards against this in memory, but that guard is per tab and
+     * per page load: the app open on a phone and a tablet, or reopened while
+     * the first request is still in flight, sends two. Both read "no row for
+     * today" before either writes one, and the unique key on
+     * (visitor_id, visit_date) then refuses the second insert.
+     *
+     * That refusal is correct and is what keeps the visitor count honest. What
+     * matters is that the loser of the race is told "already logged" and not
+     * handed a server error, because from the visitor's side nothing went
+     * wrong - they are checked in.
+     *
+     * The race is made deterministic by writing the conflicting row from a
+     * `creating` hook: that fires after the request has done its check and
+     * before its own insert, which is exactly the window a real second request
+     * would land in.
+     */
+    public function test_two_simultaneous_check_ins_settle_on_one_record(): void
+    {
+        $visitor = Visitor::factory()->create();
+
+        Attendance::creating(function () use ($visitor) {
+            // Only the first insert loses the race; the recovery must not
+            // trip this again or the test would loop.
+            Attendance::unsetEventDispatcher();
+
+            DB::table('attendances')->insert([
+                'visitor_id' => $visitor->visitor_id,
+                'method'     => 'geofence',
+                'visit_date' => today(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
+
+        $this->postJson('/api/v1/attendance', [], $this->token($visitor))
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('already_logged', true);
+
+        $this->assertSame(1, Attendance::where('visitor_id', $visitor->visitor_id)->count());
     }
 }
