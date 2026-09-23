@@ -21,6 +21,26 @@ class SecurityHeaders
     {
         $response = $next($request);
 
+        // SECURITY: the one response this panel allows to be framed.
+        //
+        // The report screens preview a PDF in an <iframe> before anyone
+        // commits to downloading it, and `frame-ancestors 'none'` forbids
+        // that even from this same origin - so without this the preview pane
+        // is a blank box.
+        //
+        // The exemption is deliberately two conditions, not one. It is only
+        // the preview routes, and only when what came back is actually a
+        // PDF, so an HTML preview fragment - which could carry markup built
+        // from stored data - is still unframable. And it relaxes to 'self'
+        // rather than removing the restriction: another site still cannot
+        // frame it.
+        //
+        // A rendered PDF is not a clickjacking target in the way an admin
+        // page is: clickjacking needs the framed page to perform a
+        // privileged action on a click, and a PDF viewer performs none.
+        $framable = $request->routeIs('reports.preview', 'reports.audit.preview')
+            && str_starts_with((string) $response->headers->get('Content-Type'), 'application/pdf');
+
         // SECURITY: Content-Security-Policy
         // Restricts which sources the browser may load scripts, styles, images, etc. from.
         // 'self' means only from the same origin. This is the primary XSS mitigation at the HTTP layer.
@@ -30,13 +50,18 @@ class SecurityHeaders
         // addEventListener + a per-request nonce (nonces make browsers ignore
         // 'unsafe-inline' entirely, so that migration must happen in one pass
         // and be verified in a real browser, not blind). Tracked as follow-up.
-        // 'unsafe-eval' and cdnjs.cloudflare.com were removed below — neither
-        // is referenced anywhere in the codebase, so they were pure attack
-        // surface with no functional benefit.
+        // cdnjs.cloudflare.com was removed below - nothing references it.
+        // 'unsafe-eval' is off everywhere but one page: the recognition
+        // trainer. The Teachable Machine library it runs opens with an eval
+        // (seedrandom's global lookup), which this policy turned into a
+        // silent "Unavailable" on the Train button. The copy served from
+        // public/js/vendor/ is patched not to need it; the CDN fallback is
+        // the upstream file and still does, so that one page allows it.
+        $eval = $request->routeIs('recognition.index') ? " 'unsafe-eval'" : '';
         $response->headers->set(
             'Content-Security-Policy',
             "default-src 'self'; " .
-            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; " .
+            "script-src 'self' 'unsafe-inline'$eval https://cdn.jsdelivr.net https://unpkg.com; " .
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " .
             "font-src 'self' https://fonts.gstatic.com; " .
             "img-src 'self' data: blob:; " .
@@ -45,20 +70,24 @@ class SecurityHeaders
             // html5-qrcode's fallback for older ones goes through a blob: URL
             // on the element, which default-src 'self' would refuse.
             "media-src 'self' blob:; " .
-            // storage.googleapis.com was here for the recognition trainer's
-            // MobileNet base; that is now served from public/js/vendor/, so
-            // the trainer, the visitor app and the staff scanner all work
-            // without internet. unpkg and jsDelivr remain only for the admin
-            // layout's Lucide icons and Chart.js.
-            "connect-src 'self' http://localhost http://127.0.0.1 https://unpkg.com https://cdn.jsdelivr.net; " .
-            "frame-ancestors 'none';"
+            // The recognition trainer's libraries and MobileNet base are
+            // served from public/js/vendor/, so training works without
+            // internet; jsDelivr and storage.googleapis.com stay listed as
+            // the trainer's fallback when the local copies do not load (see
+            // recognition/index.blade.php). unpkg is for Lucide icons.
+            "connect-src 'self' http://localhost http://127.0.0.1 https://unpkg.com https://cdn.jsdelivr.net https://storage.googleapis.com; " .
+            "frame-ancestors " . ($framable ? "'self'" : "'none'") . ';'
         );
 
         // SECURITY: X-Frame-Options
         // Prevents the admin panel from being embedded in an <iframe> on another site.
         // This stops clickjacking attacks where an attacker overlays a transparent iframe
         // over a legitimate page to trick users into clicking malicious elements.
-        $response->headers->set('X-Frame-Options', 'DENY');
+        //
+        // The report preview is the one exception, and it is narrow: SAMEORIGIN,
+        // not ALLOWALL. See $framable above for why a PDF preview is not a
+        // clickjacking target.
+        $response->headers->set('X-Frame-Options', $framable ? 'SAMEORIGIN' : 'DENY');
 
         // SECURITY: X-Content-Type-Options
         // Prevents the browser from MIME-sniffing a response away from the declared Content-Type.

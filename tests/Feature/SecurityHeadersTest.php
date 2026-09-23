@@ -77,6 +77,34 @@ class SecurityHeadersTest extends TestCase
         $this->assertStringContainsString('https://unpkg.com', $csp);
     }
 
+    /**
+     * The trainer's library opened with an eval, and the policy's refusal of
+     * it surfaced as nothing more than "Unavailable" on the Train button.
+     * The served copy is patched not to eval; the CDN fallback is upstream
+     * and still does, so the one page that runs it allows eval - and only
+     * that page.
+     */
+    public function test_eval_is_allowed_on_the_recognition_page_and_nowhere_else(): void
+    {
+        $laptop = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+        $staff  = Staff::factory()->administrator()->create();
+
+        $trainer = (string) $this->withHeader('User-Agent', $laptop)->actingAs($staff)->get('/recognition')
+            ->assertOk()->headers->get('Content-Security-Policy');
+        $this->assertStringContainsString("'unsafe-eval'", $trainer);
+
+        foreach (['/', '/exhibits', '/museum'] as $path) {
+            $other = (string) $this->withHeader('User-Agent', $laptop)->actingAs($staff)->get($path)
+                ->assertOk()->headers->get('Content-Security-Policy');
+            $this->assertStringNotContainsString('unsafe-eval', $other, "$path must not allow eval");
+        }
+
+        // And the served copy of the library must not need it at all.
+        $bundle = file_get_contents(public_path('js/vendor/teachablemachine-image.min.js'));
+        $this->assertStringNotContainsString("(0, eval)", $bundle);
+        $this->assertStringNotContainsString('new Function(', $bundle);
+    }
+
     public function test_the_rest_of_the_headers_still_stand(): void
     {
         $staff    = Staff::factory()->administrator()->create();

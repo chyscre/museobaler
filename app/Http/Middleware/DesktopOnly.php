@@ -55,6 +55,8 @@ class DesktopOnly
         'recognition.background',
         'recognition.background.upload',
         'recognition.photo.destroy',
+        'recognition.photos.remove',
+        'recognition.background.remove',
         'password.edit',
         'password.update',
         'logout',
