@@ -3,6 +3,13 @@
 @section('report-title', 'Daily Time Record')
 @section('report-meta', $staff->name . ' · ' . $staff->role_label . ' · ' . $month->format('F Y'))
 
+@section('downloads')
+  @include('reports.partials.downloads', ['report' => 'dtr', 'params' => [
+    'staff' => $staff->staff_id,
+    'month' => $month->format('Y-m'),
+  ]])
+@endsection
+
 @section('content')
 <div class="tot">
   <div><span class="k">Days present</span><span class="v">{{ $totals['present'] + $totals['late'] }}</span></div>

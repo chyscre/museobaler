@@ -3,8 +3,10 @@
 @section('report-title', 'Daily Visitor Logbook')
 @section('report-meta', $date->format('l, F j, Y'))
 
-@section('actions')
-  <a href="{{ route('reports.logbook.csv') }}?date={{ $date->toDateString() }}">Download CSV</a>
+@section('downloads')
+  @include('reports.partials.downloads', ['report' => 'logbook', 'params' => [
+    'date' => $date->toDateString(),
+  ]])
 @endsection
 
 @section('content')

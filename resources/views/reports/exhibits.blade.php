@@ -3,6 +3,13 @@
 @section('report-title', 'Exhibit Engagement')
 @section('report-meta', $from->format('F j, Y') . ' – ' . $to->format('F j, Y'))
 
+@section('downloads')
+  @include('reports.partials.downloads', ['report' => 'exhibits', 'params' => [
+    'from' => $from->toDateString(),
+    'to'   => $to->toDateString(),
+  ]])
+@endsection
+
 @section('content')
 <div class="tot">
   <div><span class="k">Exhibit scans</span><span class="v">{{ number_format($total) }}</span></div>
