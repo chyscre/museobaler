@@ -2,9 +2,6 @@
 @section('title', 'Edit ' . $exhibit->name . ' — Museo Baler')
 
 @section('content')
-@if(session('success'))
-<div class="alert alert-success">{{ session('success') }}</div>
-@endif
 
 <div class="ph">
   <div class="ph-left">
@@ -46,8 +43,8 @@
           </div>
         </div>
         <div class="fg"><label class="fl">Authors</label><input class="fi" name="authors" value="{{ $exhibit->authors }}"></div>
-        <div class="fg"><label class="fl">Description</label><textarea class="fi" name="description" rows="4">{{ $exhibit->description }}</textarea></div>
-        <div class="fg"><label class="fl">Fun Facts <span style="font-weight:400;font-size:11px">(one per line)</span></label><textarea class="fi" name="fun_facts" rows="4">{{ $exhibit->fun_facts }}</textarea></div>
+        <div class="fg"><label class="fl">Description</label><textarea class="fi" name="description" rows="4" data-autogrow>{{ $exhibit->description }}</textarea></div>
+        <div class="fg"><label class="fl">Fun Facts <span style="font-weight:400;font-size:11px">(one per line)</span></label><textarea class="fi" name="fun_facts" rows="4" data-autogrow>{{ $exhibit->fun_facts }}</textarea></div>
         <div class="fi-row">
           <div class="fg"><label class="fl">Languages</label><input class="fi" name="languages" value="{{ $exhibit->languages }}"></div>
           <div class="fg"><label class="fl">Storyline Order</label><input class="fi" type="number" name="storyline_order" value="{{ $exhibit->storyline_order }}" min="0"></div>
@@ -140,7 +137,7 @@
         @foreach($exhibit->images as $img)
         <div style="position:relative;border-radius:8px;overflow:hidden">
           <img src="{{ $img->url }}" style="width:100%;height:80px;object-fit:cover;display:block">
-          <form method="POST" action="{{ route('exhibits.gallery.destroy', $img) }}" style="position:absolute;top:4px;right:4px" onsubmit="return confirm('Remove image?')">
+          <form method="POST" action="{{ route('exhibits.gallery.destroy', $img) }}" style="position:absolute;top:4px;right:4px" onsubmit="return confirm('Remove this image now? This happens right away, without pressing Save Changes.')">
             @csrf @method('DELETE')
             <button style="background:rgba(220,38,38,.85);border:none;border-radius:50%;width:22px;height:22px;color:white;cursor:pointer;font-size:12px">×</button>
           </form>

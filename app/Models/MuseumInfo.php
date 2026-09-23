@@ -20,9 +20,74 @@ class MuseumInfo extends Model
     protected $fillable = [
         'name', 'tagline', 'story', 'story2',
         'address', 'hours', 'closed_on', 'phone', 'email',
+        'report_logo', 'report_header_image',
         'admission', 'admission_fee',
         'latitude', 'longitude', 'geofence_radius_m',
     ];
+
+    /** Where the report logo is kept, under public/. */
+    public const LOGO_DIR = 'images/branding';
+
+    /**
+     * The letterhead for a printed report: the museum name, the small logo
+     * (or null) and the uploaded header banner (or null).
+     *
+     * Read by layouts/print.blade.php on every report and by all four
+     * exporters, so it copes with a table that has not been migrated yet and
+     * with no row at all.
+     *
+     * There is no organisation line and no footer line any more. An office
+     * that uploads its own letterhead already has both printed on it, and
+     * typing them in again put the office name on the page twice.
+     *
+     * `header` and `header_path` are the same image twice over because the
+     * consumers need different things: the browser and mPDF want a URL, while
+     * PhpSpreadsheet and PHPWord embed the file off disk and cannot fetch
+     * one. Both are null unless a banner has actually been uploaded AND the
+     * file is still there - a row pointing at a deleted file must fall back
+     * to the composed header rather than print a broken image.
+     */
+    public static function branding(): array
+    {
+        $row = Schema::hasColumn('museum_info', 'report_header_image') ? self::query()->first() : null;
+
+        $header     = null;
+        $headerPath = null;
+        if ($row && $row->report_header_image) {
+            $path = public_path(self::LOGO_DIR . '/' . basename($row->report_header_image));
+            if (is_file($path)) {
+                $header     = self::asset($row->report_header_image);
+                $headerPath = $path;
+            }
+        }
+
+        return [
+            'name'        => $row?->name ?: 'Museo de Baler',
+            'logo'        => self::asset($row?->report_logo),
+            'header'      => $header,
+            'header_path' => $headerPath,
+        ];
+    }
+
+    /**
+     * A branding file as a cache-busted URL, or null if it is not on disk.
+     *
+     * basename() rather than the stored value: the column is written by an
+     * upload handler, and a path that ever picked up a directory component
+     * must not be able to reach outside the branding folder.
+     */
+    private static function asset(?string $file): ?string
+    {
+        if (!$file) {
+            return null;
+        }
+
+        $path = public_path(self::LOGO_DIR . '/' . basename($file));
+
+        return is_file($path)
+            ? asset(self::LOGO_DIR . '/' . basename($file)) . '?v=' . filemtime($path)
+            : null;
+    }
 
     protected function casts(): array
     {

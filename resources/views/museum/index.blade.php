@@ -31,7 +31,6 @@
 @endpush
 
 @section('content')
-@if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
 
 <div class="ph">
   <div class="ph-left"><h2>Museum Info</h2><p>Manage content shown in the visitor app</p></div>
@@ -58,7 +57,7 @@
   </div>
 </div>
 
-<form id="museumForm" method="POST" action="{{ route('museum.update') }}">
+<form id="museumForm" method="POST" action="{{ route('museum.update') }}" enctype="multipart/form-data">
   @csrf
 
   {{-- ── Section 1: Basic Information ── --}}
@@ -120,6 +119,76 @@
       <div class="fi-row" style="margin-bottom:0">
         <div class="fg" style="margin-bottom:0"><label class="fl">Phone</label><input class="fi" name="phone" value="{{ $info->phone }}"></div>
         <div class="fg" style="margin-bottom:0"><label class="fl">Email</label><input class="fi" name="email" value="{{ $info->email }}"></div>
+      </div>
+    </div>
+  </div>
+
+  {{-- ── Section: Report Branding ── --}}
+  @php $brand = \App\Models\MuseumInfo::branding(); @endphp
+  <div class="info-section">
+    <div class="info-hd" onclick="toggleSection(this)">
+      <div class="info-hd-left">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--green-dark)"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        <div>
+          <div class="info-hd-title">Report Branding</div>
+          <div class="info-hd-sub">The letterhead printed at the top of every report</div>
+        </div>
+      </div>
+      <svg class="info-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <div class="info-body">
+      {{-- The uploaded letterhead. When one is set it REPLACES the composed
+           header below on every report and in every export, which is why it
+           sits first and says so: an office that has its own banner should
+           not have to work out why the logo it also uploaded is not
+           printing. --}}
+      <div class="fg" style="margin-bottom:18px">
+        <label class="fl">Letterhead</label>
+        <div id="headerPreviewBox" style="border:1.5px dashed var(--border);border-radius:8px;background:#fff;padding:10px;margin-bottom:8px;{{ $brand['header'] ? '' : 'display:none' }}">
+          <img id="headerPreview" src="{{ $brand['header'] ?: '' }}" alt="" style="width:100%;height:auto;display:block">
+        </div>
+        <input class="fi" type="file" name="report_header_image" accept="image/png,image/jpeg,image/webp" onchange="previewHeader(this)">
+        <div style="font-size:11.5px;color:var(--text-3);margin-top:4px">
+          PNG, JPG or WEBP, up to 4 MB. A wide banner — around 1200×200 — prints sharpest.
+          Upload the office letterhead here and it goes on every report, the spreadsheets and the Word exports.
+          <strong>While a letterhead is set, the logo and museum name below are not printed.</strong>
+        </div>
+        @if($brand['header'])
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2);margin-top:6px;cursor:pointer">
+            <input type="checkbox" name="remove_header" value="1"> Remove the letterhead and go back to the logo
+          </label>
+        @endif
+        @error('report_header_image')<div style="font-size:12px;color:var(--red);margin-top:4px">{{ $message }}</div>@enderror
+      </div>
+
+      <div class="fi-row">
+        <div class="fg">
+          <label class="fl">Logo</label>
+          <div style="display:flex;gap:14px;align-items:center">
+            <div id="logoPreviewBox" style="width:72px;height:72px;border:1.5px dashed var(--border);border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
+              @if($brand['logo'])
+                <img id="logoPreview" src="{{ $brand['logo'] }}" alt="" style="max-width:100%;max-height:100%;object-fit:contain">
+              @else
+                <img id="logoPreview" src="" alt="" style="max-width:100%;max-height:100%;object-fit:contain;display:none">
+                <span id="logoNone" style="font-size:11px;color:var(--text-4)">none</span>
+              @endif
+            </div>
+            <div style="flex:1">
+              <input class="fi" type="file" name="report_logo" accept="image/png,image/jpeg,image/webp" onchange="previewLogo(this)">
+              <div style="font-size:11.5px;color:var(--text-3);margin-top:4px">PNG, JPG or WEBP, up to 2 MB. A square or wide logo on a plain background prints best.</div>
+              @if($brand['logo'])
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2);margin-top:6px;cursor:pointer">
+                  <input type="checkbox" name="remove_logo" value="1"> Remove the current logo
+                </label>
+              @endif
+              @error('report_logo')<div style="font-size:12px;color:var(--red);margin-top:4px">{{ $message }}</div>@enderror
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--text-3)">
+        Applies to every printed report and the daily logbook. Save, then
+        <a href="{{ route('reports.visitors') }}" target="_blank" style="color:var(--green-dark);font-weight:600">open a report</a> to check how it looks.
       </div>
     </div>
   </div>
@@ -243,6 +312,25 @@
 <script>
 // ── Admission: show the sentence visitors will read as the fee is typed ───
 // Mirrors MuseumInfo::admissionSentence(); the server writes the real one.
+// ── Report logo: show the chosen file before it is saved ─────────────────
+function previewLogo(input) {
+  var img = document.getElementById('logoPreview'), none = document.getElementById('logoNone');
+  if (!input.files || !input.files[0]) return;
+  img.src = URL.createObjectURL(input.files[0]);
+  img.style.display = '';
+  if (none) none.style.display = 'none';
+}
+
+// Shows the chosen letterhead before it is saved: it spans the page, and
+// "wide enough" is not something anyone can judge from a filename.
+function previewHeader(input) {
+  var box = document.getElementById('headerPreviewBox'),
+      img = document.getElementById('headerPreview');
+  if (!input.files || !input.files[0]) return;
+  img.src = URL.createObjectURL(input.files[0]);
+  box.style.display = '';
+}
+
 function previewAdmission() {
   const fee = parseFloat(document.getElementById('admissionFee').value);
   const out = document.getElementById('admissionPreview');

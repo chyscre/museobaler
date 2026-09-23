@@ -19,7 +19,7 @@ class ExhibitController extends Controller
 {
     public function index()
     {
-        $exhibits   = Exhibit::with('category', 'museumHall')
+        $exhibits   = Exhibit::with('category', 'museumHall', 'translations')
             ->withCount('scans')
             // Storyline first, then the code. Newest-first as the tiebreaker
             // put a freshly added exhibit at the top of its order group, which
@@ -30,10 +30,17 @@ class ExhibitController extends Controller
         $categories = Category::orderBy('name')->get();
         $halls      = MuseumHall::orderBy('sort_order')->get();
 
+        // An audio guide that reads a description the label no longer has is
+        // worse than none, and it is invisible from the outside - the file
+        // plays, it just says the wrong thing. Counted here so the list can
+        // point at the exhibits that need narrating again.
+        $exhibits->each(fn ($e) => $e->stale_audio = $e->translations->filter(fn ($t) => $t->audio_stale === true)->count());
+        $staleAudioTotal = $exhibits->sum('stale_audio');
+
         // Shown as the placeholder on the add form: what a blank order becomes.
         $nextOrder  = (int) Exhibit::max('storyline_order') + 1;
 
-        return view('exhibits.index', compact('exhibits', 'categories', 'halls', 'nextOrder'));
+        return view('exhibits.index', compact('exhibits', 'categories', 'halls', 'nextOrder', 'staleAudioTotal'));
     }
 
     /**
@@ -146,7 +153,17 @@ class ExhibitController extends Controller
             'category_id'  => 'nullable|exists:categories,category_id',
             'image'        => self::IMAGE_RULE,
             't_audio.*'    => self::AUDIO_RULE,
-        ], self::MESSAGES);
+            // Gallery changes travel with the form so that nothing happens
+            // to a picture until the exhibit is actually saved.
+            'remove_images'    => 'nullable|array',
+            'remove_images.*'  => 'integer',
+            'gallery_images.*' => self::IMAGE_RULE,
+            'gallery_caption'  => 'nullable|string|max:255',
+        ], self::MESSAGES + [
+            'gallery_images.*.image' => self::MESSAGES['images.*.image'],
+            'gallery_images.*.mimes' => self::MESSAGES['images.*.mimes'],
+            'gallery_images.*.max'   => self::MESSAGES['images.*.max'],
+        ]);
 
         $data = $request->only([
             'exhibit_code', 'name', 'description', 'fun_facts',
@@ -170,6 +187,14 @@ class ExhibitController extends Controller
         }
 
         $this->syncTranslations($request, $exhibit);
+
+        // Only this exhibit's own pictures can be removed through its form.
+        foreach ($exhibit->images()->whereIn('image_id', $request->input('remove_images', []))->get() as $img) {
+            $this->removeGalleryImage($img);
+        }
+        foreach ($request->file('gallery_images', []) as $file) {
+            $this->addGalleryImage($exhibit, $file, $request->input('gallery_caption'));
+        }
 
         $this->log('Exhibit Updated', "Updated exhibit: {$exhibit->name}");
 
@@ -292,19 +317,30 @@ class ExhibitController extends Controller
         $request->validate(['images.*' => self::IMAGE_RULE], self::MESSAGES);
 
         foreach ($request->file('images', []) as $file) {
-            $name = $this->saveImage($file, $exhibit->name . ' gallery ' . Str::random(4));
-            ExhibitImage::create([
-                'exhibit_id' => $exhibit->exhibit_id,
-                'filename'   => $name,
-                'caption'    => $request->input('caption'),
-                'sort_order' => $exhibit->images()->count(),
-            ]);
+            $this->addGalleryImage($exhibit, $file, $request->input('caption'));
         }
 
         return back()->with('success', 'Images uploaded.');
     }
 
     public function destroyGalleryImage(ExhibitImage $image)
+    {
+        $this->removeGalleryImage($image);
+        return back()->with('success', 'Image removed.');
+    }
+
+    private function addGalleryImage(Exhibit $exhibit, UploadedFile $file, ?string $caption): void
+    {
+        $name = $this->saveImage($file, $exhibit->name . ' gallery ' . Str::random(4));
+        ExhibitImage::create([
+            'exhibit_id' => $exhibit->exhibit_id,
+            'filename'   => $name,
+            'caption'    => $caption,
+            'sort_order' => $exhibit->images()->count(),
+        ]);
+    }
+
+    private function removeGalleryImage(ExhibitImage $image): void
     {
         $public = public_path(self::IMAGE_DIR . '/' . $image->filename);
         if (is_file($public)) {
@@ -313,7 +349,6 @@ class ExhibitController extends Controller
         // Anything uploaded before uploads moved next to the seeded files.
         Storage::disk('public')->delete('exhibits/' . $image->filename);
         $image->delete();
-        return back()->with('success', 'Image removed.');
     }
 
     public function qrCodes()
@@ -424,8 +459,21 @@ class ExhibitController extends Controller
                 $fields['audio_file'] = $name;
             }
 
-            if (isset($fields['audio_file']) && $existing) {
-                $this->deleteAudio($existing->audio_file);
+            if (isset($fields['audio_file'])) {
+                // Which text this audio reads, so the form can say later that
+                // the label has been rewritten since and the audio no longer
+                // matches it. An uploaded file is recorded the same way: it
+                // was made for the text as it stands at this save.
+                $fields['audio_made_at']   = now();
+                $fields['audio_text_hash'] = ExhibitTranslation::hashFor(
+                    $fields['title'], $fields['description'], $fields['fun_facts']
+                );
+
+                // Never delete the file we have just written: an exhibit
+                // re-narrated inside the same second produces the same name.
+                if ($existing && $existing->audio_file !== $fields['audio_file']) {
+                    $this->deleteAudio($existing->audio_file);
+                }
             }
 
             ExhibitTranslation::updateOrCreate(

@@ -24,3 +24,16 @@ Artisan::command('inspire', function () {
  * shows what is registered; `php artisan db:backup` runs one by hand.
  */
 Schedule::command('db:backup')->dailyAt('02:30');
+
+/**
+ * The nightly CSV batch.
+ *
+ * 02:45, fifteen minutes behind the backup, so the two are never competing
+ * for the same disk and a slow dump does not push this into the hour when
+ * somebody might be opening the desk.
+ *
+ * Same caveat as the backup above: this only runs if something is waking
+ * the scheduler once a minute. Until that Task Scheduler entry exists,
+ * `php artisan reports:export` by hand is the whole of the batch tier.
+ */
+Schedule::command('reports:export')->dailyAt('02:45')->withoutOverlapping();

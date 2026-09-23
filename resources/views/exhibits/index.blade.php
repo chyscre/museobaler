@@ -8,7 +8,18 @@
 
 .btn-muted{background:var(--surface);color:var(--text-3);border:1.5px solid var(--border)}
 .btn-muted:hover{border-color:var(--text-3);color:var(--text)}
+.ex-stale{position:absolute;top:10px;right:10px;z-index:2;display:inline-flex;align-items:center;gap:4px;background:#b45309;color:#fff;border-radius:20px;padding:3px 9px;font-size:10.5px;font-weight:700;letter-spacing:.02em}
 .ex-chip{display:inline-flex;align-items:center;background:var(--border-light);border-radius:4px;padding:2px 8px;font-size:11px;color:var(--text-3);font-weight:500}
+/* The exhibit modal is a working surface, not a dialog: editing an exhibit
+   means a form, a picture, translations and a gallery at once, and at 660px
+   those stacked into a column nobody could see the end of. Wide, with the
+   picture beside the fields rather than above them. */
+#exModal .modal{max-width:1080px}
+.ex-two{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}
+.ex-side{position:sticky;top:0}
+/* Exhibit photos are portrait more often than not; show the whole of it. */
+.ex-side-img{width:100%;max-height:340px;object-fit:contain;background:var(--border-light);border-radius:var(--r-sm);display:block}
+@media (max-width:1000px){.ex-two{grid-template-columns:1fr}.ex-side{position:static}}
 /* modal view/edit toggle */
 #exModal .view-mode{display:block}
 #exModal .edit-mode{display:none}
@@ -42,8 +53,8 @@
 .ai-hint{font-size:11.5px;color:var(--text-3)}
 .ai-add{font-size:11.5px;color:var(--text-3);display:flex;align-items:center;gap:6px}
 .ai-section [hidden]{display:none!important}
-.ex-qr{display:flex;align-items:center;gap:14px;background:var(--border-light);border-radius:var(--r-sm);padding:10px 12px;margin-bottom:16px}
-.ex-qr img{width:96px;height:96px;background:#fff;border-radius:6px;border:1px solid var(--border)}
+.ex-vh{font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.ex-vt{font-size:13px;color:var(--text-2);line-height:1.7;white-space:pre-line}
 </style>
 @endpush
 
@@ -101,6 +112,18 @@
     </button>
   </div>
 </div>
+
+@if($staleAudioTotal)
+  {{-- The file plays either way, so nothing about a stale narration shows
+       itself; it has to be said here or not at all. --}}
+  <div class="alert alert-error" style="display:flex;gap:9px;align-items:flex-start;background:#fffbeb;border:1px solid #fcd34d;color:#92400e">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0;margin-top:1px"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M22 9l-6 6"/><path d="M16 9l6 6"/></svg>
+    <div>
+      <strong>{{ $staleAudioTotal }} audio guide(s) read text that has since been rewritten.</strong>
+      Visitors hear the old description. Open each exhibit marked below and press <em>Narrate again</em>, then save.
+    </div>
+  </div>
+@endif
 
 <div class="fbar">
   <div class="search-box">
@@ -164,6 +187,12 @@
     @endif
     <span class="ex-code">{{ $ex->exhibit_code }}</span>
     @if(!$ex->status)<span class="arch-tag">Archived</span>@endif
+    @if($ex->stale_audio)
+      <span class="ex-stale" title="{{ $ex->stale_audio }} audio guide(s) read the older text - narrate again">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:11px;height:11px"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M22 9l-6 6"/><path d="M16 9l6 6"/></svg>
+        Old audio
+      </span>
+    @endif
     <div class="ex-overlay">
       <div class="ex-title">{{ $ex->name }}</div>
       <div class="ex-meta">
@@ -227,8 +256,8 @@
         </div>
       </div>
       <div class="fg"><label class="fl">Authors</label><input class="fi" name="authors" placeholder="e.g. Dr. Juan Dela Cruz" value="{{ $addFailed ? old('authors') : '' }}"></div>
-      <div class="fg"><label class="fl">Description</label><textarea class="fi" name="description" rows="3" placeholder="Exhibit description…">{{ $addFailed ? old('description') : '' }}</textarea></div>
-      <div class="fg"><label class="fl">Fun Facts <span style="font-weight:400;text-transform:none">(one per line)</span></label><textarea class="fi" name="fun_facts" rows="3" placeholder="Enter each fun fact on a new line…">{{ $addFailed ? old('fun_facts') : '' }}</textarea></div>
+      <div class="fg"><label class="fl">Description</label><textarea class="fi" name="description" rows="3" data-autogrow placeholder="Exhibit description…">{{ $addFailed ? old('description') : '' }}</textarea></div>
+      <div class="fg"><label class="fl">Fun Facts <span style="font-weight:400;text-transform:none">(one per line)</span></label><textarea class="fi" name="fun_facts" rows="3" data-autogrow placeholder="Enter each fun fact on a new line…">{{ $addFailed ? old('fun_facts') : '' }}</textarea></div>
 
       {{-- Translations & audio: drafted by the AI from the fields above,
            read and corrected here, saved with the exhibit. See
@@ -268,7 +297,7 @@
 
 {{-- ── Exhibit Detail / Edit Modal ── --}}
 <div class="overlay" id="exModal">
-  <div class="modal modal-lg" style="max-width:660px;padding:0;overflow:hidden">
+  <div class="modal modal-lg" style="padding:0;overflow:hidden">
 
     {{-- Header — always visible --}}
     <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px 14px;border-bottom:1px solid var(--border)">
@@ -310,7 +339,7 @@
 
 @push('scripts')
 <script src="{{ asset('js/qrcode.min.js') }}"></script>
-<script src="{{ asset('js/exhibit-ai.js') }}?v=1"></script>
+<script src="{{ asset('js/exhibit-ai.js') }}?v=3"></script>
 <script>
 // ── Filter ────────────────────────────────────────────────────
 function filterExhibits(){
@@ -432,44 +461,45 @@ function renderView(d){
     : '<p style="font-size:13px;color:var(--text-3);padding:8px 0">No translations added yet.</p>';
 
   document.getElementById('exViewBody').innerHTML = `
-    ${d.image ? `<img src="/exhibit-image/${encodeURIComponent(d.image)}" style="width:100%;height:200px;object-fit:cover;display:block" alt="">` : ''}
-
     <div style="padding:18px 22px">
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">
-        ${catBadge}
-        ${chip(esc(d.floor)+' · '+esc(d.hall))}
-        ${d.authors ? chip(esc(d.authors)) : ''}
-        ${d.languages ? chip(esc(d.languages)) : ''}
-        ${d.storyline_order ? chip('Story #'+d.storyline_order) : ''}
-        ${statusBadge}
-        <span class="ex-chip" style="color:var(--green-dark);font-weight:700">${(d.scans_count||0).toLocaleString()} scans</span>
-      </div>
-
-      ${d.qr_url ? `
-        <div class="ex-qr">
-          <img src="${esc(d.qr_url)}?t=${Date.now()}" alt="QR code for ${esc(d.exhibit_code)}">
-          <div style="flex:1;min-width:0">
-            <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">QR code for the display case</div>
-            <div style="font-size:12px;color:var(--text-3);word-break:break-all;margin-bottom:8px">${esc(d.scan_url)}</div>
-            <a class="btn btn-outline btn-xs" href="${esc(d.qr_url)}?download=1">Download SVG</a>
+      <div class="ex-two">
+        <div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+            ${catBadge}
+            ${chip(esc(d.floor)+' · '+esc(d.hall))}
+            ${d.authors ? chip(esc(d.authors)) : ''}
+            ${d.languages ? chip(esc(d.languages)) : ''}
+            ${d.storyline_order ? chip('Story #'+d.storyline_order) : ''}
+            ${statusBadge}
+            <span class="ex-chip" style="color:var(--green-dark);font-weight:700">${(d.scans_count||0).toLocaleString()} scans</span>
           </div>
-        </div>` : ''}
 
-      ${d.description ? `
-        <div style="margin-bottom:16px">
-          <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Description</div>
-          <div style="font-size:13px;color:var(--text-2);line-height:1.7;white-space:pre-line">${esc(d.description)}</div>
-        </div>` : ''}
+          ${d.description ? `
+            <div style="margin-bottom:14px">
+              <div class="ex-vh">Description</div>
+              <div class="ex-vt">${esc(d.description)}</div>
+            </div>` : ''}
 
-      ${d.fun_facts ? `
-        <div style="margin-bottom:16px">
-          <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Fun Facts</div>
-          <div style="font-size:13px;color:var(--text-2);line-height:1.7;white-space:pre-line">${esc(d.fun_facts)}</div>
-        </div>` : ''}
+          ${d.fun_facts ? `
+            <div style="margin-bottom:14px">
+              <div class="ex-vh">Fun Facts</div>
+              <div class="ex-vt">${esc(d.fun_facts)}</div>
+            </div>` : ''}
 
-      <div>
-        <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Translations & Audio</div>
-        ${transHtml}
+          <div>
+            <div class="ex-vh">Translations &amp; Audio</div>
+            ${transHtml}
+          </div>
+        </div>
+
+        <div class="ex-side">
+          ${d.image ? `<img src="/exhibit-image/${encodeURIComponent(d.image)}" class="ex-side-img" alt="">` : ''}
+          ${d.qr_url ? `
+            <div style="margin-top:12px;text-align:center">
+              <img src="${esc(d.qr_url)}?t=${Date.now()}" style="width:120px;height:120px;background:#fff;border:1px solid var(--border);border-radius:6px" alt="QR code for ${esc(d.exhibit_code)}">
+              <div style="margin-top:6px"><a class="btn btn-outline btn-xs" href="${esc(d.qr_url)}?download=1">Download QR</a></div>
+            </div>` : ''}
+        </div>
       </div>
     </div>`;
 }
@@ -491,6 +521,7 @@ function switchToEdit(){
       editBody.innerHTML = html;
       // The edit form carries its own translations & audio review section.
       if (window.ExhibitAI) window.ExhibitAI.mountAll(editBody);
+      if (window.autogrow) window.autogrow(editBody);
       // Wire the form's cancel buttons back to view mode
       editBody.querySelectorAll('button[onclick*="closeEditModal"], button[onclick*="cancelHallEdit"]').forEach(btn=>{
         btn.removeAttribute('onclick');
