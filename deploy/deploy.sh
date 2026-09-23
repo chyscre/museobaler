@@ -16,7 +16,7 @@
 set -euo pipefail
 
 APP_ROOT="${APP_ROOT:-/var/www/museobaler}"
-REPO="${REPO:-git@github.com:YOUR-ORG/museobaler.git}"
+REPO="${REPO:-git@github.com:chyscre/museobaler.git}"
 REF="${1:?usage: deploy.sh <git-ref>}"
 
 RELEASES="$APP_ROOT/releases"
