@@ -103,6 +103,8 @@ CI guarantees before any of it.
 | For | Read |
 |---|---|
 | Museum staff and the Tourism office — how to do the job | [docs/STAFF_MANUAL.md](docs/STAFF_MANUAL.md) |
+| How the pieces fit: context, request pipeline, deployment, what is generated | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| The database: 24 tables, their keys, and the joins that are missing on purpose | [docs/ERD.md](docs/ERD.md) |
 | Whoever holds the keys — accounts, credentials, the backup key, who to call | [docs/OWNERSHIP.md](docs/OWNERSHIP.md) |
 | The person holding the backup drive on a bad morning | [docs/RESTORE.md](docs/RESTORE.md) |
 | Putting it on a server, updating it, rolling back | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) |
