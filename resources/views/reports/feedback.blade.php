@@ -3,6 +3,13 @@
 @section('report-title', 'Visitor Feedback')
 @section('report-meta', $from->format('F j, Y') . ' – ' . $to->format('F j, Y'))
 
+@section('downloads')
+  @include('reports.partials.downloads', ['report' => 'feedback', 'params' => [
+    'from' => $from->toDateString(),
+    'to'   => $to->toDateString(),
+  ]])
+@endsection
+
 @section('content')
 <div class="tot">
   <div><span class="k">Responses</span><span class="v">{{ number_format($total) }}</span></div>

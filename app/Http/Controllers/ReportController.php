@@ -12,6 +12,11 @@ use App\Models\VisitGroup;
 use App\Models\SurveyQuestion;
 use App\Services\AttendanceStatusService;
 use App\Support\CsmReport;
+use App\Support\Reports\CsvExporter;
+use App\Support\Reports\DocxExporter;
+use App\Support\Reports\PdfExporter;
+use App\Support\Reports\ReportBuilder;
+use App\Support\Reports\XlsxExporter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -19,10 +24,19 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 /**
  * Reports for the Tourism office.
  *
- * Output is print-styled HTML plus CSV rather than generated PDF: the museum
- * prints from the browser, which keeps this working on a Laragon box with no
- * extra composer dependency to install, and CSV is what anyone actually wants
- * when they need to total something in Excel.
+ * Each report is a page styled for print, which the museum can still send
+ * straight to a printer, plus downloads in the formats that report is
+ * actually wanted in - see ReportBuilder::FORMATS.
+ *
+ * Exports come in two tiers, and the split is deliberate:
+ *
+ *   - CSV is the machine tier. Plain rows, no letterhead, no totals, written
+ *     nightly to storage by ReportsExport as well as offered here, so that
+ *     anything reading this system's numbers has a file to read that does
+ *     not change shape when somebody restyles a report.
+ *   - XLSX, DOCX and PDF are the human tier: the museum's own letterhead on
+ *     top, totals at the bottom, and a choice between working with the
+ *     figures, editing the write-up, or forwarding something printable.
  *
  * The daily logbook is the important one. It is what lets the museum stop
  * writing in the paper book - whoever wants a physical record still gets a
@@ -39,6 +53,18 @@ class ReportController extends Controller
     {
         $date = $request->filled('date') ? Carbon::parse($request->input('date')) : today();
 
+        return view('reports.logbook', $this->logbookData($date));
+    }
+
+    /**
+     * The logbook page's own view-model.
+     *
+     * Split out from the action because the PDF export renders this same
+     * view, and a PDF built from a second, near-identical query would be a
+     * document that disagreed with the screen it was printed from.
+     */
+    private function logbookData(Carbon $date): array
+    {
         $visitors = Visitor::with('registeredBy')
             ->whereDate('created_at', $date)
             ->whereNull('group_id')
@@ -62,7 +88,7 @@ class ReportController extends Controller
         $outstanding = $visitors->where('payment_status', 'Unpaid')->sum('admission_fee')
                      + $groups->where('payment_status', 'Unpaid')->sum('total_fee');
 
-        return view('reports.logbook', [
+        return [
             'date'        => $date,
             'visitors'    => $visitors,
             'groups'      => $groups,
@@ -71,41 +97,7 @@ class ReportController extends Controller
             'refunded'    => $refunded,
             'net'         => $collected - $refunded,
             'outstanding' => $outstanding,
-        ]);
-    }
-
-    public function logbookCsv(Request $request): StreamedResponse
-    {
-        $date = $request->filled('date') ? Carbon::parse($request->input('date')) : today();
-
-        $visitors = Visitor::whereDate('created_at', $date)->whereNull('group_id')->orderBy('created_at')->get();
-        $groups   = VisitGroup::whereDate('visit_date', $date)->orderBy('created_at')->get();
-
-        $rows = [['Time', 'Name', 'Type', 'Pax', 'Locals', 'From', 'Source', 'Fee', 'Refunded', 'Payment']];
-
-        foreach ($visitors as $v) {
-            $rows[] = [
-                $v->created_at->format('g:i A'), $v->full_name, $v->visitor_type, 1,
-                $v->visitor_type === 'Local' ? 1 : 0,
-                $v->city ?: $v->country, $v->source,
-                number_format((float) $v->admission_fee, 2), '0.00', $v->payment_status,
-            ];
-        }
-
-        foreach ($groups as $g) {
-            $rows[] = [
-                $g->created_at->format('g:i A'),
-                ($g->group_name ?: $g->contact_name) . ' (group)',
-                $g->visitor_type, $g->headcount,
-                $g->visitor_type === 'Local' ? $g->headcount : $g->local_count,
-                $g->city ?: $g->country, 'desk',
-                number_format((float) $g->total_fee, 2),
-                number_format((float) $g->refunded_amount, 2),
-                $g->payment_status,
-            ];
-        }
-
-        return $this->csv($rows, 'logbook-' . $date->toDateString() . '.csv');
+        ];
     }
 
     // -- Staff DTR ---------------------------------------------------------
@@ -119,6 +111,11 @@ class ReportController extends Controller
             ? Carbon::parse($request->input('month') . '-01')
             : today()->startOfMonth();
 
+        return view('reports.dtr', $this->dtrData($staff, $month));
+    }
+
+    private function dtrData(Staff $staff, Carbon $month): array
+    {
         $to = $month->copy()->endOfMonth();
         if ($to->isFuture()) {
             $to = today();
@@ -126,7 +123,7 @@ class ReportController extends Controller
 
         $days = $this->status->rangeFor($staff, $month->copy()->startOfMonth(), $to);
 
-        return view('reports.dtr', [
+        return [
             'staff'  => $staff,
             'month'  => $month,
             'days'   => $days,
@@ -137,7 +134,7 @@ class ReportController extends Controller
                 'manual'  => $days->where('is_manual', true)->count(),
                 'minutes' => $days->sum('worked_minutes'),
             ],
-        ]);
+        ];
     }
 
     // -- Visitors and admission -------------------------------------------
@@ -146,6 +143,11 @@ class ReportController extends Controller
     {
         [$from, $to] = $this->range($request);
 
+        return view('reports.visitors', $this->visitorsData($from, $to));
+    }
+
+    private function visitorsData(Carbon $from, Carbon $to): array
+    {
         $visitors = Visitor::whereBetween('created_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])->get();
         $groups   = VisitGroup::whereBetween('visit_date', [$from->toDateString(), $to->toDateString()])->get();
 
@@ -161,7 +163,7 @@ class ReportController extends Controller
             ]);
         }
 
-        return view('reports.visitors', [
+        return [
             'from'  => $from,
             'to'    => $to,
             'daily' => $daily,
@@ -175,7 +177,7 @@ class ReportController extends Controller
             'totalMoney'  => $daily->sum('collected'),
             'outstanding' => $visitors->where('payment_status', 'Unpaid')->sum('admission_fee')
                            + $groups->where('payment_status', 'Unpaid')->sum('total_fee'),
-        ]);
+        ];
     }
 
     // -- Feedback ----------------------------------------------------------
@@ -184,6 +186,11 @@ class ReportController extends Controller
     {
         [$from, $to] = $this->range($request);
 
+        return view('reports.feedback', $this->feedbackData($from, $to));
+    }
+
+    private function feedbackData(Carbon $from, Carbon $to): array
+    {
         $rows = Feedback::with(['staff', 'visitor', 'answers'])
             ->whereBetween('submitted_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
             ->get();
@@ -204,7 +211,7 @@ class ReportController extends Controller
             ])
             ->values();
 
-        return view('reports.feedback', [
+        return [
             'from'       => $from,
             'to'         => $to,
             'total'      => $rows->count(),
@@ -215,60 +222,7 @@ class ReportController extends Controller
             'recent'     => $rows->sortByDesc('submitted_at')->take(20),
             'csm'        => $csm,
             'csmRating'  => CsmReport::rating($csm['sqd_score']),
-        ]);
-    }
-
-    /**
-     * One row per survey response with a column per question code, in the
-     * column order of the paper tally sheet, so the office can paste it
-     * straight into its ARTA submission. N/A is written as "N/A" rather
-     * than left blank, so it cannot be mistaken for a missing answer.
-     */
-    public function feedbackCsv(Request $request): StreamedResponse
-    {
-        [$from, $to] = $this->range($request);
-
-        $rows = Feedback::with(['visitor', 'answers'])
-            ->whereBetween('submitted_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
-            ->whereHas('answers')
-            ->orderBy('submitted_at')
-            ->get();
-
-        // Every code that has an answer in the range, current questions first
-        // in their own order, then anything retired, so no column is lost.
-        $codes = SurveyQuestion::orderBy('sort_order')->pluck('code')
-            ->merge($rows->flatMap->answers->pluck('code')->unique())
-            ->unique()
-            ->filter(fn ($c) => $rows->flatMap->answers->contains('code', $c))
-            ->values();
-
-        $out = [array_merge(
-            ['Control No.', 'Date', 'Client type', 'Sex', 'Age', 'Region', 'Visitor type'],
-            $codes->all(),
-            ['Star rating', 'Suggestions']
-        )];
-
-        foreach ($rows as $f) {
-            $byCode = $f->answers->keyBy('code');
-            $line = [
-                $f->feedback_id,
-                $f->submitted_at?->format('Y-m-d H:i'),
-                $f->client_type ?: '',
-                $f->visitor?->sex ?: '',
-                $f->visitor?->age ?: '',
-                $f->region ?: '',
-                $f->visitor?->visitor_type ?: '',
-            ];
-            foreach ($codes as $code) {
-                $a = $byCode->get($code);
-                $line[] = $a === null ? '' : ($a->value === null ? 'N/A' : $a->value);
-            }
-            $line[] = $f->rating;
-            $line[] = $f->comment ?: '';
-            $out[] = $line;
-        }
-
-        return $this->csv($out, 'csm-' . $from->toDateString() . '-to-' . $to->toDateString() . '.csv');
+        ];
     }
 
     // -- Exhibit engagement ------------------------------------------------
@@ -277,11 +231,16 @@ class ReportController extends Controller
     {
         [$from, $to] = $this->range($request);
 
+        return view('reports.exhibits', $this->exhibitsData($from, $to));
+    }
+
+    private function exhibitsData(Carbon $from, Carbon $to): array
+    {
         $scans = Scan::with('exhibit')
             ->whereBetween('scanned_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
             ->get();
 
-        return view('reports.exhibits', [
+        return [
             'from'      => $from,
             'to'        => $to,
             'total'     => $scans->count(),
@@ -290,33 +249,236 @@ class ReportController extends Controller
                 ->sortByDesc('count')->values(),
             'byLanguage' => $scans->groupBy('language_code')->map->count()->sortDesc(),
             'tours'      => Tour::whereBetween('started_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])->count(),
+        ];
+    }
+
+    // -- Downloads ---------------------------------------------------------
+
+    /**
+     * One report, one format.
+     *
+     * The second of the two export tiers. The first is the nightly CSV that
+     * ReportsExport writes for anything reading this system's numbers; this
+     * is the one a person clicks, which is why it offers a spreadsheet and a
+     * PDF and the batch tier does not - nobody is pasting a PDF into a
+     * pipeline, and nobody forwards a CSV to the mayor's office.
+     *
+     * Which formats each report allows is ReportBuilder::FORMATS. Asking for
+     * one that is not on the list is a 404 rather than a silent fallback: a
+     * link to .docx that quietly returns .csv is a bug that survives to
+     * whoever opens the attachment.
+     */
+    public function export(Request $request, string $report, string $format)
+    {
+        abort_unless(ReportBuilder::supports($report, $format), 404);
+
+        $builder = app(ReportBuilder::class);
+
+        [$dataset, $view, $viewData] = $this->resolve($request, $report, $builder);
+
+        return match ($format) {
+            'csv'  => app(CsvExporter::class)->stream($dataset),
+            'xlsx' => app(XlsxExporter::class)->stream($dataset),
+            'docx' => app(DocxExporter::class)->stream($dataset),
+            'pdf'  => app(PdfExporter::class)->stream($dataset, $view, $viewData),
+        };
+    }
+
+    /**
+     * What the chosen format will contain, before committing to a download.
+     *
+     * A PDF is handed back as a PDF, inline rather than as an attachment,
+     * because the browser renders it and nothing beats seeing the real
+     * thing. XLSX and DOCX are container formats no browser can display,
+     * and CSV would download rather than render, so those come back as an
+     * HTML stand-in built from the same ReportDataset the writer uses -
+     * meaning the rows shown are the rows in the file, and only the styling
+     * is an approximation. The view says as much.
+     */
+    public function preview(Request $request, string $report, string $format)
+    {
+        abort_unless(ReportBuilder::supports($report, $format), 404);
+
+        $builder = app(ReportBuilder::class);
+
+        [$dataset, $view, $viewData] = $this->resolve($request, $report, $builder);
+
+        if ($format === 'pdf') {
+            return response(app(PdfExporter::class)->raw($dataset, $view, $viewData), 200, [
+                'Content-Type'        => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="' . $dataset->filenameFor('pdf') . '"',
+            ]);
+        }
+
+        if ($format === 'csv') {
+            $section = $dataset->primarySection();
+            $rows    = array_slice($section->rows, 0, self::PREVIEW_ROWS);
+
+            $handle = fopen('php://temp', 'r+');
+            fputcsv($handle, $section->columns);
+            foreach ($rows as $row) {
+                fputcsv($handle, array_map(fn ($c) => $c === null ? '' : $c, $row));
+            }
+            rewind($handle);
+            $csv = stream_get_contents($handle);
+            fclose($handle);
+
+            return view('reports.partials.preview', [
+                'format'    => 'csv',
+                'csv'       => $csv,
+                'truncated' => count($section->rows) > self::PREVIEW_ROWS,
+                'remaining' => max(0, count($section->rows) - self::PREVIEW_ROWS),
+                'sections'  => [],
+            ]);
+        }
+
+        return view('reports.partials.preview', [
+            'format'    => $format,
+            'csv'       => '',
+            'truncated' => false,
+            'remaining' => 0,
+            'sections'  => array_map(fn ($s) => [
+                'heading' => $s->heading,
+                'columns' => $s->columns,
+                'rows'    => $s->rows,
+            ], $dataset->sections),
         ]);
     }
 
-    // -- Audit log export --------------------------------------------------
+    /**
+     * The audit trail, in its own action.
+     *
+     * Not a `->defaults('report', 'audit')` on the shared route: Laravel
+     * fills a controller's scalar arguments POSITIONALLY, so a default
+     * lands after the path parameters rather than in the slot that shares
+     * its name. That bound $report to the format and $format to "audit",
+     * and the mismatch surfaced as a 404 on a route that had matched
+     * perfectly well.
+     */
+    public function exportAudit(Request $request, string $format)
+    {
+        return $this->export($request, 'audit', $format);
+    }
 
-    public function auditCsv(Request $request): StreamedResponse
+    public function previewAudit(Request $request, string $format)
+    {
+        return $this->preview($request, 'audit', $format);
+    }
+
+    /**
+     * The CSV links that existed before the other formats did.
+     *
+     * Kept serving the file rather than redirecting to the new URL: half a
+     * dozen views point at these, an office bookmarks an export it runs
+     * every week, and anything fetching one on a schedule may not follow a
+     * 302. They are thin wrappers, not a second code path.
+     */
+    public function logbookCsv(Request $request)
+    {
+        return $this->export($request, 'logbook', 'csv');
+    }
+
+    public function feedbackCsv(Request $request)
+    {
+        return $this->export($request, 'feedback', 'csv');
+    }
+
+    public function auditCsv(Request $request)
+    {
+        return $this->export($request, 'audit', 'csv');
+    }
+
+    /**
+     * One report's dataset, plus the view and view-data a PDF needs.
+     *
+     * Shared by the download and the preview so that what is previewed is
+     * built the same way as what is saved - the point of a preview being
+     * that it is not a second opinion.
+     *
+     * @return array{0: \App\Support\Reports\ReportDataset, 1: string, 2: array}
+     */
+    private function resolve(Request $request, string $report, ReportBuilder $builder): array
+    {
+        // PDF renders the Blade view, so it needs the view's own data, not
+        // the flat dataset. Everything else needs only the dataset.
+        return match ($report) {
+            'logbook'  => $this->forLogbook($request, $builder),
+            'dtr'      => $this->forDtr($request, $builder),
+            'visitors' => $this->forVisitors($request, $builder),
+            'exhibits' => $this->forExhibits($request, $builder),
+            'feedback' => $this->forFeedback($request, $builder),
+            'audit'    => $this->forAudit($request, $builder),
+        };
+    }
+
+    private function forLogbook(Request $request, ReportBuilder $builder): array
+    {
+        $date = $request->filled('date') ? Carbon::parse($request->input('date')) : today();
+
+        return [$builder->logbook($date), 'reports.logbook', $this->logbookData($date)];
+    }
+
+    private function forDtr(Request $request, ReportBuilder $builder): array
+    {
+        $staff = Staff::findOrFail($request->integer('staff'));
+        abort_unless($staff->role === Staff::ROLE_ADMIN, 404);
+
+        $month = $request->filled('month')
+            ? Carbon::parse($request->input('month') . '-01')
+            : today()->startOfMonth();
+
+        return [$builder->dtr($staff, $month), 'reports.dtr', $this->dtrData($staff, $month)];
+    }
+
+    private function forVisitors(Request $request, ReportBuilder $builder): array
     {
         [$from, $to] = $this->range($request);
 
-        $rows = [['Timestamp', 'User', 'Role', 'Action', 'Details', 'IP']];
+        return [$builder->visitors($from, $to), 'reports.visitors', $this->visitorsData($from, $to)];
+    }
 
-        Log::whereBetween('created_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
-            ->orderBy('created_at')
-            ->chunk(500, function ($chunk) use (&$rows) {
-                foreach ($chunk as $log) {
-                    $rows[] = [
-                        $log->created_at->format('Y-m-d H:i:s'),
-                        $log->user_name, $log->role, $log->action,
-                        $log->details, $log->ip_address,
-                    ];
-                }
-            });
+    private function forExhibits(Request $request, ReportBuilder $builder): array
+    {
+        [$from, $to] = $this->range($request);
 
-        return $this->csv($rows, 'audit-log-' . $from->toDateString() . '-to-' . $to->toDateString() . '.csv');
+        return [$builder->exhibits($from, $to), 'reports.exhibits', $this->exhibitsData($from, $to)];
+    }
+
+    private function forFeedback(Request $request, ReportBuilder $builder): array
+    {
+        [$from, $to] = $this->range($request);
+
+        return [$builder->feedback($from, $to), 'reports.feedback', $this->feedbackData($from, $to)];
+    }
+
+    private function forAudit(Request $request, ReportBuilder $builder): array
+    {
+        [$from, $to] = $this->range($request);
+
+        // The printed trail is capped. A year of activity is tens of
+        // thousands of lines, and a PDF of that is not a document anyone
+        // reads - it is a CSV that took four minutes to render. The page
+        // says so when it truncates.
+        $query = Log::whereBetween('created_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()]);
+        $total = (clone $query)->count();
+        $rows  = $query->orderBy('created_at')->limit(self::AUDIT_PRINT_LIMIT)->get();
+
+        return [$builder->audit($from, $to), 'reports.audit', [
+            'from'      => $from,
+            'to'        => $to,
+            'rows'      => $rows,
+            'total'     => $total,
+            'truncated' => $total > self::AUDIT_PRINT_LIMIT,
+        ]];
     }
 
     // -- Shared ------------------------------------------------------------
+
+    /** How many audit lines a printed trail will carry before it gives up. */
+    private const AUDIT_PRINT_LIMIT = 2000;
+
+    /** How many rows a CSV preview shows before saying "and more". */
+    private const PREVIEW_ROWS = 40;
 
     private function range(Request $request): array
     {
@@ -335,18 +497,5 @@ class ReportController extends Controller
         }
 
         return [$from, $to];
-    }
-
-    private function csv(array $rows, string $filename): StreamedResponse
-    {
-        return response()->streamDownload(function () use ($rows) {
-            $handle = fopen('php://output', 'w');
-            // Excel needs the BOM to read UTF-8 names correctly.
-            fwrite($handle, "\xEF\xBB\xBF");
-            foreach ($rows as $row) {
-                fputcsv($handle, $row);
-            }
-            fclose($handle);
-        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 }
