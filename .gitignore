@@ -7,6 +7,7 @@
 .phpunit.result.cache
 /.fleet
 /.idea
+/.kiro
 /.nova
 /.phpunit.cache
 /.vscode
@@ -29,8 +30,10 @@ Thumbs.db
 /public/images/exhibits/*
 /public/images/training/*
 /public/images/qr/*
+/public/images/branding/*
 /public/audio/*
 !/public/images/exhibits/.gitkeep
 !/public/images/training/.gitkeep
 !/public/images/qr/.gitkeep
+!/public/images/branding/.gitkeep
 !/public/audio/.gitkeep
