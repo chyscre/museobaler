@@ -317,6 +317,11 @@ function showScreen(id) {
   // LED on, battery draining — behind a screen that is not the scanner.
   if (id !== 's-scan-storyline' && id !== 's-scan-free') { try { stopScanner(); } catch(e){} }
 
+  // And the narration belongs to the exhibit screen. Walking away from an
+  // exhibit used to leave its audio guide talking over the map, the list or
+  // whatever came next.
+  if (id !== 's-exhibit') { try { stopAudio(); resetAudio(); } catch(e){} }
+
   // Screen-specific enter hooks
   if (id === 's-home') { try { populateHome(); } catch(e){} }
   if (id === 's-profile') { try { onProfileEnter(); } catch(e){ console.error('profile enter error:', e); } }
@@ -435,14 +440,15 @@ const COMMON_PASSWORD_ROOTS = [
   'museobaler', 'quezon', 'sabang', 'ditumabo', 'visitor', 'tourist',
 ];
 
-function hasRunOfFour(value) {
-  for (let i = 3; i < value.length; i++) {
-    const a = value.charCodeAt(i - 3), b = value.charCodeAt(i - 2),
-          c = value.charCodeAt(i - 1), d = value.charCodeAt(i);
-    if (b - a === 1 && c - b === 1 && d - c === 1) return true;
-    if (a - b === 1 && b - c === 1 && c - d === 1) return true;
+/** True when the whole value is one run of consecutive characters ("12345678"). */
+function isWholeSequence(value) {
+  if (value.length < 2) return false;
+  const step = value.charCodeAt(1) - value.charCodeAt(0);
+  if (step !== 1 && step !== -1) return false;
+  for (let i = 2; i < value.length; i++) {
+    if (value.charCodeAt(i) - value.charCodeAt(i - 1) !== step) return false;
   }
-  return false;
+  return true;
 }
 
 function looksCommon(password) {
@@ -468,14 +474,18 @@ function containsPersonalInfo(password, personal) {
   });
 }
 
-/** The rule checklist, in the order it is shown under the password field. */
+/**
+ * The rule checklist, in the order it is shown under the password field.
+ *
+ * Three rules only — no "must contain a symbol". The trivial-repeat and
+ * whole-sequence checks are folded into "not common" rather than listed, so
+ * the visitor is not made to read about cases they will never hit.
+ */
 function checkPasswordRules(password, personal = []) {
+  const lower = password.toLowerCase();
   return [
-    { label: 'At least 8 characters',            ok: password.length >= 8 },
-    { label: 'Upper and lower case letters',     ok: /[a-z]/.test(password) && /[A-Z]/.test(password) },
-    { label: 'At least one number',              ok: /[0-9]/.test(password) },
-    { label: 'At least one symbol',              ok: /[^a-zA-Z0-9]/.test(password) },
-    { label: 'Not a common or guessable password', ok: password.length > 0 && !looksCommon(password) && !hasRunOfFour(password.toLowerCase()) && !/^(.)\1+$/.test(password) },
+    { label: 'At least 8 characters',             ok: password.length >= 8 },
+    { label: 'Not a common password',             ok: password.length > 0 && !looksCommon(password) && !isWholeSequence(lower) && !/^(.)\1+$/.test(password) },
     { label: 'Does not contain your name or email', ok: password.length > 0 && !containsPersonalInfo(password, personal) },
   ];
 }
@@ -503,15 +513,18 @@ function onPasswordInput() {
      </div>`
   ).join('');
 
-  // Strength is simply how many of the rules are satisfied — the rules are the
-  // policy, so there is nothing to be gained from a second, vaguer score.
-  const pct   = password ? Math.round((passed / rules.length) * 100) : 0;
+  // Until every rule passes the meter says so. Once they do, the only thing
+  // that makes a password stronger is length, so that is what the bar
+  // rewards — a nudge toward a longer passphrase without ever requiring one.
+  const allOk = passed === rules.length;
   const bar   = document.getElementById('pw-strength-bar');
   const label = document.getElementById('pw-strength-label');
-  const tier  = passed === rules.length ? ['Strong', '#16a34a']
-              : passed >= 4             ? ['Getting there', '#d97706']
-              : password                ? ['Weak', '#ef4444']
-              : ['—', '#9ca3af'];
+  let tier, pct;
+  if (!password)                 { tier = ['—', '#9ca3af'];          pct = 0;   }
+  else if (!allOk)               { tier = ['Not yet', '#ef4444'];    pct = 25;  }
+  else if (password.length >= 14){ tier = ['Strong', '#16a34a'];     pct = 100; }
+  else if (password.length >= 11){ tier = ['Good', '#65a30d'];       pct = 75;  }
+  else                           { tier = ['OK', '#d97706'];         pct = 50;  }
   bar.style.width      = pct + '%';
   bar.style.background = tier[1];
   label.textContent    = tier[0];
@@ -2442,7 +2455,16 @@ function renderExhibit(ex, opts) {
     relatedList.innerHTML = related.map(r => exhibitListItem(r)).join('');
   }
 
-  // Audio — use uploaded file if available, else fall back to TTS
+  // Audio — use uploaded file if available, else fall back to TTS.
+  //
+  // Stop whatever is playing FIRST. The <audio> element is shared by every
+  // exhibit, and opening a second one only replaced the state around it:
+  // the previous exhibit's narration carried on playing over the new page,
+  // which is the one thing an audio guide must never do. The element keeps
+  // its old src until the next play(), which swaps it when it differs.
+  stopAudio();
+  resetAudio();
+
   audioState.text = ex.description || '';
   audioState.elapsed = 0;
   audioState.audioFile = null; // reset
@@ -4187,6 +4209,35 @@ function _sameVisitInProgress() {
   return !!(STATE._attendanceId && STATE._attendanceDate === _today() && STATE._entryTime);
 }
 
+/* Location was refused, or the phone cannot get a fix.
+ *
+ * This used to be an empty callback, which meant a visitor who tapped Block
+ * got no hint at all: the welcome toast never came, their visit was never
+ * counted, and nothing on screen connected either fact to the prompt they had
+ * dismissed a second earlier. Nothing in the app stops working - exhibits,
+ * audio and the survey never needed the position - so this is a note, not an
+ * alarm, and it is said once rather than on every failed sample.
+ *
+ * watchPosition keeps calling this: a denial repeats for as long as the page
+ * is open, and a phone indoors can report POSITION_UNAVAILABLE repeatedly
+ * before it gets a fix. Only the first one is worth a toast, and a timeout is
+ * worth nothing at all - it usually resolves itself on the next sample. */
+let _geofenceWarned = false;
+
+function geofenceUnavailable(err) {
+  if (_geofenceWarned) return;
+  if (err && err.code === err.TIMEOUT) return;
+
+  _geofenceWarned = true;
+
+  showToast(
+    err && err.code === err.PERMISSION_DENIED
+      ? 'Location is off, so your visit will not be counted automatically. Everything else works - the front desk can log you in.'
+      : 'Your phone cannot find its location right now, so your visit will not be counted automatically. Everything else works.',
+    6000
+  );
+}
+
 function initGeofence() {
   if (!navigator.geolocation) return;
 
@@ -4239,7 +4290,7 @@ function initGeofence() {
         logAttendanceExit(mins);
       }
     },
-    () => {},
+    geofenceUnavailable,
     // High accuracy is required, not a nicety: a 150 m fence cannot be
     // resolved by coarse network positioning, which routinely reports a
     // several-hundred-metre radius and would now be rejected outright by the

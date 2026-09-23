@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\Visitor;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -47,15 +48,35 @@ class AttendanceController extends Controller
             }
         }
 
-        $row = Attendance::create([
-            'visitor_id'   => $visitor?->visitor_id,
-            'visitor_name' => $visitor?->full_name ?? trim((string) ($data['visitor_name'] ?? '')),
-            'latitude'     => $data['latitude'] ?? null,
-            'longitude'    => $data['longitude'] ?? null,
-            'accuracy'     => $data['accuracy'] ?? null,
-            'method'       => 'geofence',
-            'visit_date'   => today(),
-        ]);
+        try {
+            $row = Attendance::create([
+                'visitor_id'   => $visitor?->visitor_id,
+                'visitor_name' => $visitor?->full_name ?? trim((string) ($data['visitor_name'] ?? '')),
+                'latitude'     => $data['latitude'] ?? null,
+                'longitude'    => $data['longitude'] ?? null,
+                'accuracy'     => $data['accuracy'] ?? null,
+                'method'       => 'geofence',
+                'visit_date'   => today(),
+            ]);
+        } catch (QueryException $e) {
+            // Another request for this visitor arrived between the check above
+            // and this insert - the app open on a second device, or reopened
+            // while the first call was still in flight. The unique key on
+            // (visitor_id, visit_date) is what keeps the visitor count honest,
+            // so it stays; what must not happen is the loser of that race
+            // being handed a server error when, from the visitor's side,
+            // nothing went wrong at all. They are checked in.
+            $existing = $visitor === null ? null : Attendance::query()
+                ->where('visitor_id', $visitor->visitor_id)
+                ->whereDate('visit_date', today())
+                ->value('attendance_id');
+
+            if ($existing === null) {
+                throw $e;   // Not the race - a real database problem.
+            }
+
+            return response()->json(['ok' => true, 'already_logged' => true, 'attendance_id' => (int) $existing]);
+        }
 
         return response()->json(['ok' => true, 'already_logged' => false, 'attendance_id' => (int) $row->attendance_id]);
     }
