@@ -78,7 +78,7 @@ class RoleAccessTest extends TestCase
         // operational is shut off, not merely hidden from her sidebar.
         $tourism = Staff::factory()->tourismHead()->create();
 
-        foreach (['/', '/exhibits', '/desk', '/tours', '/my/attendance',
+        foreach (['/dashboard', '/exhibits', '/desk', '/tours', '/my/attendance',
                   '/museum', '/map', '/qr-codes', '/attendance'] as $url) {
             $this->actingAs($tourism)->get($url)->assertForbidden();
         }
@@ -113,7 +113,7 @@ class RoleAccessTest extends TestCase
 
     public function test_signing_out_closes_everything(): void
     {
-        foreach (['/', '/desk', '/records', '/logs', '/staff-attendance'] as $url) {
+        foreach (['/dashboard', '/desk', '/records', '/logs', '/staff-attendance'] as $url) {
             $this->get($url)->assertRedirect('/login');
         }
     }

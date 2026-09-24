@@ -8,6 +8,7 @@ use App\Models\Log;
 use App\Models\Scan;
 use App\Models\Visitor;
 use App\Models\VisitGroup;
+use App\Support\DayPage;
 use Illuminate\Http\Request;
 
 class VisitorController extends Controller
@@ -36,12 +37,18 @@ class VisitorController extends Controller
             'unverified'  => $query->where('visitor_type', 'Local')->where('id_verified', false),
             default       => null,
         };
-        match ($request->input('vsort', 'newest')) {
+        $vsort = $request->input('vsort', 'newest');
+        match ($vsort) {
             'oldest' => $query->oldest(),
             'name'   => $query->orderBy('last_name')->orderBy('first_name'),
             default  => $query->orderByDesc('created_at'),
         };
-        $visitors = $query->paginate(15)->withQueryString();
+
+        // A page is a day the museum registered someone - the logbook read
+        // the way the paper one was, a day at a time. "Oldest first" walks
+        // the calendar forwards; the other sorts order within the day.
+        $visitorDay = DayPage::of($query, 'created_at', newestFirst: $vsort !== 'oldest');
+        $visitors   = $visitorDay->rows;
 
         $stats = [
             'total'      => Visitor::count(),
@@ -106,7 +113,7 @@ class VisitorController extends Controller
         $activeTab = $request->input('tab', 'visitors');
 
         return view('records.index', compact(
-            'visitors', 'stats', 'scanStats',
+            'visitors', 'visitorDay', 'stats', 'scanStats',
             'groups', 'groupStats', 'gdate',
             'attendances', 'todayCount', 'totalAtt', 'anonAtt', 'attDate',
             'chartLabels', 'chartValues', 'activeTab'

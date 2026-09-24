@@ -7,6 +7,7 @@ use App\Models\Exhibit;
 use App\Models\ExhibitImage;
 use App\Models\ExhibitTranslation;
 use Illuminate\Http\JsonResponse;
+use App\Support\ExhibitImage as ExhibitImageFile;
 use Illuminate\Http\Request;
 
 /**
@@ -67,6 +68,7 @@ class ExhibitController extends Controller
                 ->map(fn (ExhibitImage $g) => [
                     'filename' => $g->filename,
                     'url'      => $this->imageUrl($request, $g->filename),
+                    'thumb'    => $this->imageUrl($request, $g->filename, ExhibitImageFile::THUMB),
                     'caption'  => $g->caption,
                 ]),
             'scan_count'    => $exhibit->scans()->count(),
@@ -96,6 +98,8 @@ class ExhibitController extends Controller
             'map_y'           => $e->map_y,
             'year'            => $e->date_published?->format('Y') ?? '',
             'image'           => $this->imageUrl($request, $e->image),
+            // List rows and cards only ever draw this at 44-130px.
+            'thumb'           => $this->imageUrl($request, $e->image, ExhibitImageFile::THUMB),
             'audio_file'      => $t?->audio_file,
             'audio_url'       => $t?->audio_file ? $request->getBasePath() . '/audio/' . rawurlencode($t->audio_file) : null,
         ];
@@ -111,9 +115,21 @@ class ExhibitController extends Controller
         return array_values(array_filter(array_map('trim', explode("\n", $raw))));
     }
 
-    private function imageUrl(Request $request, ?string $file): ?string
+    /**
+     * The picture the app should actually download.
+     *
+     * The originals are camera files — 6000x4000, up to 9.8 MB — so the app is
+     * given the ~1280px display copy, or the ~400px thumbnail for list rows.
+     * App\Support\ExhibitImage falls back to the original when a derivative
+     * has not been built, so this degrades to slow rather than to broken.
+     */
+    private function imageUrl(Request $request, ?string $file, string $variant = ExhibitImageFile::DISPLAY): ?string
     {
-        return $file ? $request->getBasePath() . '/images/exhibits/' . rawurlencode($file) : null;
+        $path = ExhibitImageFile::variantPath($file, $variant);
+
+        return $path
+            ? $request->getBasePath() . '/' . implode('/', array_map('rawurlencode', explode('/', $path)))
+            : null;
     }
 
     private function lang(Request $request): string

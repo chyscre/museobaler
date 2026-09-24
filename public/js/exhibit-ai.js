@@ -52,19 +52,44 @@
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf() },
       body: JSON.stringify(body),
     });
+    // Read once as text, then try JSON: a server that died mid-request
+    // answers with HTML or nothing at all, and r.json() throwing there used
+    // to leave the curator with "Request failed (500)" - a status code is
+    // not an explanation.
+    const raw = await r.text();
     let data = null;
-    try { data = await r.json(); } catch (e) { /* fall through */ }
+    try { data = raw ? JSON.parse(raw) : null; } catch (e) { /* not JSON */ }
+
     if (r.status === 503 && data && data.error) {
       return { busy: true, retryAfter: data.retry_after, message: data.error };
     }
-    if (!r.ok) {
-      const msg = (data && (data.error || data.message)) ||
-        (r.status === 419 ? 'Your session expired. Reload the page and try again.' : 'Request failed (' + r.status + ').');
-      // Laravel validation payload: surface the first field message.
-      const first = data && data.errors && Object.values(data.errors)[0];
-      return { error: new Error(first ? first[0] : msg) };
+    if (r.ok) return { data };
+
+    // Laravel validation payload: the field message is the useful half.
+    const firstField = data && data.errors && Object.values(data.errors)[0];
+    if (firstField) return { error: new Error(firstField[0]) };
+
+    const said = data && (data.error || data.message);
+    if (said && said !== 'Server Error') {
+      return { error: new Error(said + (data.ref ? ' (ref ' + data.ref + ')' : '')) };
     }
-    return { data };
+
+    // Nothing usable came back. Say what this status means for the person
+    // and what to do about it, and keep the body for whoever debugs it.
+    const BY_STATUS = {
+      401: 'You have been signed out. Open the panel in a new tab, sign in, then come back.',
+      403: 'This account is not allowed to do that.',
+      404: 'That address no longer exists - reload the page and try again.',
+      413: 'That file is too large for the server to accept.',
+      419: 'Your session expired. Reload the page and try again.',
+      429: 'Too many requests in a row. Wait a minute and try again.',
+      500: 'Something went wrong on the museum server. Nothing you typed has been lost - try again, and if it keeps happening tell whoever maintains this system.',
+      502: 'The museum server is not answering. It may be restarting - wait a moment and try again.',
+      503: 'The service is busy. Wait a moment and try again.',
+      504: 'The server took too long to answer. Try again; narration can take a few tries on a slow connection.',
+    };
+    if (raw) console.error('museobaler: ' + r.status + ' from ' + url + ' —', raw.slice(0, 400));
+    return { error: new Error(BY_STATUS[r.status] || ('The server refused that (' + r.status + '). Reload the page and try again.')) };
   }
 
   /** What gets read aloud: title, description, then the facts. */
@@ -110,7 +135,6 @@
         <div class="ai-status" hidden></div>
         <div class="ai-cards"></div>
         <div class="ai-foot">
-          <span class="ai-hint">Read each translation, fix anything, listen to the audio — then save the exhibit.</span>
           <span class="ai-add">
             Add language:
             ${LANGS.map(([c, n]) => `<button type="button" class="btn btn-muted btn-xs ai-add-lang" data-lang="${c}">${n}</button>`).join(' ')}

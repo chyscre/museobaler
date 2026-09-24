@@ -30,7 +30,7 @@ class AuthBoundaryTest extends TestCase
         $v = Visitor::factory()->paid()->create();
         $h = $this->bearer($v);
 
-        foreach (['/', '/exhibits', '/desk', '/records', '/staff', '/museum', '/logs', '/qr-codes'] as $path) {
+        foreach (['/dashboard', '/exhibits', '/desk', '/records', '/staff', '/museum', '/logs', '/qr-codes'] as $path) {
             $this->get($path, $h)->assertRedirect('/login');
         }
 

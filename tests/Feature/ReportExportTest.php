@@ -315,14 +315,18 @@ class ReportExportTest extends TestCase
         }
     }
 
-    public function test_a_page_with_no_formats_still_prints(): void
+    public function test_the_poster_is_a_standalone_sheet_not_a_report(): void
     {
-        // The desk poster shares this layout but has nothing to export. It
-        // must not lose its Print button to the downloads partial.
+        // The poster is the one printable thing that is not a report: it
+        // goes on a wall, so it carries no letterhead, no export formats and
+        // no panel chrome - only the instruction, the code and the steps.
         $poster = $this->admin()->get('/desk/poster');
+
         $poster->assertOk();
-        $this->assertStringContainsString('class="print"', $poster->getContent());
-        $this->assertStringNotContainsString('id="fmtPick"', $poster->getContent());
+        $poster->assertSee('Scan to sign in before you go inside');
+        $poster->assertSee('data:image/', false);          // the QR itself
+        $poster->assertDontSee('id="fmtPick"', false);     // no format picker
+        $poster->assertDontSee('class="sheet"', false);    // not the report layout
     }
 
     public function test_a_report_cannot_be_previewed_in_a_format_it_does_not_offer(): void

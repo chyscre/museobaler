@@ -49,7 +49,7 @@ class SecurityHeadersTest extends TestCase
 
     public function test_nothing_the_panel_does_not_use_is_allowed(): void
     {
-        $policy = $this->permissionsPolicyOn('/');
+        $policy = $this->permissionsPolicyOn('/dashboard');
 
         $this->assertStringContainsString('microphone=()', $policy);
         $this->assertStringContainsString('payment=()', $policy);
@@ -93,7 +93,7 @@ class SecurityHeadersTest extends TestCase
             ->assertOk()->headers->get('Content-Security-Policy');
         $this->assertStringContainsString("'unsafe-eval'", $trainer);
 
-        foreach (['/', '/exhibits', '/museum'] as $path) {
+        foreach (['/dashboard', '/exhibits', '/museum'] as $path) {
             $other = (string) $this->withHeader('User-Agent', $laptop)->actingAs($staff)->get($path)
                 ->assertOk()->headers->get('Content-Security-Policy');
             $this->assertStringNotContainsString('unsafe-eval', $other, "$path must not allow eval");
@@ -108,7 +108,7 @@ class SecurityHeadersTest extends TestCase
     public function test_the_rest_of_the_headers_still_stand(): void
     {
         $staff    = Staff::factory()->administrator()->create();
-        $response = $this->actingAs($staff)->get('/');
+        $response = $this->actingAs($staff)->get('/dashboard');
 
         $response->assertHeader('X-Frame-Options', 'DENY');
         $response->assertHeader('X-Content-Type-Options', 'nosniff');

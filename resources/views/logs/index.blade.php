@@ -5,7 +5,6 @@
 <div class="ph">
   <div class="ph-left">
     <h2>Logs</h2>
-    <p>System activity and user actions</p>
   </div>
   <div class="ph-right">
     {{-- The audit export is the Tourism office's, since they are who answers
@@ -15,8 +14,8 @@
         'id'      => 'logsReportMenu',
         'mode'    => 'range',
         'reports' => [
-          ['label' => 'Audit trail (CSV)', 'url' => route('reports.audit.export', ['format' => 'csv']), 'download' => true],
-          ['label' => 'Audit trail (PDF)', 'url' => route('reports.audit.export', ['format' => 'pdf'])],
+          ['label' => 'Audit trail (CSV)', 'note' => 'Spreadsheet of every action', 'url' => route('reports.audit.export', ['format' => 'csv']), 'download' => true],
+          ['label' => 'Audit trail (PDF)', 'note' => 'Printable, for filing',        'url' => route('reports.audit.export', ['format' => 'pdf'])],
         ],
       ])
     @endif
@@ -57,9 +56,11 @@
       Clear
     </a>
     @endif
-    <span class="fcount">{{ number_format($logs->total()) }} / {{ number_format($total) }} entries</span>
+    <span class="fcount">{{ number_format($day->count()) }} on this day / {{ number_format($total) }} total</span>
   </div>
 </form>
+
+<x-day-nav :day="$day" unit="entry" />
 
 <div class="tbl-wrap">
   <table id="logsTable">
@@ -79,14 +80,10 @@
       <td style="font-size:12px;color:var(--text-4)">{{ $log->ip_address ?? '—' }}</td>
     </tr>
     @empty
-    <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-3)">No logs found.</td></tr>
+    <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-3)">Nothing was recorded on this day.</td></tr>
     @endforelse
     </tbody>
   </table>
-  <div class="tbl-foot">
-    <span class="tbl-count">{{ $logs->total() }} entries</span>
-    <div>{{ $logs->links() }}</div>
-  </div>
 </div>
 @endsection
 

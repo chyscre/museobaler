@@ -55,7 +55,7 @@ class PagesRenderTest extends TestCase
     public static function museumPages(): array
     {
         return [
-            'dashboard'         => ['/'],
+            'dashboard'         => ['/dashboard'],
             'front desk'        => ['/desk'],
             'guided tours'      => ['/tours'],
             'own attendance'    => ['/my/attendance'],

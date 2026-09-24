@@ -51,6 +51,11 @@ class AppServiceProvider extends ServiceProvider
         }
 
         $this->rateLimitAiCalls();
+
+        // Laravel defaults to Tailwind markup; this project styles the
+        // Bootstrap-shaped classes instead, so links() rendered unstyled.
+        \Illuminate\Pagination\Paginator::defaultView("vendor.pagination.museo");
+        \Illuminate\Pagination\Paginator::defaultSimpleView("vendor.pagination.museo");
         $this->rateLimitPanel();
         $this->visitorGuard();
         $this->rateLimitVisitorApi();

@@ -5,16 +5,15 @@
 <div class="ph">
   <div class="ph-left">
     <h2>Records</h2>
-    <p>Visitor and scan records</p>
   </div>
   <div class="ph-right">
     @include('partials.report-menu', [
       'id'      => 'recordsReportMenu',
       'mode'    => 'range',
       'reports' => [
-        ['label' => 'Daily logbook',        'url' => route('reports.logbook'), 'csv' => route('reports.logbook.csv')],
-        ['label' => 'Visitors & admission', 'url' => route('reports.visitors')],
-        ['label' => 'Exhibit engagement',   'url' => route('reports.exhibits')],
+        ['label' => 'Daily logbook',        'note' => 'Who came in, hour by hour',        'url' => route('reports.logbook'), 'csv' => route('reports.logbook.csv')],
+        ['label' => 'Visitors & admission', 'note' => 'Headcount and fees collected',     'url' => route('reports.visitors')],
+        ['label' => 'Exhibit engagement',   'note' => 'Which exhibits were scanned most', 'url' => route('reports.exhibits')],
       ],
     ])
   </div>
@@ -145,6 +144,8 @@
     </div>
   </form>
 
+  <x-day-nav :day="$visitorDay" unit="visitor" />
+
   <div class="tbl-wrap">
     <table>
       <thead><tr>
@@ -213,14 +214,10 @@
         </td>
       </tr>
       @empty
-      <tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-3)">No visitors found.</td></tr>
+      <tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-3)">No visitors registered on this day.</td></tr>
       @endforelse
       </tbody>
     </table>
-    <div class="tbl-foot">
-      <span class="tbl-count">{{ $visitors->total() }} visitors</span>
-      <div>{{ $visitors->links() }}</div>
-    </div>
   </div>
 </div>
 

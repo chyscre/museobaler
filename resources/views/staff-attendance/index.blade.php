@@ -5,7 +5,6 @@
 <div class="ph">
   <div class="ph-left">
     <h2>Staff Attendance</h2>
-    <p>Who is in today, and how the month is tracking</p>
   </div>
   <div class="ph-right" style="display:flex;gap:8px;align-items:center">
     {{-- The DTR is per person per month, so it is picked here rather than

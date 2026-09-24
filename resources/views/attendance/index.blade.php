@@ -5,7 +5,6 @@
 <div class="ph">
   <div class="ph-left">
     <h2>Attendance</h2>
-    <p>Visitors automatically detected via geofencing</p>
   </div>
   <div class="ph-right">
     <form method="GET" style="display:flex;gap:8px;align-items:center;">

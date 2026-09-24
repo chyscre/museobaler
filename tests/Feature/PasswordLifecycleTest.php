@@ -136,7 +136,7 @@ class PasswordLifecycleTest extends TestCase
     {
         $staff = Staff::factory()->administrator()->awaitingPasswordChange()->create();
 
-        $this->actingAs($staff)->get('/')->assertRedirect(route('password.edit'));
+        $this->actingAs($staff)->get('/dashboard')->assertRedirect(route('password.edit'));
         $this->actingAs($staff)->get('/desk')->assertRedirect(route('password.edit'));
         $this->actingAs($staff)->get('/my/attendance')->assertRedirect(route('password.edit'));
     }
@@ -174,7 +174,7 @@ class PasswordLifecycleTest extends TestCase
         $this->assertNotNull($staff->password_changed_at);
         $this->assertTrue(Hash::check('Kalabaw-tuwid-9-bakod', $staff->password));
 
-        $this->actingAs($staff)->get('/')->assertOk();
+        $this->actingAs($staff)->get('/dashboard')->assertOk();
     }
 
     public function test_the_change_is_logged_and_the_password_is_not(): void
