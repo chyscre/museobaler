@@ -6,7 +6,6 @@
 <div class="ph">
   <div class="ph-left">
     <h2>My Attendance</h2>
-    <p>Scan the code in the staff room to check in and out</p>
   </div>
 </div>
 @endif

@@ -107,6 +107,10 @@ function normalizeExhibit(ex) {
     date:        ex.date_published ? ex.date_published.substring(0,4) : (ex.date || ex.year || ''),
     views:       ex.scan_count   || ex.views || 0,
     image:       ex.image ? (ex.image.startsWith('http') ? ex.image : window.location.origin + ex.image) : null,
+    // The ~400px copy the API offers for list rows and cards. Falls back to
+    // the display image when the API has not been updated or has no thumb.
+    thumb:       ex.thumb ? (ex.thumb.startsWith('http') ? ex.thumb : window.location.origin + ex.thumb)
+                 : (ex.image ? (ex.image.startsWith('http') ? ex.image : window.location.origin + ex.image) : null),
     gallery:     (ex.gallery || []).map(g => ({
                    url: g.url ? (g.url.startsWith('http') ? g.url : window.location.origin + g.url)
                       : (g.filename ? PUBLIC_BASE + '/images/exhibits/' + encodeURIComponent(g.filename) : ''),
@@ -1337,7 +1341,7 @@ function renderMostViewed(exhibits) {
     <div onclick="openExhibitCard(${JSON.stringify(ex).replace(/"/g,'&quot;')})" style="flex-shrink:0;width:130px;background:var(--w);border-radius:14px;overflow:hidden;box-shadow:var(--sh);cursor:pointer;">
       <div style="height:72px;position:relative;overflow:hidden;${ex.image ? 'background:#000' : (tileBg(ex))};display:flex;align-items:center;justify-content:center;">
         ${ex.image
-          ? `<img src="${ex.image}" alt="${ex.title}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;" onerror="this.style.display='none'">`
+          ? `<img src="${ex.thumb || ex.image}" alt="${ex.title}" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;" onerror="this.style.display='none'">`
           : `<span class="material-icons-round" style="font-size:32px;color:rgba(255,255,255,0.7);">${ex.icon || 'museum'}</span>`
         }
         ${lockGlyph(ex, 'position:absolute;bottom:4px;right:6px;font-size:14px;z-index:1;text-shadow:0 1px 3px rgba(0,0,0,0.5);', '#a7e08a', 'rgba(255,255,255,0.8)')}
@@ -1365,7 +1369,7 @@ function populateAllExhibits() {
 function exhibitListItem(ex) {
   const thumb = ex.image
     ? `<div style="width:44px;height:44px;border-radius:12px;overflow:hidden;flex-shrink:0;background:#000;">
-         <img src="${ex.image}" alt="${ex.title}" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentElement.style.background='${ex.gradient||'var(--ew)'}';this.style.display='none'">
+         <img src="${ex.thumb || ex.image}" alt="${ex.title}" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentElement.style.background='${ex.gradient||'var(--ew)'}';this.style.display='none'">
        </div>`
     : `<div style="width:44px;height:44px;border-radius:12px;${tileBg(ex)};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
          <span class="material-icons-round" style="font-size:22px;color:white;">${ex.icon || 'museum'}</span>
@@ -2299,7 +2303,7 @@ function showExhibitPreview(ex) {
       <div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:16px;">
         <div style="width:64px;height:64px;border-radius:16px;overflow:hidden;flex-shrink:0;${ex.image ? 'background:#000' : (tileBg(ex))};">
           ${ex.image
-            ? `<img src="${ex.image}" alt="${ex.title}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">`
+            ? `<img src="${ex.thumb || ex.image}" alt="${ex.title}" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">`
             : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;"><span class="material-icons-round" style="font-size:32px;color:rgba(255,255,255,0.8);">${ex.icon || 'museum'}</span></div>`
           }
         </div>
@@ -2465,14 +2469,18 @@ function renderExhibit(ex, opts) {
   stopAudio();
   resetAudio();
 
-  audioState.text = ex.description || '';
   audioState.elapsed = 0;
   audioState.audioFile = null; // reset
+  // Kept so switching back from Fun Facts can restore the recording.
+  audioState.recordedUrl = ex.audio_url || null;
+  audioState.source = 'overview';
+  audioState.text = ex.description || '';
 
   // Check if exhibit has an audio file for current language
   if (ex.audio_url) {
     audioState.audioFile = ex.audio_url;
   }
+  updateAudioSourceLabel();
 
   const totalWords = audioState.text.split(' ').length;
   const estSecs = Math.round(totalWords / 2.5);
@@ -2573,6 +2581,7 @@ function switchTab(tab) {
     const panel = document.getElementById(`tab-${t}`);
     if (panel) panel.style.display = t === tab ? 'block' : 'none';
   });
+  setNarrationSource(tab === 'facts' ? 'facts' : 'overview');
   const accent = STATE.mode === 'free' ? 'var(--bm)' : 'var(--gm)';
   document.querySelectorAll('.ex-tab').forEach(el => {
     const isActive = el.getAttribute('onclick')?.includes(`'${tab}'`);
@@ -2581,6 +2590,57 @@ function switchTab(tab) {
     el.style.borderBottom= isActive ? `2px solid ${accent}` : 'none';
     el.style.marginBottom= isActive ? '-2px' : '0';
   });
+}
+
+/* What the player reads.
+
+   Overview plays the museum's own recording when there is one. Fun facts are
+   typed into the admin form and have no recording, so they are read by the
+   speech synthesiser — they are often the longest text on the screen, which is
+   exactly why they are worth narrating.
+
+   Switching source stops whatever is playing: the visitor asked for different
+   words, not for the old ones to finish. */
+function setNarrationSource(source) {
+  if (audioState.source === source) return;
+  stopAudio();
+  resetAudio();
+  audioState.source = source;
+
+  if (source === 'facts') {
+    const facts = currentExhibit ? generateFunFacts(currentExhibit) : [];
+    // Numbered so the listener can follow along with the cards on screen.
+    audioState.text = facts.map((f, i) => (i + 1) + '. ' + f).join(' ');
+    audioState.audioFile = null;              // no recording for fun facts
+  } else {
+    audioState.text = (currentExhibit && currentExhibit.description) || '';
+    audioState.audioFile = audioState.recordedUrl || null;
+  }
+
+  // The estimate the progress bar uses when there is no media file to ask.
+  const words = audioState.text ? audioState.text.split(/\s+/).length : 0;
+  audioState.duration = Math.round(words / 2.5);
+
+  updateAudioSourceLabel();
+  updateAudioUI();
+}
+
+function updateAudioSourceLabel() {
+  const el = document.getElementById('audio-source');
+  if (!el) return;
+  const facts = audioState.source === 'facts';
+  const has = facts
+    ? !!(audioState.text && audioState.text.trim())
+    : !!(audioState.audioFile || (audioState.text && audioState.text.trim()));
+  el.textContent = facts ? 'Fun facts' : 'Overview';
+  el.style.opacity = has ? '' : '.5';
+
+  // Nothing to read on this tab — say so rather than leaving a dead button.
+  const btn = document.getElementById('audio-play-btn');
+  if (btn) {
+    btn.style.opacity = has ? '' : '.45';
+    btn.title = has ? '' : 'Nothing to narrate on this tab';
+  }
 }
 
 function goToNext() {
@@ -2649,7 +2709,16 @@ function toggleLangPicker() {
 }
 
 function setLang(lang) {
-  // Per-exhibit language — does NOT change the global scan language
+  // Per-exhibit language — does NOT change the global scan language.
+  //
+  // Stop the narration FIRST. It used to be stopped inside the .then() of the
+  // refetch below, which meant the old language kept talking for the whole
+  // round trip — and kept talking indefinitely if the request failed, since
+  // the .catch() did nothing. Changing the language is a decision to stop
+  // listening to the old one, whatever the network then does.
+  stopAudio();
+  resetAudio();
+
   const labels = { en: 'English', fil: 'Filipino', es: 'Español' };
   const langLabel = document.getElementById('ex-lang-label');
   if (langLabel) langLabel.textContent = labels[lang] || 'English';
@@ -2760,10 +2829,33 @@ function getAudioEl() {
     if (icon) icon.textContent = 'replay';
   });
   el.addEventListener('error', () => {
-    // A genuine media error (404, bad codec): fall back to speech for this
-    // exhibit. This is the only place the file is given up on.
+    /* Not every media error means the recording is unusable.
+
+       MEDIA_ERR_NETWORK (2) and MEDIA_ERR_ABORTED (1) are transient: the byte
+       range failed, the connection dropped, the page pulled the rug. This used
+       to null audioFile and immediately call playAudio(), so a momentary Wi-Fi
+       stumble mid-narration silently swapped the museum's recorded guide for
+       the speech synthesiser reading the description — over the top of what the
+       visitor was listening to, and permanently, until the exhibit was reopened.
+       That is the "the audio wouldn't stop, it just kept going" report.
+
+       Only a decode failure (3) or an unsupported/missing source (4) means the
+       file itself is no good, and only then is speech the right answer. */
+    const code = el.error ? el.error.code : 0;
+    const unusable = code === 3 || code === 4;
+
     audioState.playing = false;
+    clearInterval(audioState.timer);
+
+    if (!unusable) {
+      // Keep the recording and the position; let them press play again.
+      updateAudioUI();
+      showToast('Narration interrupted — tap play to resume');
+      return;
+    }
+
     audioState.audioFile = null;
+    audioState.recordedUrl = null;
     audioState.elapsed = 0;
     updateAudioUI();
     showToast('Narration file unavailable — reading the description instead');
@@ -2923,13 +3015,19 @@ function cycleSpeed() {
   applyPlaybackSpeed();
 }
 
-// A file changes rate in place; speech has to be restarted to pick it up.
+/* A recorded narration changes rate in place — it keeps playing, at the new
+   speed, from where it was. Speech synthesis cannot do that: the rate is fixed
+   per utterance, so the only way to apply a new one is to start a fresh
+   utterance, which would jump back to the first word. Restarting silently is
+   worse than stopping, so it stops and leaves the visitor to press play. */
 function applyPlaybackSpeed() {
   const el = document.getElementById('exhibit-audio-player');
   if (el) el.playbackRate = STATE.settings.speed || 1;
+
   if (audioState.playing && !audioState.audioFile && window.speechSynthesis) {
     stopAudio();
-    playAudio();
+    resetAudio();
+    showToast('Speed changed — press play to hear it');
   }
 }
 
@@ -3460,10 +3558,13 @@ function applyDarkMode() {
 
 // First run only: inherit whatever the phone is already set to. Once the
 // visitor has touched the switch, their choice is what counts.
+/* The app opens light unless the visitor has chosen dark for themselves.
+   It used to inherit prefers-color-scheme, which meant anyone whose phone was
+   on dark — or just on auto after sunset — met a dark museum app they had not
+   asked for. The switch in Settings still works and is still remembered. */
 function initDarkModePreference() {
   if (typeof STATE.settings.darkMode === 'boolean') return;
-  STATE.settings.darkMode =
-    !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  STATE.settings.darkMode = false;
 }
 
 function applyTextSize(size) {
@@ -4043,15 +4144,56 @@ function showLoading(show) {
 
 // ── MUSEUM INFO ──────────────────────────────────────────────
 let _museumInfoLoaded = false;
+// The fetched payload is kept so a screen opened later can render it without
+// a second request - the legal pages show the same phone and email as About,
+// and whichever is opened first must not starve the other.
+let _museumInfoCache = null;
+
+// ═══════════════════════════════════════════════════════════
+// LEGAL PAGES
+// ═══════════════════════════════════════════════════════════
+// The privacy policy and terms are reachable from Settings and from the
+// consent lines on the sign-up and confirm screens — which means the back
+// arrow cannot simply always return to Settings. Remember where we came
+// from instead.
+let _legalReturn = 's-settings';
+
+function openLegal(screenId) {
+  const current = document.querySelector('.screen.active');
+  // Opening one legal page from the other keeps the original return point,
+  // so "Privacy Policy" linked inside the terms does not trap the visitor.
+  if (current && current.id !== 's-privacy' && current.id !== 's-terms') {
+    _legalReturn = current.id;
+  }
+  showScreen(screenId);
+  // Fills the contact block with the museum's real phone and email.
+  try { loadMuseumInfo(); } catch (e) {}
+}
+
+function closeLegal() {
+  showScreen(_legalReturn || 's-settings');
+}
 
 function loadMuseumInfo() {
-  if (_museumInfoLoaded) return;
+  // Already have it: just paint whatever screen is open now.
+  if (_museumInfoLoaded) { applyMuseumInfo(_museumInfoCache); return; }
   // The About screen's story/hours/contact/halls. This used to point at a
   // /controller/ path that never existed, so it 404'd silently and the screen
   // showed its built-in text forever.
   apiFetch(`${API_BASE}/museum`)
     .then(r => r.json())
     .then(data => {
+      _museumInfoCache  = data;
+      _museumInfoLoaded = true;
+      applyMuseumInfo(data);
+    })
+    .catch(() => {}); // silently fail - fallback content stays
+}
+
+/** Paint the museum's details onto whichever screens are in the DOM. */
+function applyMuseumInfo(data) {
+  if (!data) return;
+  {
       const info  = data.info  || {};
       const halls = data.halls || [];
 
@@ -4070,6 +4212,13 @@ function loadMuseumInfo() {
       set('about-phone',     info.phone);
       set('about-email',     info.email);
 
+      // The same contact details on the privacy policy and terms pages, so
+      // there is only one place to change the museum's phone or email.
+      set('legal-phone-1',   info.phone);
+      set('legal-phone-2',   info.phone);
+      set('legal-email-1',   info.email);
+      set('legal-email-2',   info.email);
+
       // Halls
       const hallsEl = document.getElementById('about-halls');
       if (hallsEl && halls.length) {
@@ -4085,9 +4234,7 @@ function loadMuseumInfo() {
           </div>`).join('');
       }
 
-      _museumInfoLoaded = true;
-    })
-    .catch(() => {}); // silently fail — fallback content stays
+  }
 }
 
 // ═══════════════════════════════════════════════════════════

@@ -30,7 +30,7 @@
 
 @section('content')
 <div class="ph">
-  <div class="ph-left"><h2>Museum Map</h2><p>Floor plan and exhibit locations</p></div>
+  <div class="ph-left"><h2>Museum Map</h2></div>
   <div class="ph-right">
     <a href="{{ route('museum.index') }}" class="btn btn-outline btn-sm">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>

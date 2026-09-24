@@ -5,7 +5,6 @@
 <div class="ph">
   <div class="ph-left">
     <h2>Guided Tours</h2>
-    <p>Most visitors roam on their own — assign a guide when one is asked for, for a foreign visitor, or for a school</p>
   </div>
   <div class="ph-right" style="display:flex;gap:8px;align-items:center">
     <a href="{{ route('desk.register') }}" class="btn btn-outline btn-sm">

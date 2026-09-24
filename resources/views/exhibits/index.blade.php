@@ -95,7 +95,6 @@
 <div class="ph">
   <div class="ph-left">
     <h2>Exhibit</h2>
-    <p>Manage museum exhibits and QR codes</p>
   </div>
   <div class="ph-right">
     <button class="btn btn-outline btn-sm" onclick="window.location='{{ route('exhibits.qr.panel') }}'">

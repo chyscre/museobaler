@@ -1,5 +1,7 @@
 <?php
 
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordController;
@@ -37,6 +39,28 @@ use App\Http\Controllers\SurveyQuestionController;
 $museum  = 'role:Administrator';
 $tourism = 'role:TourismHead';
 $shared  = 'role:TourismHead,Administrator';
+
+// ── The bare domain ───────────────────────────────────────────
+//
+// museodebaler.com on its own is the museum's public face. Most visitors
+// arrive by pointing a camera at a display case and never type anything,
+// but the ones who follow a poster, or hear about the app and guess the
+// address, are visitors too - and sending them to a staff login tells them
+// the museum's app is not for them.
+//
+// Staff who land here are passed straight on to wherever signing in would
+// have put them, which is not the same screen for both roles: the Tourism
+// office has no access to the dashboard. LoginController::homeFor is the
+// one place that decision is made.
+// The trailing slash is deliberate and the RedirectResponse is built by hand
+// to keep it: redirect('/visitor/') hands the path to the URL generator,
+// which trims it, and the phone then pays a second round trip to Apache's
+// DirectorySlash before the app loads.
+Route::get('/', function () {
+    return Auth::check()
+        ? new RedirectResponse(LoginController::homeFor(Auth::user()))
+        : new RedirectResponse('/visitor/');
+})->name('home');
 
 // ── Auth ──────────────────────────────────────────────────────
 Route::get('/login', [LoginController::class, 'showLogin'])->name('login');
@@ -98,12 +122,15 @@ Route::middleware(['auth', 'throttle:panel', 'password.rotate', 'desktop'])->gro
     // the entrance desk, does not write exhibit labels, and does not clock in.
     Route::middleware([$museum])->group(function () {
 
-        Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+        Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('/dashboard/chart/visitors',   [DashboardController::class, 'chartVisitors'])->name('dashboard.chart.visitors');
         Route::get('/dashboard/chart/categories', [DashboardController::class, 'chartCategories'])->name('dashboard.chart.categories');
 
         // Exhibits
-        Route::resource('exhibits', ExhibitController::class);
+        // No destroy: an exhibit is archived, never deleted - its scans and
+        // QR codes outlive it. The route existed anyway and pointed at a
+        // method that was never written, so any DELETE was a 500.
+        Route::resource('exhibits', ExhibitController::class)->except(['destroy']);
         Route::get('/exhibits/{exhibit}/modal',     [ExhibitController::class, 'modalShow'])->name('exhibits.modal.show');
         Route::post('/exhibits/{exhibit}/archive',  [ExhibitController::class, 'archive'])->name('exhibits.archive');
         Route::post('/exhibits/{exhibit}/restore',  [ExhibitController::class, 'restore'])->name('exhibits.restore');

@@ -53,7 +53,7 @@ class EmptyInstallTest extends TestCase
         $staff = Staff::factory()->administrator()->create();
 
         foreach ([
-            '/', '/desk', '/desk/poster', '/exhibits', '/tours', '/records',
+            '/dashboard', '/desk', '/desk/poster', '/exhibits', '/tours', '/records',
             '/my/attendance', '/staff-attendance', '/attendance', '/feedback',
             '/logs', '/museum', '/map', '/qr-codes',
             '/reports/logbook', '/reports/visitors', '/reports/feedback',
@@ -104,7 +104,7 @@ class EmptyInstallTest extends TestCase
         $this->withExhibitsButNoTraffic();
         $staff = Staff::factory()->administrator()->create();
 
-        $page = $this->actingAs($staff)->get('/');
+        $page = $this->actingAs($staff)->get('/dashboard');
 
         $page->assertOk();
         $page->assertDontSee('Siege of Baler');
@@ -118,7 +118,7 @@ class EmptyInstallTest extends TestCase
         $this->withExhibitsButNoTraffic();
         $staff = Staff::factory()->administrator()->create();
 
-        $this->actingAs($staff)->get('/')
+        $this->actingAs($staff)->get('/dashboard')
             ->assertOk()
             ->assertDontSee('Low Engagement');
     }
@@ -130,7 +130,7 @@ class EmptyInstallTest extends TestCase
         $this->withExhibitsButNoTraffic();
         $staff = Staff::factory()->administrator()->create();
 
-        $page = $this->actingAs($staff)->get('/');
+        $page = $this->actingAs($staff)->get('/dashboard');
 
         $page->assertOk();
         $page->assertSee('—', false);

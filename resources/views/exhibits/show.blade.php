@@ -5,7 +5,6 @@
 <div class="ph">
   <div class="ph-left">
     <h2>{{ $exhibit->name }}</h2>
-    <p>Exhibit Details</p>
   </div>
   <div class="ph-right">
     <a href="{{ route('exhibits.index') }}" class="btn btn-outline btn-sm">← Back</a>

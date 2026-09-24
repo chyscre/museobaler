@@ -5,7 +5,6 @@
 <div class="ph">
   <div class="ph-left">
     <h2>Attendance Corrections</h2>
-    <p>Filed by the museum, approved by the Tourism office — two names on every manual record</p>
   </div>
   <div class="ph-right">
     <form method="GET">

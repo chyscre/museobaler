@@ -5,7 +5,6 @@
 <div class="ph">
   <div class="ph-left">
     <h2>Feedback</h2>
-    <p>Visitor feedback and survey responses</p>
   </div>
   <div class="ph-right">
     {{-- The question bank is a Tourism-only screen, reached from here rather
@@ -21,7 +20,7 @@
       'id'      => 'feedbackReportMenu',
       'mode'    => 'range',
       'reports' => [
-        ['label' => 'Feedback & CSM report', 'url' => route('reports.feedback'), 'csv' => route('reports.feedback.csv')],
+        ['label' => 'Feedback & CSM report', 'note' => 'Ratings and what visitors wrote', 'url' => route('reports.feedback'), 'csv' => route('reports.feedback.csv')],
       ],
     ])
   </div>

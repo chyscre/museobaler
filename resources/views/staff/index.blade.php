@@ -5,7 +5,6 @@
 <div class="ph">
   <div class="ph-left">
     <h2>Staff</h2>
-    <p>Manage museum staff accounts</p>
   </div>
   <div class="ph-right">
     <button class="btn btn-outline btn-sm" onclick="window.print()">

@@ -23,10 +23,10 @@
 <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
-<link rel="stylesheet" href="./css/app.css?v=16">
+<link rel="stylesheet" href="./css/app.css?v=20">
 <!-- Device fit: real viewport height, safe areas, soft keyboard. Runs before
      anything else measures the layout. -->
-<script src="./js/viewport.js?v=15"></script>
+<script src="./js/viewport.js?v=20"></script>
 <!-- QR scanner, TensorFlow.js and the Teachable Machine runtime are served
      from this server (../js/vendor/) rather than a CDN. On the museum network
      the CDNs were unreachable, which silently dropped recognition to the
@@ -43,17 +43,15 @@
      SCREEN 1 · REGISTER
 ══════════════════════════════════════════ -->
 <div id="s-register" class="screen active">
-  <div style="height:100%;background:linear-gradient(160deg,var(--gd) 0%,var(--gm) 45%,var(--gl) 100%);display:flex;flex-direction:column;">
+  <div class="landing" style="height:100%;display:flex;flex-direction:column;">
     <div class="sb" style="color:white;">
       <span class="sb-time" style="color:white;" id="time-register">9:41</span>
       <div class="sb-icons" style="color:white;"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div>
     </div>
-    <div style="display:flex;flex-direction:column;align-items:center;padding:20px 24px 16px;flex-shrink:0;">
-      <div style="width:60px;height:60px;border-radius:18px;background:rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;margin-bottom:12px;">
-        <span class="material-icons-round" style="font-size:34px;color:white;">account_balance</span>
-      </div>
-      <div style="font-family:'Young Serif',serif;font-size:calc(24px * var(--fs));color:white;text-align:center;line-height:1.2;">Museo de Baler</div>
-      <div style="font-size:calc(12px * var(--fs));color:rgba(255,255,255,0.75);margin-top:5px;text-align:center;">Your guided museum companion</div>
+    <div class="landing-brand">
+      <img class="landing-seal" src="./img/seal.png" alt="Seal of the Municipality of Baler, Aurora">
+      <img class="landing-wordmark" src="./img/wordmark.png" alt="Museo de Baler">
+      <div class="landing-tagline">Your guided museum companion</div>
     </div>
     <div class="sbody sheet-bottom" style="background:var(--w);border-radius:32px 32px 0 0;padding:24px 24px 28px;">
       <!-- Sign in / Create account switch -->
@@ -126,7 +124,7 @@
         <span class="material-icons-round" style="font-size:16px;color:var(--tl);flex-shrink:0;margin-top:1px;">info_outline</span>
         <p id="auth-hint" style="font-size:calc(11.5px * var(--fs));color:var(--tm);line-height:1.5;">First time here? Tap <strong>Create Account</strong> to register for your visit.</p>
       </div>
-      <div style="font-size:calc(11px * var(--fs));color:var(--tl);text-align:center;line-height:1.6;margin-top:8px;">By continuing, you agree to our <span style="color:var(--accent-text);font-weight:600;">Terms of Service</span> and <span style="color:var(--accent-text);font-weight:600;">Privacy Policy</span></div>
+      <div style="font-size:calc(11px * var(--fs));color:var(--tl);text-align:center;line-height:1.6;margin-top:8px;">By continuing, you agree to our <span style="color:var(--accent-text);font-weight:600;cursor:pointer;" onclick="openLegal('s-terms')">Terms of Service</span> and <span style="color:var(--accent-text);font-weight:600;cursor:pointer;" onclick="openLegal('s-privacy')">Privacy Policy</span></div>
     </div>
   </div>
 </div>
@@ -167,7 +165,7 @@
         <div id="tc-check" onclick="toggleTC()" style="width:20px;height:20px;border-radius:5px;background:var(--gm);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;cursor:pointer;">
           <span class="material-icons-round" style="font-size:14px;color:white;">check</span>
         </div>
-        <div style="font-size:calc(12px * var(--fs));color:var(--tm);line-height:1.6;">I agree to the <span style="color:var(--accent-text);font-weight:600;">Terms &amp; Conditions</span> and <span style="color:var(--accent-text);font-weight:600;">Privacy Policy</span> of Museo de Baler</div>
+        <div style="font-size:calc(12px * var(--fs));color:var(--tm);line-height:1.6;">I agree to the <span style="color:var(--accent-text);font-weight:600;cursor:pointer;" onclick="openLegal('s-terms')">Terms &amp; Conditions</span> and <span style="color:var(--accent-text);font-weight:600;cursor:pointer;" onclick="openLegal('s-privacy')">Privacy Policy</span> of Museo de Baler</div>
       </div>
       <button class="btn btn-green btn-full" style="margin-bottom:10px;font-size:calc(15px * var(--fs));padding:15px;" onclick="confirmSignIn()">Continue</button>
       <button class="btn btn-outline btn-full" style="font-size:calc(15px * var(--fs));padding:15px;background:var(--ew);border:none;color:var(--tm);" onclick="showScreen('s-register')">Cancel</button>
@@ -798,7 +796,7 @@
 <div id="s-exhibit" class="screen">
   <div style="height:100%;background:var(--ec);display:flex;flex-direction:column;">
     <div id="ex-hero" style="height:220px;background:linear-gradient(160deg,var(--bd),var(--bm));position:relative;flex-shrink:0;">
-      <img id="ex-hero-img" src="" alt="" onclick="openHeroImage()" style="display:none;width:100%;height:auto;max-height:62vh;object-fit:contain;background:#000;cursor:zoom-in;">
+      <img id="ex-hero-img" src="" alt="" decoding="async" onclick="openHeroImage()" style="display:none;width:100%;height:auto;max-height:62vh;object-fit:contain;background:#000;cursor:zoom-in;">
       <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
         <span id="ex-hero-icon" class="material-icons-round" style="font-size:72px;color:rgba(255,255,255,0.25);">history_edu</span>
       </div>
@@ -873,6 +871,7 @@
             </div>
             <div style="display:flex;justify-content:space-between;margin-top:4px;">
               <span id="audio-current" class="audio-time">0:00</span>
+              <span id="audio-source" class="audio-time" style="font-weight:700">Overview</span>
               <span id="audio-total" class="audio-time">0:00</span>
             </div>
           </div>
@@ -1458,12 +1457,12 @@
           <span style="flex:1;font-size:calc(14px * var(--fs));color:var(--td);">Send Feedback</span>
           <span class="material-icons-round" style="font-size:18px;color:var(--tl);">chevron_right</span>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;padding:14px;border-bottom:1px solid var(--es);cursor:pointer;">
+        <div onclick="openLegal('s-privacy')" style="display:flex;align-items:center;gap:10px;padding:14px;border-bottom:1px solid var(--es);cursor:pointer;">
           <span class="material-icons-round" style="font-size:20px;color:var(--accent-text);">privacy_tip</span>
           <span style="flex:1;font-size:calc(14px * var(--fs));color:var(--td);">Privacy Policy</span>
           <span class="material-icons-round" style="font-size:18px;color:var(--tl);">chevron_right</span>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;padding:14px;cursor:pointer;">
+        <div onclick="openLegal('s-terms')" style="display:flex;align-items:center;gap:10px;padding:14px;cursor:pointer;">
           <span class="material-icons-round" style="font-size:20px;color:var(--accent-text);">gavel</span>
           <span style="flex:1;font-size:calc(14px * var(--fs));color:var(--td);">Terms of Service</span>
           <span class="material-icons-round" style="font-size:18px;color:var(--tl);">chevron_right</span>
@@ -1549,6 +1548,231 @@
           <div style="margin-top:4px;">© 2026 Municipality of Baler, Aurora</div>
         </div>
       </div>
+    </div>
+    <nav class="bnav">
+      <div class="ni" onclick="showScreen('s-home')"><span class="material-icons-round">home</span><span class="nl">Home</span></div>
+      <div class="ni" onclick="showScreen('s-home-exhibits')"><span class="material-icons-round">format_list_bulleted</span><span class="nl">Exhibits</span></div>
+      <div class="nscan" onclick="onScanEnter()"><span class="material-icons-round">qr_code_scanner</span></div>
+      <div class="ni" onclick="showScreen('s-map')"><span class="material-icons-round">map</span><span class="nl">Map</span></div>
+      <div class="ni" onclick="showScreen('s-profile')"><span class="material-icons-round">person</span><span class="nl">Profile</span></div>
+    </nav>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     PRIVACY POLICY
+     Reached from Settings and from the consent lines on the sign-up and
+     confirm screens. openLegal() remembers where the visitor came from so
+     the back arrow returns there rather than always to Settings.
+══════════════════════════════════════════ -->
+<div id="s-privacy" class="screen">
+  <div style="height:100%;background:var(--ec);display:flex;flex-direction:column;">
+    <div style="background:linear-gradient(160deg,var(--mode-primary),var(--mode-secondary));flex-shrink:0;">
+      <div class="sb"><span class="sb-time" style="color:white;">9:41</span><div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div></div>
+      <div style="display:flex;align-items:center;gap:12px;padding:6px 20px 16px;">
+        <button class="icon-btn" onclick="closeLegal()" aria-label="Back"><span class="material-icons-round">arrow_back</span></button>
+        <div style="font-family:'Young Serif',serif;font-size:calc(18px * var(--fs));color:white;">Privacy Policy</div>
+      </div>
+    </div>
+    <div class="sbody" style="flex:1;padding:16px 16px 90px;">
+
+      <div class="legal-meta">
+        <span class="material-icons-round">event</span>
+        <span>Last updated 23 September 2026</span>
+      </div>
+
+      <div class="legal-card">
+        <p>Museo de Baler is operated by the Municipality of Baler, Aurora. When you use this app we collect some information about you, and under the <strong>Data Privacy Act of 2012 (Republic Act No. 10173)</strong> we are the Personal Information Controller responsible for it.</p>
+        <p>This page explains what we collect, why, who can see it, and what you can ask us to do about it. We have tried to write it plainly rather than legally.</p>
+      </div>
+
+      <div class="legal-card">
+        <h3>What we collect</h3>
+        <p><strong>When you register</strong> — your first, middle and last name, age, sex, and email address. Your password is stored only as a scrambled (hashed) value; nobody at the museum can read it, including us.</p>
+        <p><strong>Where you are visiting from</strong> — your barangay, city or municipality, province and country, and whether you are a Baler local, a domestic tourist, or a foreign visitor. This is what the free-admission rule for residents depends on.</p>
+        <p><strong>Your visit</strong> — whether you came alone, with a family, with a group or with a school; the admission fee due and whether it was paid; and, for residents, that a staff member sighted a valid ID. We record that the ID was checked, not a copy of it.</p>
+        <p><strong>What you do in the app</strong> — which exhibits you scan, what you bookmark, your chosen explore mode and language.</p>
+        <p><strong>Your location, only at check-in</strong> — when you check in on arrival, the app reads your coordinates and their accuracy to confirm you are actually at the museum. We do not track your location at any other time, and we do not follow you after you leave.</p>
+        <p><strong>Feedback you choose to send</strong> — your rating and comments, including the client satisfaction survey.</p>
+      </div>
+
+      <div class="legal-card">
+        <h3>Why we collect it</h3>
+        <ul>
+          <li><strong>To let you in.</strong> Admission is free for Aurora residents who show an ID and paid by everyone else, so we need to know which you are.</li>
+          <li><strong>To keep the museum's official visitor records</strong> and produce the visitor statistics the Municipality and the Tourism Office are required to report.</li>
+          <li><strong>To run the guided tour</strong> — your scans and bookmarks are what let the app pick up where you left off.</li>
+          <li><strong>To improve the museum</strong> — which exhibits draw attention, and what visitors tell us in feedback.</li>
+        </ul>
+      </div>
+
+      <div class="legal-card">
+        <h3>Who can see it</h3>
+        <p>Authorised Museo de Baler staff and the Municipal Tourism Office, for the purposes above. Nobody else.</p>
+        <p><strong>We do not sell your information, we do not use it for advertising, and we do not share it with any outside company for marketing.</strong> We will only disclose it where the law requires us to.</p>
+      </div>
+
+      <div class="legal-card">
+        <h3>How long we keep it</h3>
+        <p>Visitor records form part of the museum's official records and are kept for as long as the Municipality's records retention rules require. You may ask us to delete your account at any time — see your rights below. Deleting your account does not remove anonymous visit counts already included in past statistical reports, because those no longer identify you.</p>
+      </div>
+
+      <div class="legal-card">
+        <h3>How we protect it</h3>
+        <p>Passwords and sign-in tokens are stored hashed, never in readable form. Access to visitor records requires a staff account, and what staff do with those records is written to an audit log. Sign-in sessions expire automatically.</p>
+        <p>No system is perfectly secure, but if a breach ever affects your personal information we will notify you and the National Privacy Commission as the law requires.</p>
+      </div>
+
+      <div class="legal-card">
+        <h3>Your rights</h3>
+        <p>Under the Data Privacy Act you have the right to:</p>
+        <ul>
+          <li>be <strong>informed</strong> that we hold your information, and how we use it;</li>
+          <li><strong>access</strong> a copy of what we hold about you;</li>
+          <li>have information that is wrong or out of date <strong>corrected</strong>;</li>
+          <li><strong>object</strong> to how we process it, or withdraw consent you gave;</li>
+          <li>have it <strong>erased or blocked</strong> where the law allows;</li>
+          <li>receive your data in a portable form (<strong>data portability</strong>);</li>
+          <li>claim <strong>damages</strong> for a violation of your rights; and</li>
+          <li><strong>complain</strong> to the National Privacy Commission at privacy.gov.ph.</li>
+        </ul>
+        <p>To exercise any of these, speak to staff at the entrance desk or contact us using the details below. We will respond within the period set by law.</p>
+      </div>
+
+      <div class="legal-card">
+        <h3>Young visitors</h3>
+        <p>Children usually visit with a school or with their family, and in those cases the school or the accompanying parent or guardian registers the party at the desk. If you are under 18 and registering on your own, please ask a parent, guardian or teacher first.</p>
+      </div>
+
+      <div class="legal-card">
+        <h3>Changes to this policy</h3>
+        <p>If we change how we handle your information we will update this page and change the date at the top. Continuing to use the app after a change means you accept the updated policy.</p>
+      </div>
+
+      <div class="legal-card legal-contact">
+        <h3>Contact us</h3>
+        <p>Questions about your information, or to exercise any right above:</p>
+        <div class="legal-contact-row"><span class="material-icons-round">account_balance</span><span>Museo de Baler, Baler, Aurora</span></div>
+        <div class="legal-contact-row"><span class="material-icons-round">call</span><span id="legal-phone-1">(042) 284-5678</span></div>
+        <div class="legal-contact-row"><span class="material-icons-round">mail</span><span id="legal-email-1">museobaler@aurora.gov.ph</span></div>
+      </div>
+
+      <div class="legal-foot">© 2026 Municipality of Baler, Aurora</div>
+    </div>
+    <nav class="bnav">
+      <div class="ni" onclick="showScreen('s-home')"><span class="material-icons-round">home</span><span class="nl">Home</span></div>
+      <div class="ni" onclick="showScreen('s-home-exhibits')"><span class="material-icons-round">format_list_bulleted</span><span class="nl">Exhibits</span></div>
+      <div class="nscan" onclick="onScanEnter()"><span class="material-icons-round">qr_code_scanner</span></div>
+      <div class="ni" onclick="showScreen('s-map')"><span class="material-icons-round">map</span><span class="nl">Map</span></div>
+      <div class="ni" onclick="showScreen('s-profile')"><span class="material-icons-round">person</span><span class="nl">Profile</span></div>
+    </nav>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     TERMS OF SERVICE
+══════════════════════════════════════════ -->
+<div id="s-terms" class="screen">
+  <div style="height:100%;background:var(--ec);display:flex;flex-direction:column;">
+    <div style="background:linear-gradient(160deg,var(--mode-primary),var(--mode-secondary));flex-shrink:0;">
+      <div class="sb"><span class="sb-time" style="color:white;">9:41</span><div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div></div>
+      <div style="display:flex;align-items:center;gap:12px;padding:6px 20px 16px;">
+        <button class="icon-btn" onclick="closeLegal()" aria-label="Back"><span class="material-icons-round">arrow_back</span></button>
+        <div style="font-family:'Young Serif',serif;font-size:calc(18px * var(--fs));color:white;">Terms of Service</div>
+      </div>
+    </div>
+    <div class="sbody" style="flex:1;padding:16px 16px 90px;">
+
+      <div class="legal-meta">
+        <span class="material-icons-round">event</span>
+        <span>Last updated 23 September 2026</span>
+      </div>
+
+      <div class="legal-card">
+        <p>These terms cover your use of the Museo de Baler visitor app, operated by the Municipality of Baler, Aurora. By creating an account and using the app, you agree to them. If you do not agree, you are still very welcome at the museum — just visit without the app.</p>
+      </div>
+
+      <div class="legal-card">
+        <h3>What the app is</h3>
+        <p>A companion guide for your visit. It lets you scan an exhibit's QR code or point your camera at it to pull up its story, listen to narration, follow a suggested route through the halls, bookmark what you liked, and find your way on the museum map.</p>
+        <p>It is a guide, not a ticket. Your admission is settled at the entrance desk.</p>
+      </div>
+
+      <div class="legal-card">
+        <h3>Your account</h3>
+        <ul>
+          <li>Please register with your <strong>own, accurate details</strong>. The museum's visitor records and the Municipality's statistics are built from them.</li>
+          <li>One account per person. Use the same email each time you visit and your history carries over.</li>
+          <li><strong>Keep your password to yourself.</strong> Anything done with your account is treated as done by you. Tell staff at once if you think someone else has your password.</li>
+          <li>You may ask us to delete your account at any time.</li>
+        </ul>
+      </div>
+
+      <div class="legal-card">
+        <h3>Admission and fees</h3>
+        <ul>
+          <li><strong>Residents of Baler and Aurora enter free</strong>, on presenting a valid proof of residency to staff at the entrance desk.</li>
+          <li><strong>Domestic tourists and foreign visitors pay the posted admission fee</strong>, collected at the entrance counter.</li>
+          <li>The app unlocks the exhibit content <strong>only after a staff member confirms</strong> your payment or sights your ID. Until then you will see the waiting screen.</li>
+          <li><strong>Admission is charged per visit.</strong> Returning on a later day means the fee is due again.</li>
+          <li><strong>Group codes</strong> given to a party at the desk work only on the day they were issued, and only for as many people as the desk counted and charged for. Please do not pass them to anyone outside your party.</li>
+          <li>Refunds and corrections are handled at the desk, not in the app.</li>
+        </ul>
+      </div>
+
+      <div class="legal-card">
+        <h3>While you are in the museum</h3>
+        <ul>
+          <li>Please follow museum rules and the instructions of staff and guides.</li>
+          <li>Do not touch the exhibits or displays unless a sign invites you to.</li>
+          <li><strong>Mind your surroundings.</strong> Please look up from your phone as you walk — you are responsible for your own safety and for the people and objects around you.</li>
+          <li>Keep narration at a considerate volume, or use earphones.</li>
+        </ul>
+      </div>
+
+      <div class="legal-card">
+        <h3>Fair use of the app</h3>
+        <p>Please do not:</p>
+        <ul>
+          <li>try to get around the admission check, or help anyone else to;</li>
+          <li>sell, publish or pass on a group code;</li>
+          <li>use another visitor's account, or register under someone else's name;</li>
+          <li>submit abusive, false or offensive feedback;</li>
+          <li>probe, overload, scrape or interfere with the app or the museum's systems.</li>
+        </ul>
+        <p>Accounts used this way may be suspended, and the museum may refuse entry.</p>
+      </div>
+
+      <div class="legal-card">
+        <h3>Exhibit content</h3>
+        <p>The exhibit descriptions, photographs, audio narration and maps in this app belong to Museo de Baler and the Municipality of Baler, or are used with permission. They are here for your personal, educational use during your visit.</p>
+        <p>You are welcome to quote or reference them for study, research or schoolwork with credit to the museum. Reproducing them commercially, or republishing them as your own, needs the museum's written permission first.</p>
+      </div>
+
+      <div class="legal-card">
+        <h3>Availability and accuracy</h3>
+        <p>The app is provided as-is and free of charge. It may be unavailable during maintenance, and features that need a camera, location or an internet connection depend on your own device and signal.</p>
+        <p>We work to keep exhibit information accurate and may correct or update it at any time. If you spot something wrong, please tell us — the Send Feedback option in Settings reaches the curators.</p>
+      </div>
+
+      <div class="legal-card">
+        <h3>Changes to these terms</h3>
+        <p>We may update these terms as the museum's services change. The date at the top shows when they last changed, and continuing to use the app afterwards means you accept the update.</p>
+      </div>
+
+      <div class="legal-card">
+        <h3>Governing law</h3>
+        <p>These terms are governed by the laws of the Republic of the Philippines. Your privacy is covered separately by our <span class="legal-link" onclick="openLegal('s-privacy')">Privacy Policy</span>.</p>
+      </div>
+
+      <div class="legal-card legal-contact">
+        <h3>Contact us</h3>
+        <div class="legal-contact-row"><span class="material-icons-round">account_balance</span><span>Museo de Baler, Baler, Aurora</span></div>
+        <div class="legal-contact-row"><span class="material-icons-round">call</span><span id="legal-phone-2">(042) 284-5678</span></div>
+        <div class="legal-contact-row"><span class="material-icons-round">mail</span><span id="legal-email-2">museobaler@aurora.gov.ph</span></div>
+      </div>
+
+      <div class="legal-foot">© 2026 Municipality of Baler, Aurora</div>
     </div>
     <nav class="bnav">
       <div class="ni" onclick="showScreen('s-home')"><span class="material-icons-round">home</span><span class="nl">Home</span></div>
@@ -1696,6 +1920,6 @@
      are all in css/app.css. Inlined after the stylesheet they also outranked
      its dark-mode overrides, which is why the pills stayed light in dark mode. -->
 
-<script src="./js/app.js?v=16"></script>
+<script src="./js/app.js?v=20"></script>
 </body>
 </html>

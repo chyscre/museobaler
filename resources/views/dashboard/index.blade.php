@@ -5,7 +5,6 @@
 <div class="ph">
   <div class="ph-left">
     <h2>Dashboard</h2>
-    <p>Overview of museum analytics and statistics</p>
   </div>
   <div class="ph-right">
     <button class="btn btn-gold btn-sm" onclick="exportDashboardCSV()">

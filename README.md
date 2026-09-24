@@ -107,6 +107,7 @@ CI guarantees before any of it.
 | The database: 24 tables, their keys, and the joins that are missing on purpose | [docs/ERD.md](docs/ERD.md) |
 | Whoever holds the keys — accounts, credentials, the backup key, who to call | [docs/OWNERSHIP.md](docs/OWNERSHIP.md) |
 | The person holding the backup drive on a bad morning | [docs/RESTORE.md](docs/RESTORE.md) |
+| Buying the hosting, setting it up from scratch, handing the bill over | [docs/HOSTING.md](docs/HOSTING.md) |
 | Putting it on a server, updating it, rolling back | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) |
 | What is protected how; Data Privacy Act notes | [docs/SECURITY.md](docs/SECURITY.md) |
 | What it deliberately does not do, and what will trip a developer | [docs/LIMITATIONS.md](docs/LIMITATIONS.md) |

@@ -5,7 +5,6 @@
 <div class="ph">
   <div class="ph-left">
     <h2>Edit Staff</h2>
-    <p>Update staff account details</p>
   </div>
   <div class="ph-right">
     <a href="{{ route('staff.index') }}" class="btn btn-outline btn-sm">← Back</a>

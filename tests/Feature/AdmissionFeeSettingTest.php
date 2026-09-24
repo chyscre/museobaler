@@ -77,12 +77,14 @@ class AdmissionFeeSettingTest extends TestCase
         ]);
     }
 
-    public function test_the_desk_and_the_poster_print_the_current_fee(): void
+    public function test_the_desk_and_museum_info_show_the_current_fee(): void
     {
         $this->setFee(80);
 
         $this->staff()->get('/desk')->assertOk()->assertSee('PHP 80.00')->assertDontSee('PHP 50');
-        $this->staff()->get('/desk/poster')->assertOk()->assertSee('Visitors ₱80.00');
+        // Not the poster: it says only how to sign in. The fee is settled at
+        // the desk, by a person, so a printed figure there would be one more
+        // thing to reprint every time the fee changes.
         $this->staff()->get('/museum')->assertOk()
             ->assertSee('value="80.00"', false)
             ->assertSee('Visitors ₱80.00');

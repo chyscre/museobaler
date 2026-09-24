@@ -5,14 +5,13 @@
 <div class="ph">
   <div class="ph-left">
     <h2>Front Desk</h2>
-    <p>Register arrivals and collect admission — this replaces the logbook</p>
   </div>
   <div class="ph-right" style="display:flex;gap:8px;align-items:center">
     @include('partials.report-menu', [
       'id'      => 'deskReportMenu',
       'mode'    => 'date',
       'reports' => [
-        ['label' => "Today's logbook", 'url' => route('reports.logbook'), 'csv' => route('reports.logbook.csv')],
+        ['label' => "Today's logbook", 'note' => 'Every arrival on the chosen day', 'url' => route('reports.logbook'), 'csv' => route('reports.logbook.csv')],
       ],
     ])
     <a href="{{ route('desk.poster') }}" target="_blank" class="btn btn-outline btn-sm">Entrance poster</a>

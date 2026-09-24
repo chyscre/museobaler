@@ -46,7 +46,6 @@
 <div class="ph">
   <div class="ph-left">
     <h2>Survey Questions</h2>
-    <p>What the visitor app asks after a visit — the ARTA Client Satisfaction Measurement plus the museum's own questions</p>
   </div>
   <div class="ph-right" style="display:flex;gap:8px">
     <a href="{{ route('feedback.index') }}" class="btn btn-outline btn-sm">← Feedback</a>

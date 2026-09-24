@@ -75,7 +75,7 @@ class DesktopOnlyTest extends TestCase
     {
         $staff = Staff::factory()->administrator()->create();
 
-        foreach (['/', '/desk', '/exhibits', '/records', '/reports/visitors'] as $path) {
+        foreach (['/dashboard', '/desk', '/exhibits', '/records', '/reports/visitors'] as $path) {
             $this->on(self::PHONE)->actingAs($staff)->get($path)
                 ->assertRedirect(route('my.attendance'));
         }
@@ -113,7 +113,7 @@ class DesktopOnlyTest extends TestCase
     {
         $staff = Staff::factory()->administrator()->create();
 
-        $this->on(self::LAPTOP)->actingAs($staff)->get('/')->assertOk();
+        $this->on(self::LAPTOP)->actingAs($staff)->get('/dashboard')->assertOk();
         $this->on(self::LAPTOP)->actingAs($staff)->get('/exhibits')->assertOk();
     }
 
@@ -124,7 +124,7 @@ class DesktopOnlyTest extends TestCase
         // actually decides who may reach what.
         $staff = Staff::factory()->administrator()->create();
 
-        $this->actingAs($staff)->get('/')->assertOk();
+        $this->actingAs($staff)->get('/dashboard')->assertOk();
     }
 
     public function test_it_can_be_switched_off_for_debugging_on_a_phone(): void

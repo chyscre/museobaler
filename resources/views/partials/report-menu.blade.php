@@ -23,45 +23,52 @@
     Generate Report
   </button>
 
-  <div id="{{ $id }}" style="display:none;position:absolute;right:0;top:calc(100% + 6px);width:290px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.14);z-index:900;padding:14px">
+  {{-- The panel: the period on top, then one row per report. Each row names
+       the report and what it is for, with Open and CSV as the two things you
+       can do to it - the old panel stacked bare green buttons of differing
+       widths with the period floating above them. --}}
+  <div id="{{ $id }}" class="rm-panel">
 
-    @if($mode === 'date')
-      <label style="display:block;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Date</label>
-      <input type="date" class="rm-date" value="{{ request('date', today()->toDateString()) }}"
-             style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:var(--surface);margin-bottom:12px">
-    @else
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-        <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">From</label>
-          <input type="date" class="rm-from" value="{{ today()->startOfMonth()->toDateString() }}"
-                 style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:var(--surface)">
+    <div class="rm-period">
+      @if($mode === 'date')
+        <label class="rm-lbl">Date</label>
+        <input type="date" class="fi rm-date" value="{{ request('date', today()->toDateString()) }}">
+      @else
+        <div class="rm-range">
+          <div>
+            <label class="rm-lbl">From</label>
+            <input type="date" class="fi rm-from" value="{{ today()->startOfMonth()->toDateString() }}">
+          </div>
+          <div>
+            <label class="rm-lbl">To</label>
+            <input type="date" class="fi rm-to" value="{{ today()->toDateString() }}">
+          </div>
         </div>
-        <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">To</label>
-          <input type="date" class="rm-to" value="{{ today()->toDateString() }}"
-                 style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:var(--surface)">
+      @endif
+    </div>
+
+    <div class="rm-list">
+      @foreach($reports as $report)
+        <div class="rm-row">
+          <div class="rm-row-text">
+            <div class="rm-row-name">{{ $report['label'] }}</div>
+            @if(!empty($report['note']))<div class="rm-row-note">{{ $report['note'] }}</div>@endif
+          </div>
+          <div class="rm-row-actions">
+            {{-- A download-only report has no printable page, so its button
+                 fetches the file rather than opening an empty tab. --}}
+            <button type="button" class="btn btn-green btn-xs"
+                    onclick="openReport('{{ $id }}', '{{ $report['url'] }}', {{ !empty($report['download']) ? 'true' : 'false' }})">
+              {{ !empty($report['download']) ? 'Download' : 'Open' }}
+            </button>
+            @if(!empty($report['csv']))
+              <button type="button" class="btn btn-muted btn-xs" title="Download as a spreadsheet"
+                      onclick="openReport('{{ $id }}', '{{ $report['csv'] }}', true)">CSV</button>
+            @endif
+          </div>
         </div>
-      </div>
-    @endif
-
-    @foreach($reports as $report)
-      <div style="display:flex;gap:6px;margin-bottom:7px">
-        {{-- A download-only report has no printable page, so its main button
-             fetches the file rather than opening an empty tab. --}}
-        <button type="button" class="btn btn-green btn-sm" style="flex:1;justify-content:center"
-                onclick="openReport('{{ $id }}', '{{ $report['url'] }}', {{ !empty($report['download']) ? 'true' : 'false' }})">
-          {{ $report['label'] }}
-        </button>
-        @if(!empty($report['csv']))
-          <button type="button" class="btn btn-outline btn-sm" title="Download as CSV"
-                  onclick="openReport('{{ $id }}', '{{ $report['csv'] }}', true)">CSV</button>
-        @endif
-      </div>
-    @endforeach
-
-    <p style="font-size:11px;color:var(--text-3);margin-top:9px;line-height:1.5">
-      Opens a printable page in a new tab. Use your browser's Print to save it as PDF.
-    </p>
+      @endforeach
+    </div>
   </div>
 </div>
 

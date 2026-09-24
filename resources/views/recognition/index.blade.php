@@ -41,7 +41,6 @@
 <div class="ph">
   <div class="ph-left">
     <h2>Exhibit Recognition</h2>
-    <p>Teach the visitor app to recognise exhibits through the camera</p>
   </div>
   <div class="ph-right">
     <a href="{{ route('exhibits.index') }}" class="btn btn-outline btn-sm">

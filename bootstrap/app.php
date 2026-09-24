@@ -122,6 +122,34 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Support\Alerts::exception($e);
         });
 
+        // A 500 answering a fetch() must still be readable by the person at
+        // the screen. Laravel's JSON body for one is {"message":"Server
+        // Error"} - and when PHP dies before Laravel can answer at all, the
+        // body is not JSON, so the form fell back to "Request failed (500)".
+        // Neither tells the curator what to do, so say it here, once, for
+        // every JSON endpoint: their work is still in the form, and the
+        // detail is in the log for whoever maintains this.
+        $exceptions->render(function (\Throwable $e, Request $request) {
+            // Only the genuinely unexpected. Everything Laravel already turns
+            // into a status the caller can act on - a validation failure, a
+            // sign-in, a 403, a missing record - answers for itself.
+            $handled = $e instanceof HttpExceptionInterface
+                || $e instanceof \Illuminate\Validation\ValidationException
+                || $e instanceof \Illuminate\Auth\AuthenticationException
+                || $e instanceof \Illuminate\Auth\Access\AuthorizationException
+                || $e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException;
+
+            if ($handled || !$request->expectsJson()) {
+                return null; // handled below, or a normal HTML error page
+            }
+
+            return response()->json([
+                'error' => 'Something went wrong on the museum server, so that step did not finish. '
+                    . 'Nothing you typed has been lost - try again, and if it keeps happening tell whoever maintains this system.',
+                'ref'   => substr(sha1($e->getFile() . $e->getLine()), 0, 8),
+            ], 500);
+        });
+
         // "419 Page Expired" is a dead end, and almost nobody who meets it
         // has done anything wrong.
         //

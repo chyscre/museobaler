@@ -10,6 +10,7 @@ use App\Models\Log;
 use App\Models\MuseumHall;
 use App\Services\ExhibitQr;
 use App\Support\ExhibitLanguages;
+use App\Support\ExhibitImage as ExhibitImageFile;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -499,6 +500,12 @@ class ExhibitController extends Controller
     {
         $name = Str::slug($label) . '_' . time() . '.' . strtolower($file->getClientOriginalExtension());
         $file->move(public_path(self::IMAGE_DIR), $name);
+
+        // Straight off a phone or a DSLR these are several megabytes each. The
+        // visitor app is given a resized copy instead; build it now so the
+        // first visitor to open the exhibit is not the one who waits.
+        ExhibitImageFile::generate($name);
+
         return $name;
     }
 
