@@ -1,2 +1,48 @@
+# The visitor app at /visitor/ is the museum's front door and is meant to be
+# found. Everything listed below is the staff panel, the sign-in page or the
+# visitor API: none of it is useful in a search result, and indexing it only
+# advertises the way in.
+#
+# Note on /admin/: this application has no such prefix. It is listed against
+# the day someone adds one. The panel's real top-level paths are enumerated
+# underneath, and that list - not /admin/ - is what actually protects it. If
+# a route is added to routes/web.php, add it here too.
+
 User-agent: *
-Disallow:
+
+# Sign-in and the visitor API
+Disallow: /login
+Disallow: /logout
+Disallow: /api/
+Disallow: /admin/
+
+# The staff panel
+Disallow: /attendance
+Disallow: /dashboard
+Disallow: /desk
+Disallow: /exhibits
+Disallow: /feedback
+Disallow: /gallery
+Disallow: /logs
+Disallow: /map
+Disallow: /museum
+Disallow: /my/
+Disallow: /notifications
+Disallow: /qr-codes
+Disallow: /recognition
+Disallow: /records
+Disallow: /reports
+Disallow: /staff
+Disallow: /staff-attendance
+Disallow: /survey
+Disallow: /tours
+Disallow: /translations
+Disallow: /visitors
+
+# Media the admission gate exists to protect
+Disallow: /exhibit-image
+Disallow: /exhibit-audio
+Disallow: /training-image
+
+# The museum itself
+Allow: /visitor/

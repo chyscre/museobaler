@@ -75,7 +75,13 @@ class SecurityHeaders
             // internet; jsDelivr and storage.googleapis.com stay listed as
             // the trainer's fallback when the local copies do not load (see
             // recognition/index.blade.php). unpkg is for Lucide icons.
-            "connect-src 'self' http://localhost http://127.0.0.1 https://unpkg.com https://cdn.jsdelivr.net https://storage.googleapis.com; " .
+            //
+            // http://localhost and http://127.0.0.1 used to be here. They
+            // were a development convenience that shipped, and on a server
+            // they widen the policy for nobody's benefit: a visitor's
+            // browser resolving "localhost" means the visitor's own machine,
+            // never ours.
+            "connect-src 'self' https://unpkg.com https://cdn.jsdelivr.net https://storage.googleapis.com; " .
             "frame-ancestors " . ($framable ? "'self'" : "'none'") . ';'
         );
 

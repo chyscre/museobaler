@@ -1,0 +1,48 @@
+# Security headers for the visitor app.
+#
+# Everything Apache serves out of this directory - index.html, the service
+# worker, the scanner and model bundles - is static, so the request never
+# enters Laravel and App\Http\Middleware\SecurityHeaders never runs. That is
+# why the staff panel carried a Content-Security-Policy and the half of the
+# system that opens a camera carried none.
+#
+# This is a directory-level file rather than an <If> block in ../.htaccess
+# for two reasons: the directory is exactly the scope wanted, and <If> needs
+# AllowOverride All where these directives need only FileInfo.
+#
+# ../.htaccess still supplies X-Frame-Options, X-Content-Type-Options and
+# Referrer-Policy; those merge down and are not repeated here.
+
+<IfModule mod_headers.c>
+
+    # This policy is deliberately narrower than the panel's: the visitor app
+    # loads no CDN scripts at all, only local bundles under /js/vendor/.
+    #
+    # 'unsafe-inline' for script-src is not a shortcut and must not be
+    # dropped on its own: index.html carries 174 inline on* handlers and an
+    # inline <script>, and index.php - the entry point the printed QR codes
+    # point at - is an inline script and nothing else. Removing it without
+    # first migrating those to addEventListener does not harden the app, it
+    # switches it off.
+    #
+    # There is deliberately no 'unsafe-eval'. html5-qrcode carries webpack's
+    # `new Function("return this")` global shim, but it is unreachable on any
+    # browser with globalThis and is wrapped in a try/catch that falls back
+    # to window, so the scanner works without it. tf.min.js and
+    # teachablemachine-image.min.js are the patched local copies and contain
+    # no eval at all - SecurityHeadersTest pins that.
+    #
+    # storage.googleapis.com is where teachablemachine-image fetches the
+    # MobileNet base if the copy in /visitor/model/ does not load.
+    #
+    # blob: appears twice on purpose: img-src for frames grabbed off the
+    # camera, media-src for html5-qrcode's older-browser path, which attaches
+    # the stream to the <video> through a blob: URL.
+    Header set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://storage.googleapis.com; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
+
+    # The QR scanner needs the camera and the museum-info screen needs the
+    # position. (self) and not (*): only a page from this origin may ask, and
+    # the browser still puts the question to the visitor.
+    Header set Permissions-Policy "camera=(self), geolocation=(self), microphone=(), payment=()"
+
+</IfModule>

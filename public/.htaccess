@@ -50,12 +50,25 @@ Options -Indexes
 </FilesMatch>
 
 # SECURITY: HTTP Strict Transport Security (HSTS)
-# Tells browsers to only connect via HTTPS for the next year.
-# Prevents protocol downgrade attacks and cookie hijacking over HTTP.
-# NOTE: Only enable this when your site has a valid SSL certificate.
-# <IfModule mod_headers.c>
-#     Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
-# </IfModule>
+#
+# After one visit over HTTPS the browser refuses to speak plain HTTP to this
+# host for a year, so the 301 above stops being something an attacker on the
+# same wifi can get in front of.
+#
+# The expr= guard means this is sent only on a request that actually arrived
+# over TLS. A browser is required to ignore HSTS received over plain HTTP,
+# so this is belt and braces - but it also keeps the header out of the
+# Laragon laptop, which serves this same file over http://yeppie.test.
+#
+# includeSubDomains covers every name under museodebaler.com. Nothing is
+# served on a subdomain today; if that changes, the new one must have TLS
+# from its first day or browsers that have seen this header will not open it
+# at all. That is the intended effect, and it is the part of this line that
+# is hard to take back: max-age is a year, and shortening it only helps
+# browsers that come back to hear the new value.
+<IfModule mod_headers.c>
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" "expr=%{HTTPS} == 'on'"
+</IfModule>
 
 # SECURITY: Additional security headers as a fallback (also set in PHP middleware)
 <IfModule mod_headers.c>
