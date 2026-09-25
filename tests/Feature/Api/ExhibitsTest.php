@@ -128,8 +128,8 @@ class ExhibitsTest extends TestCase
             ->assertJsonPath('0.floor', 'Ground Floor')
             ->assertJsonPath('0.languages', ['en', 'fil'])
             ->assertJsonPath('0.year', '1898')
-            ->assertJsonPath('0.image', '/images/exhibits/siege.jpg')
-            ->assertJsonPath('0.audio_url', '/audio/exhibit_1_fil.mp3');
+            ->assertJsonPath('0.image', fn (string $url) => str_contains($url, '/api/v1/media/images/exhibits/siege.jpg?'))
+            ->assertJsonPath('0.audio_url', fn (string $url) => str_contains($url, '/api/v1/media/audio/exhibit_1_fil.mp3?'));
     }
 
     public function test_one_exhibit_by_code_adds_gallery_next_and_scan_count(): void
@@ -144,21 +144,18 @@ class ExhibitsTest extends TestCase
             ->assertOk()
             ->assertJsonPath('exhibit_id', $first->exhibit_id)
             ->assertJsonPath('original_name', 'Siege of Baler Diorama')
-            ->assertJsonPath('gallery.0.url', '/images/exhibits/a.jpg')
+            ->assertJsonPath('gallery.0.url', fn (string $url) => str_contains($url, '/api/v1/media/images/exhibits/a.jpg?'))
             ->assertJsonPath('gallery.1.caption', 'B')
             ->assertJsonPath('next_id', $second->exhibit_id)
             ->assertJsonPath('scan_count', 0);
     }
 
-    public function test_an_unknown_code_is_a_200_with_not_found_not_a_404(): void
+    public function test_an_unknown_code_is_a_404_with_not_found(): void
     {
-        // The app tells "no such label" apart from "server unreachable" by
-        // this: a 200 carrying {error} is a wrong code, anything else is the
-        // offline notice.
         $v = Visitor::factory()->paid()->create();
 
         $this->getJson('/api/v1/exhibits/EXH-999', $this->token($v))
-            ->assertOk()
+            ->assertStatus(404)
             ->assertJson(['error' => 'not_found']);
     }
 
@@ -176,5 +173,17 @@ class ExhibitsTest extends TestCase
         $this->assertStringContainsString('private', $first->headers->get('Cache-Control'));
 
         $this->getJson('/api/v1/exhibits', $h + ['If-None-Match' => $etag])->assertStatus(304);
+    }
+
+    public function test_media_urls_reject_a_tampered_signature(): void
+    {
+        $this->exhibit();
+        $v = Visitor::factory()->paid()->create();
+        $url = $this->getJson('/api/v1/exhibits', $this->token($v))
+            ->json('0.image');
+
+        $tampered = preg_replace('/signature=[^&]+/', 'signature=invalid', $url);
+
+        $this->get($tampered)->assertStatus(403);
     }
 }

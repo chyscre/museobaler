@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\ExhibitController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\MuseumController;
+use App\Http\Controllers\Api\MediaController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\RecognitionController;
 use App\Http\Controllers\Api\ScanController;
@@ -52,6 +53,14 @@ Route::prefix('v1')->name('api.')->group(function () {
     // -- The fence: token read when present, never required -------------------
     Route::post('attendance', [AttendanceController::class, 'store'])->name('attendance.store');
     Route::patch('attendance/{id}', [AttendanceController::class, 'update'])->whereNumber('id')->name('attendance.update');
+
+    // Media URLs are temporary signed URLs issued by the cleared exhibit
+    // endpoints. The media element cannot attach the bearer header, so the
+    // signature is the authorization proof for this short-lived request.
+    Route::get('media/{path}', [MediaController::class, 'show'])
+        ->where('path', '.*')
+        ->middleware('signed')
+        ->name('media');
 
     // -- Signed in: their own standing with the desk --------------------------
     Route::middleware('visitor.auth')->group(function () {
