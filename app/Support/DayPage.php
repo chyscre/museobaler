@@ -89,7 +89,7 @@ class DayPage
             return null;
         }
 
-        return $this->pages->url($this->pages->currentPage() + ($day->equalTo($this->previous) ? -1 : 1));
+        return $this->pages->url($this->pages->currentPage() + ($this->previous && $day->equalTo($this->previous) ? -1 : 1));
     }
 
     /** "Today", "Yesterday", or "Tue, 23 Sep 2026". */
