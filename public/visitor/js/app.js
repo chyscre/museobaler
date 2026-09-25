@@ -35,10 +35,8 @@ const PUBLIC_BASE = (function () {
     : path.replace(/\/[^/]*$/, '') + '/..');  // opened from somewhere unexpected
 })();
 
-// Pictures and audio guides sit beside api/ in public/, so the same base
-// serves them. The API hands back root-relative paths built the same way;
-// PUBLIC_BASE only exists for the odd cached record that still carries a
-// bare filename.
+// The API returns short-lived signed media URLs. PUBLIC_BASE is retained for
+// the API itself because the visitor app may be hosted below a subdirectory.
 const API_BASE = PUBLIC_BASE + '/api/v1';
 
 // Helper: fetch with the headers every API call needs.
@@ -68,17 +66,14 @@ function apiFetch(url, options = {}) {
        as a connection problem. The request in fact arrived and was answered.
        Name the real cause in the console; the visitor still gets the friendly
        message, but whoever is debugging gets the URL and the status. */
-    const type = res.headers.get('content-type') || '';
-    if (!res.ok && !type.includes('json')) {
-      console.error(
-        '[api] ' + res.status + ' ' + res.statusText + ' from ' + res.url + '\n' +
-        '      Response is ' + (type || 'of unknown type') + ', not JSON, so parsing it will\n' +
-        '      fail and surface to the visitor as a "could not reach the museum" message.\n' +
-        '      API_BASE is ' + API_BASE + ' — check it matches where api/ is served from.'
-      );
-    }
     return res;
   });
+}
+
+function debugError(...args) {
+  if (new URLSearchParams(window.location.search).get('debug') === '1') {
+    console.error(...args);
+  }
 }
 const STORAGE_KEY = 'mb_visitor';
 
@@ -110,16 +105,14 @@ function normalizeExhibit(ex) {
     // The ~400px copy the API offers for list rows and cards. Falls back to
     // the display image when the API has not been updated or has no thumb.
     thumb:       ex.thumb ? (ex.thumb.startsWith('http') ? ex.thumb : window.location.origin + ex.thumb)
-                 : (ex.image ? (ex.image.startsWith('http') ? ex.image : window.location.origin + ex.image) : null),
+                 : null,
     gallery:     (ex.gallery || []).map(g => ({
-                   url: g.url ? (g.url.startsWith('http') ? g.url : window.location.origin + g.url)
-                      : (g.filename ? PUBLIC_BASE + '/images/exhibits/' + encodeURIComponent(g.filename) : ''),
+                   url: g.url ? (g.url.startsWith('http') ? g.url : window.location.origin + g.url) : '',
                    caption: g.caption || ''
                  })),
     languages:   ex.languages    || ['en','fil'],
     audio_file:  ex.audio_file   || null,
-    audio_url:   ex.audio_url ? (ex.audio_url.startsWith('http') ? ex.audio_url : window.location.origin + ex.audio_url)
-                  : (ex.audio_file ? PUBLIC_BASE + '/audio/' + encodeURIComponent(ex.audio_file) : null),
+    audio_url:   ex.audio_url ? (ex.audio_url.startsWith('http') ? ex.audio_url : window.location.origin + ex.audio_url) : null,
   };
 }
 
@@ -328,7 +321,7 @@ function showScreen(id) {
 
   // Screen-specific enter hooks
   if (id === 's-home') { try { populateHome(); } catch(e){} }
-  if (id === 's-profile') { try { onProfileEnter(); } catch(e){ console.error('profile enter error:', e); } }
+  if (id === 's-profile') { try { onProfileEnter(); } catch(e){ debugError('profile enter error:', e); } }
   if (id === 's-profile-scanned') { try { populateScanned(); } catch(e){} }
   if (id === 's-profile-bookmarked') { try { populateBookmarked(); } catch(e){} }
   if (id === 's-profile-halls') { try { populateHalls(); } catch(e){} }
@@ -339,8 +332,8 @@ function showScreen(id) {
   // call each other until the stack overflowed (2,649 frames deep, measured),
   // with the RangeError swallowed by the catch below. Every open of the scan
   // screen was silently doing that.
-  if (id === 's-scan-storyline') { try { onScanScreenShown('storyline'); } catch(e){ console.error(e); } }
-  if (id === 's-scan-free') { try { onScanScreenShown('free'); } catch(e){ console.error(e); } }
+  if (id === 's-scan-storyline') { try { onScanScreenShown('storyline'); } catch(e){ debugError(e); } }
+  if (id === 's-scan-free') { try { onScanScreenShown('free'); } catch(e){ debugError(e); } }
   if (id === 's-settings') { try { syncSettings(); } catch(e){} }
 }
 
@@ -2071,13 +2064,19 @@ function handleScan(code, scanType = 'qr', alreadyLogged = false) {
   apiFetch(`${API_BASE}/exhibits/${encodeURIComponent(code)}?lang=${encodeURIComponent(STATE.lang)}`)
     .then(r => {
       if (r.status === 401 || r.status === 403) return null; // apiFetch has acted
+      // A 404 is an answer, not a failure: the museum was reached and said
+      // it has no such label. Let it through to the {error} branch below so
+      // it becomes a toast. Throwing here would send it to .catch(), which
+      // is the offline notice, and tell a visitor holding a retired label
+      // that the museum is unreachable.
+      if (r.status === 404) return r.json();
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     })
     .then(data => {
       if (!data) return;
-      // A 200 with {error} is the API's "no such code" - a wrong label, not
-      // a lost connection, so it gets a toast rather than the offline notice.
+      // {error} is the API's "no such code" - a wrong label, not a lost
+      // connection, so it gets a toast rather than the offline notice.
       if (data.error) { showToast('Exhibit not found: ' + code); return; }
       const ex = normalizeExhibit(data);
       logScan(ex, scanType, !alreadyLogged);

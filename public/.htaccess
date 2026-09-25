@@ -12,6 +12,10 @@ Options -Indexes
 
     RewriteEngine On
 
+    # Exhibit media is served only by the signed API proxy. Leaving these
+    # files directly addressable would bypass the visitor admission gate.
+    RewriteRule ^(?:images/exhibits|audio)(?:/|$) - [R=404,L]
+
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]

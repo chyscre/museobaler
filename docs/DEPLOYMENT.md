@@ -48,7 +48,10 @@ the switch between them is one atomic rename.
    - `ATTENDANCE_GEOFENCE` and `VISITOR_GEOFENCE` are ignored in production;
      both fences always run. Leave them unset.
 4. Point the web server's docroot at `/var/www/museobaler/current/public`,
-   with TLS. Behind Cloudflare, the proxy IP ranges in `bootstrap/app.php`
+  with TLS. If using nginx, deny direct access to protected exhibit media
+  before the generic static-file rule:
+  `location ~ ^/(images/exhibits|audio)/ { return 404; }`.
+  Behind Cloudflare, the proxy IP ranges in `bootstrap/app.php`
    are already trusted.
 5. Add the cron line that wakes the scheduler (this is what runs the nightly
    backup):

@@ -135,6 +135,7 @@ function routeFor(method, urlString) {
 
   const p = url.pathname;
 
+  if (p.startsWith('/api/v1/media/')) return 'media';
   if (p.startsWith('/api/v1/')) {
     return API_CACHEABLE.test(p) ? 'api' : 'network';
   }
@@ -164,10 +165,29 @@ self.addEventListener('fetch', (event) => {
  * index.html asks for app.js?v=15 and the precache holds app.js, and the
  * two must be one entry. A third-party URL keeps its query - for Google
  * Fonts it is the whole request.
+ *
+ * Media is the exception to that exception. Its URLs are signed and expire
+ * after half an hour, so `expires` and `signature` differ on every issue of
+ * the same file. Keeping them in the key would store another copy of the
+ * same audio each time the exhibit was opened, and - worse - miss every
+ * copy already held the moment the signature rotated, which is exactly when
+ * a phone in airplane mode has nothing else to fall back on. So those two
+ * are dropped and the file is keyed by its path. Only the key is stripped:
+ * what goes to the network is still the full signed URL, because the
+ * signature is what authorises the request.
  */
 function keyFor(request) {
   const url = new URL(request.url);
-  if (url.origin === OWN) url.search = '';
+
+  if (url.origin !== OWN) return url.href;
+
+  if (url.pathname.startsWith('/api/v1/media/')) {
+    url.searchParams.delete('expires');
+    url.searchParams.delete('signature');
+  } else {
+    url.search = '';
+  }
+
   return url.href;
 }
 
@@ -224,7 +244,10 @@ async function cacheFirst(event) {
 
   if (range) {
     // Answer this range from the network; fill the cache with the whole file.
-    event.waitUntil(fetch(key).then((r) => { if (r.ok) return cache.put(key, r); }).catch(() => {}));
+    // request.url, not key: the key has had the signature stripped, and the
+    // signed route would refuse it. Fetching the URL as a string rather than
+    // the request is what drops the Range header and gets the whole file.
+    event.waitUntil(fetch(request.url).then((r) => { if (r.ok) return cache.put(key, r); }).catch(() => {}));
     return fetch(request);
   }
 

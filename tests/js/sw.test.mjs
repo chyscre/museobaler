@@ -50,6 +50,7 @@ test('pictures and audio guides are cache-first', () => {
   assert.equal(route('GET', '/images/exhibits/Siege_1776872245.jpeg'), 'media');
   assert.equal(route('GET', '/audio/exhibit_1_en_1776872045.mp3'), 'media');
   assert.equal(route('GET', '/images/qr/EXH-001.svg'), 'media');
+  assert.equal(route('GET', '/api/v1/media/audio/exhibit_1_en.mp3?expires=123&signature=x'), 'media');
 });
 
 test('only the museum content behind the gate may be answered from the last good copy', () => {
@@ -87,4 +88,40 @@ test('the admin panel is none of the worker\'s business', () => {
   assert.equal(route('GET', '/exhibits'), 'network');
   assert.equal(route('GET', '/login'), 'network');
   assert.equal(route('GET', '/exhibit-image/x.jpg'), 'network');
+});
+
+// -- Cache keys -------------------------------------------------------------
+//
+// Media URLs are signed and expire after half an hour, so the same audio
+// file arrives under a different `signature` every time the exhibit is
+// opened. If that reached the cache key, a phone would hold one copy per
+// issue and find none of them the moment the signature rotated - and the
+// moment it needs them is airplane mode, when there is no network to fall
+// back to. These pin the key to the path.
+
+const key = (path) => ctx.keyFor({ url: 'https://museo.example' + path });
+
+test('a signed media url is cached under its path, not its signature', () => {
+  const a = key('/api/v1/media/audio/exhibit_1_en.mp3?expires=1000&signature=aaa');
+  const b = key('/api/v1/media/audio/exhibit_1_en.mp3?expires=9999&signature=zzz');
+
+  assert.equal(a, b, 'two issues of the same file must be one cache entry');
+  assert.equal(a, 'https://museo.example/api/v1/media/audio/exhibit_1_en.mp3');
+});
+
+test('a media url keeps any parameter that is not the signature', () => {
+  assert.equal(
+    key('/api/v1/media/images/exhibits/a.jpg?v=thumb&expires=1&signature=b'),
+    'https://museo.example/api/v1/media/images/exhibits/a.jpg?v=thumb',
+  );
+});
+
+test('everything else keys the way it always did', () => {
+  // Our own files drop the query entirely: index.html asks for app.js?v=15
+  // and the precache holds app.js.
+  assert.equal(key('/visitor/js/app.js?v=15'), 'https://museo.example/visitor/js/app.js');
+
+  // A third-party URL keeps its query - for Google Fonts it is the request.
+  const font = 'https://fonts.googleapis.com/css2?family=Young+Serif';
+  assert.equal(ctx.keyFor({ url: font }), font);
 });

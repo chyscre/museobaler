@@ -7,6 +7,7 @@ use App\Models\Exhibit;
 use App\Models\ExhibitImage;
 use App\Models\ExhibitTranslation;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\URL;
 use App\Support\ExhibitImage as ExhibitImageFile;
 use Illuminate\Http\Request;
 
@@ -52,7 +53,7 @@ class ExhibitController extends Controller
             ->first();
 
         if ($exhibit === null) {
-            return response()->json(['error' => 'not_found']);
+            return response()->json(['error' => 'not_found'], 404);
         }
 
         $next = Exhibit::query()
@@ -101,7 +102,7 @@ class ExhibitController extends Controller
             // List rows and cards only ever draw this at 44-130px.
             'thumb'           => $this->imageUrl($request, $e->image, ExhibitImageFile::THUMB),
             'audio_file'      => $t?->audio_file,
-            'audio_url'       => $t?->audio_file ? $request->getBasePath() . '/audio/' . rawurlencode($t->audio_file) : null,
+            'audio_url'       => $t?->audio_file ? $this->mediaUrl('audio/' . basename($t->audio_file)) : null,
         ];
     }
 
@@ -127,9 +128,17 @@ class ExhibitController extends Controller
     {
         $path = ExhibitImageFile::variantPath($file, $variant);
 
-        return $path
-            ? $request->getBasePath() . '/' . implode('/', array_map('rawurlencode', explode('/', $path)))
-            : null;
+        return $path ? $this->mediaUrl($path) : null;
+    }
+
+    private function mediaUrl(string $path): string
+    {
+        return URL::temporarySignedRoute(
+            'api.media',
+            now()->addMinutes(30),
+            ['path' => $path],
+            false,
+        );
     }
 
     private function lang(Request $request): string
