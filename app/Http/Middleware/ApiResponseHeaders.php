@@ -29,7 +29,18 @@ class ApiResponseHeaders
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('Cross-Origin-Resource-Policy', 'same-origin');
         $response->headers->set('Referrer-Policy', 'no-referrer');
+        // Both of these, and neither is redundant. The first clears the header
+        // from Symfony's own bag; the second clears the one PHP adds for
+        // itself from expose_php, which never appears in that bag at all. The
+        // API was answering every request with "X-Powered-By: PHP/8.3.30"
+        // while the panel - which has called header_remove() since it was
+        // written - answered with none, and the difference was exactly this
+        // line. Turning expose_php off on the server is the belt to this
+        // braces, but the code should not depend on someone remembering to.
         $response->headers->remove('X-Powered-By');
+        if (!headers_sent()) {
+            header_remove('X-Powered-By');
+        }
 
         if (!$this->routeSetsItsOwnCachePolicy($request)) {
             $response->headers->set('Cache-Control', 'no-store');

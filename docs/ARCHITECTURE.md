@@ -15,9 +15,8 @@ PNG or SVG for the manuscript.
 ```mermaid
 flowchart TB
     visitor["Visitor<br/><i>own phone, mobile browser</i>"]
-    staff["Museum staff<br/><i>desk, curator, guide</i>"]
-    admin["Administrator<br/><i>museum configuration</i>"]
-    tourism["Tourism Office<br/><i>accounts, ARTA reports</i>"]
+    staff["Administrator<br/><i>museum staff: desk, curator, guide,<br/>museum configuration</i>"]
+    tourism["TourismHead<br/><i>Tourism Office: accounts, ARTA reports</i>"]
 
     system(["<b>Museo de Baler</b><br/>Laravel 12 / PHP 8.3 / MySQL"])
 
@@ -25,9 +24,8 @@ flowchart TB
     mail["SMTP<br/><i>alerts</i>"]
 
     visitor -->|"scans a QR, opens an exhibit,<br/>answers the survey"| system
-    staff -->|"registers walk-ins, clocks in,<br/>edits the collection"| system
-    admin -->|"fee, hours, geofence, halls"| system
-    tourism -->|"issues accounts, pulls reports"| system
+    staff -->|"registers walk-ins, clocks in, edits the collection,<br/>sets fee, hours, geofence, halls"| system
+    tourism -->|"issues accounts, approves corrections,<br/>pulls reports"| system
 
     system -.->|"drafts a translation<br/>(optional, degrades gracefully)"| gemini
     system -.->|"backup failed, disk low"| mail
@@ -108,7 +106,7 @@ flowchart TB
     desk --> rate["LoginRateLimiter"]
     rate --> sess["web guard<br/><i>session, Staff model</i>"]
     sess --> pwchange["RequirePasswordChange"]
-    pwchange --> role["EnsureRole<br/><i>superadmin, administrator,<br/>curator, frontdesk, guide</i>"]
+    pwchange --> role["EnsureRole<br/><i>Administrator, TourismHead</i>"]
     role --> audit["AuditLog<br/><i>writes to logs table</i>"]
     audit --> watchdog["BackupWatchdog<br/><i>warns on a stale dump</i>"]
     watchdog --> ctrl
@@ -249,14 +247,14 @@ app/
   Http/Controllers/     the panel (18)
   Http/Controllers/Api/ the visitor API (/api/v1)
   Http/Middleware/      the 11 gates in section 3
-  Models/               Eloquent (22); Visitor carries the door's logic
+  Models/               Eloquent (23); Visitor carries the door's logic
   Rules/                custom validation
   Services/             Gemini, geofence, recognition, image search, QR
   Support/              ARTA survey, password policy, backups, alerts
   Support/Reports/      ReportBuilder + the four exporters
 bootstrap/, config/     framework wiring
 database/
-  migrations/           50 migrations; the schema in ERD.md
+  migrations/           51 migrations; the schema in ERD.md
   seeders/media/        the seeded exhibits' pictures and audio
 deploy/                 deploy.sh, rollback.sh, the Windows scheduler task
 docs/                   this file and its neighbours
@@ -265,7 +263,7 @@ public/
   images/, audio/       uploads (git-ignored, shared across releases)
 resources/views/        Blade: the panel, the print layouts, the mail
 routes/
-  web.php               the panel (118 routes)
+  web.php               the panel (100 routes)
   api.php               the visitor API
   console.php           the scheduled tasks
 tests/

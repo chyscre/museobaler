@@ -23,6 +23,12 @@ class ScanController extends Controller
             'exhibit_id' => $request->integer('exhibit_id'),
             'visitor_id' => $request->user('visitor')->visitor_id,
             'scan_type'  => $request->input('scan_type', 'qr'),
+            // Normally absent, and then the model stamps now(). The app sends
+            // it only for a scan it made with no signal and held in its queue
+            // until there was some: without it, every exhibit opened in the
+            // dead zone at the back of the museum would be filed at the
+            // moment the visitor walked back into coverage.
+            'scanned_at' => $request->date('scanned_at'),
         ]);
 
         return response()->json(['ok' => true]);

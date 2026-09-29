@@ -53,6 +53,17 @@ const SHELL_REQUIRED = [
   './',
   './index.html',
   './css/app.css',
+  './css/fonts.css',
+  // The faces css/fonts.css names. Required, not optional: without the icon
+  // file every Material Icons span falls back to rendering its own glyph
+  // name, so the visitor reads "wifi" and "login" laid out as if they were
+  // icons. That is what the Google-hosted copies did when the CSP refused
+  // them. Precaching costs ~260KB once and makes the app whole offline.
+  './fonts/material-icons-round.woff2',
+  './fonts/instrument-sans-latin.woff2',
+  './fonts/instrument-sans-latin-ext.woff2',
+  './fonts/young-serif-latin.woff2',
+  './fonts/young-serif-latin-ext.woff2',
   './js/app.js',
   './js/viewport.js',
   './manifest.json',
@@ -76,6 +87,11 @@ const SHELL_OPTIONAL = [
 
 // API paths whose last good answer may stand in for a dead network.
 const API_CACHEABLE = /^\/api\/v1\/(exhibits(\/[^/]+)?|museum|visitors\/me)$/;
+
+// How long one of those may stall before the last good answer is used
+// instead. Long enough that an ordinary slow reply still arrives fresh,
+// short enough that nobody is left looking at a spinner over a cache hit.
+const NETWORK_PATIENCE_MS = 4000;
 
 const OWN = self.location.origin;
 
@@ -293,26 +309,60 @@ async function networkFirst(event) {
   const cache   = await caches.open(API_CACHE);
   const key     = request.url;
 
-  try {
-    const response = await fetch(request);
-
+  // The live attempt. It never rejects: a failure is carried as a value so
+  // the race below can treat "the network said no" and "the network said
+  // nothing" the same way.
+  const live = fetch(request).then((response) => {
     if (response.status === 401 || response.status === 403) {
       event.waitUntil(caches.delete(API_CACHE));
     } else if (response.ok) {
       event.waitUntil(cache.put(key, response.clone()).catch(() => {}));
     }
-    return response;
-  } catch (networkError) {
-    const cached = await cache.match(key);
-    if (cached) {
-      // Say so, for anyone debugging why an edited exhibit looks old.
-      const headers = new Headers(cached.headers);
-      headers.set('X-Museobaler-Cache', 'offline-fallback');
-      return new Response(cached.body, { status: cached.status, statusText: cached.statusText, headers });
-    }
-    throw networkError;
+    return { response };
+  }, (error) => ({ error }));
+
+  // Whatever the page is handed below, this has to finish: it is the fresh
+  // copy, and the next load should find it waiting in the cache.
+  event.waitUntil(live);
+
+  const cached = await cache.match(key);
+
+  if (!cached) {
+    const settled = await live;
+    if (settled.response) return settled.response;
+    throw settled.error;
   }
+
+  /* A stalled connection is not a dead one, and this is the difference
+     between the two.
+
+     fetch() rejects when the network is gone, and the catch that used to be
+     here dealt with that case correctly. What it could not deal with is one
+     bar: a socket that was accepted and then went quiet neither resolves nor
+     rejects, for minutes, which is ordinary behaviour inside a building with
+     stone walls. The phone was holding a perfectly good copy of the exhibit
+     list and waiting on the network anyway, so the fallback this whole cache
+     exists for was unreachable in exactly the conditions it was built for.
+
+     So the cached copy wins the race after NETWORK_PATIENCE_MS. The request
+     is not abandoned - it carries on above, and updates the cache when it
+     eventually lands. */
+  const outcome = await Promise.race([live, after(NETWORK_PATIENCE_MS).then(() => ({ slow: true }))]);
+
+  if (outcome.response) return outcome.response;
+
+  return fromCache(cached, outcome.slow ? 'slow-network' : 'offline-fallback');
 }
+
+/** A cached answer, labelled so anyone debugging can see where it came from. */
+function fromCache(cached, why) {
+  const headers = new Headers(cached.headers);
+  headers.set('X-Museobaler-Cache', why);
+
+  return new Response(cached.body, { status: cached.status, statusText: cached.statusText, headers });
+}
+
+const after = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * A scanned QR label opens /visitor/index.php?scan=CODE, a PHP page that

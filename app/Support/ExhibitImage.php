@@ -37,7 +37,18 @@ class ExhibitImage
 
     /**
      * The public path for a variant, falling back to the original when the
-     * derivative is not on disk.
+     * derivative is not on disk - and to null when neither one is there.
+     *
+     * That last case is the picture whose row in the database outlived its
+     * file: a restored backup, a half-finished upload, a file moved by hand.
+     * This used to hand back the original's path regardless, which put a
+     * signed URL in front of a 404 - and null is the only answer the app can
+     * recognise as "there is no picture" and draw the category placeholder
+     * for. Given a URL it assumes a photograph and lays out a black frame
+     * around the browser's broken-image glyph.
+     *
+     * The extra stat costs nothing in the ordinary case: it is reached only
+     * when the derivative is missing, which is itself the unusual path.
      */
     public static function variantPath(?string $file, string $variant): ?string
     {
@@ -45,12 +56,16 @@ class ExhibitImage
             return null;
         }
 
-        $name = basename($file);
-        $derived = public_path(self::DIR . '/' . $variant . '/' . static::derivedName($name));
+        $name    = basename($file);
+        $derived = self::DIR . '/' . $variant . '/' . static::derivedName($name);
 
-        return is_file($derived)
-            ? self::DIR . '/' . $variant . '/' . static::derivedName($name)
-            : self::DIR . '/' . $name;
+        if (is_file(public_path($derived))) {
+            return $derived;
+        }
+
+        $original = self::DIR . '/' . $name;
+
+        return is_file(public_path($original)) ? $original : null;
     }
 
     /** Derivatives are always JPEG — the originals are photographs. */

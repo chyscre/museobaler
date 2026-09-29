@@ -23,6 +23,28 @@ abstract class ApiFormRequest extends FormRequest
         return true;
     }
 
+    /**
+     * An input as a string, and an empty string when it is not one.
+     *
+     * Every field the app sends is a scalar, but anyone can post anything,
+     * and casting an array to a string in PHP is an ErrorException rather
+     * than a quiet '' - so `{"email": ["a@b.co"]}` answered with a 500 and a
+     * stack trace from inside rules(), before a single rule had run. The
+     * shape was wrong and 422 was the entire answer owed. On a production
+     * install each of those also sends an exception mail, so an unauthorised
+     * caller could have this API write its own alerts.
+     *
+     * A value that is not a scalar has already failed the 'string' rule
+     * sitting beside it, which is what produces the 422; this only keeps the
+     * cast from throwing on the way there.
+     */
+    protected function scalarInput(string $key): string
+    {
+        $value = $this->input($key);
+
+        return is_scalar($value) ? (string) $value : '';
+    }
+
     protected function failedValidation(Validator $validator): void
     {
         $errors = $validator->errors();

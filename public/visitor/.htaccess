@@ -25,20 +25,64 @@
     # first migrating those to addEventListener does not harden the app, it
     # switches it off.
     #
-    # There is deliberately no 'unsafe-eval'. html5-qrcode carries webpack's
-    # `new Function("return this")` global shim, but it is unreachable on any
-    # browser with globalThis and is wrapped in a try/catch that falls back
-    # to window, so the scanner works without it. tf.min.js and
-    # teachablemachine-image.min.js are the patched local copies and contain
-    # no eval at all - SecurityHeadersTest pins that.
+    # 'unsafe-eval' is required, and leaving it out switched image
+    # recognition off in production while every local check still passed.
+    #
+    # The claim this comment used to make - that the local bundles contain no
+    # eval, pinned by SecurityHeadersTest - was only ever true of
+    # teachablemachine-image.min.js, which is the only file that test reads.
+    # tf.min.js was never checked, and it carries a regenerator-runtime shim
+    # that builds `Function("return this")` during tmImage.load(). Under a
+    # policy without 'unsafe-eval' that throws an EvalError, _loadModel()
+    # swallows it, and the app drops to the pHash fallback - the visitor sees
+    # "Photo Match" and "no exhibit recognized" with nothing in any server
+    # log, and nothing in the console unless someone thinks to open it.
+    #
+    # Laragon does apply this file - http://localhost/visitor/sw.js answers
+    # with the policy below - so a laptop can reproduce this. What hides it
+    # locally is the worker, not Apache: see the note on connect-src.
+    #
+    # The staff trainer at /recognition already allows eval for the same
+    # library, through App\Http\Middleware\SecurityHeaders. This is the half
+    # of the system that actually runs the model in the room.
     #
     # storage.googleapis.com is where teachablemachine-image fetches the
     # MobileNet base if the copy in /visitor/model/ does not load.
     #
+    # There are no Google Fonts hosts here, in any directive, and that is not
+    # an oversight - the visitor app serves its own faces out of
+    # /visitor/fonts/ now. See public/visitor/css/fonts.css.
+    #
+    # They used to be needed in style-src and font-src, and the omission of
+    # connect-src is what broke the app: sw.js routes every cross-origin GET
+    # through staleWhileRevalidate, which re-issues it as fetch(), and a
+    # fetch() from inside a worker answers to connect-src no matter what the
+    # tag that first asked for it was allowed to do. Both stylesheets were
+    # refused there, the catch swallowed it, and the <link> got back
+    # Response.error(). The icon font failing is the loud half: a Material
+    # Icons span holds the glyph name as its text, so visitors read "wifi"
+    # and "login" where the icons belong. Young Serif and Instrument Sans
+    # failed in the same breath and only fell back to system faces, which is
+    # why nobody caught it sooner.
+    #
+    # Widening connect-src would have fixed it, but slowly and twice over: a
+    # service worker keeps the policy its own script response carried when it
+    # was installed, for as long as it stays the active worker, and the
+    # browser only installs a replacement if sw.js differs byte for byte - a
+    # change made in a header alone gives it no reason to. Same-origin files
+    # need none of that. connect-src 'self' already covers them, so the fix
+    # works under whatever policy a given device's worker is still holding.
+    #
     # blob: appears twice on purpose: img-src for frames grabbed off the
     # camera, media-src for html5-qrcode's older-browser path, which attaches
     # the stream to the <video> through a blob: URL.
-    Header set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://storage.googleapis.com; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
+    #
+    # Nothing here allows static.cloudflareinsights.com. Cloudflare injects
+    # that beacon at the edge when Web Analytics automatic setup is on, and
+    # this policy refuses it. The fix is the Cloudflare dashboard, not this
+    # line: the app does not ask for the beacon and should not have to name
+    # a third-party script host to stay quiet.
+    Header set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://storage.googleapis.com; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
 
     # The QR scanner needs the camera and the museum-info screen needs the
     # position. (self) and not (*): only a page from this origin may ask, and

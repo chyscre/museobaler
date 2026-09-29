@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\MuseumHall;
 use App\Models\MuseumInfo;
+use App\Services\GeofenceService;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -30,8 +31,7 @@ class MuseumController extends Controller
         // Whether the app must actually be inside the fence before it logs
         // an entry. Decided here, not by the phone looking at its hostname:
         // a production server reached by its LAN address is still production.
-        $info['geofence_enforced'] = app()->environment('production')
-            || (bool) config('access.visitor_geofence', true);
+        $info['geofence_enforced'] = app(GeofenceService::class)->visitorEnforced();
 
         return response()->json(['info' => $info, 'halls' => $halls]);
     }

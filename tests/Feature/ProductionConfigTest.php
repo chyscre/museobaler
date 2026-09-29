@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Providers\AppServiceProvider;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 /**
@@ -53,5 +54,49 @@ class ProductionConfigTest extends TestCase
     public function test_local_development_keeps_its_stack_traces(): void
     {
         $this->assertTrue($this->debugAfterBootingIn('local', true));
+    }
+
+    /**
+     * What a crash actually says out loud once debug is off.
+     *
+     * The guard above proves the setting is forced; this proves what the
+     * setting buys. A museum's error is provoked by ordinary use - a report
+     * asked for while the database is restarting - and the answer must carry
+     * nothing about the machine: no file paths, no framework internals, no
+     * SQL, and not the exception's own message, which is where a driver puts
+     * the table and column it could not find.
+     *
+     * The message is deliberately about what to do next, and the `ref` is a
+     * hash of the throwing line, so a report of "ref 4a7c1e9b" can be matched
+     * to the log without the person on the phone reading out a stack trace.
+     */
+    public function test_a_crash_with_debug_off_says_nothing_about_the_server(): void
+    {
+        config(['app.debug' => false]);
+
+        $boom = fn () => throw new \RuntimeException(
+            'SQLSTATE[42S02]: Base table or view not found: museobaler.visitors_secret'
+        );
+
+        Route::get('/api/v1/_audit_probe', $boom);
+        Route::get('/_audit_probe', $boom);
+
+        $json = $this->getJson('/api/v1/_audit_probe');
+        $html = $this->get('/_audit_probe');
+
+        $json->assertStatus(500)
+            ->assertJsonPath('error', fn (string $m) => str_contains($m, 'museum server'))
+            ->assertJsonPath('ref', fn (string $r) => strlen($r) === 8);
+
+        foreach ([$json->getContent(), $html->getContent()] as $body) {
+            foreach ([
+                'SQLSTATE', 'visitors_secret', 'RuntimeException', 'ProductionConfigTest',
+                '.php', 'vendor', 'C:\\', '/var/www', 'APP_KEY', 'base64:',
+            ] as $leak) {
+                $this->assertStringNotContainsString($leak, $body, "a 500 must not mention {$leak}");
+            }
+        }
+
+        $html->assertStatus(500);
     }
 }

@@ -40,6 +40,7 @@
              it exists to prove the real behaviour, and an off-site scan that
              "passes" because the check was skipped proves nothing. -->
         <env name="ATTENDANCE_GEOFENCE" value="true"/>
+        <env name="VISITOR_GEOFENCE" value="true"/>
         <env name="ADMIN_DESKTOP_ONLY" value="true"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>

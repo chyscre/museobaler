@@ -21,12 +21,17 @@
 <!-- iOS ignores the manifest icons for Add to Home Screen. -->
 <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
-<link href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
-<link rel="stylesheet" href="./css/app.css?v=20">
+<!-- Fonts are served from this origin, not fonts.googleapis.com: the service
+     worker re-requests every cross-origin asset through fetch(), which answers
+     to connect-src, and that refusal left the icon spans showing their glyph
+     names. See css/fonts.css for the whole account. Must load before app.css,
+     which overrides the icon size. -->
+<link rel="preload" href="./fonts/material-icons-round.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="./css/fonts.css?v=21">
+<link rel="stylesheet" href="./css/app.css?v=21">
 <!-- Device fit: real viewport height, safe areas, soft keyboard. Runs before
      anything else measures the layout. -->
-<script src="./js/viewport.js?v=20"></script>
+<script src="./js/viewport.js?v=21"></script>
 <!-- QR scanner, TensorFlow.js and the Teachable Machine runtime are served
      from this server (../js/vendor/) rather than a CDN. On the museum network
      the CDNs were unreachable, which silently dropped recognition to the
@@ -65,7 +70,7 @@
 
       <div class="fg">
         <label class="fl">Email Address <span style="color:#ef4444;">*</span></label>
-        <input id="reg-email" class="fi" type="email" inputmode="email" autocomplete="email" placeholder="e.g. juan.reyes@gmail.com">
+        <input id="reg-email" class="fi" type="email" inputmode="email" autocomplete="email" placeholder="e.g. juan.delacruz@example.com">
       </div>
 
       <!-- Name fields are only needed when creating an account -->
@@ -76,7 +81,7 @@
         </div>
         <div>
           <label class="fl">Last Name <span style="color:#ef4444;">*</span></label>
-          <input id="reg-last" class="fi" type="text" autocomplete="family-name" placeholder="e.g. Reyes">
+          <input id="reg-last" class="fi" type="text" autocomplete="family-name" placeholder="e.g. dela Cruz">
         </div>
       </div>
 
@@ -157,7 +162,7 @@
         </div>
         <div>
           <div id="confirm-name" style="font-size:calc(15px * var(--fs));font-weight:700;color:var(--td);">Chynna Lacsa</div>
-          <div id="confirm-email" style="font-size:calc(12px * var(--fs));color:var(--tl);">chynna.lacsa@gmail.com</div>
+          <div id="confirm-email" style="font-size:calc(12px * var(--fs));color:var(--tl);"><!-- set from STATE.email in app.js; left empty so Cloudflare Email Obfuscation has no address to rewrite --></div>
         </div>
       </div>
       <div style="font-size:calc(13px * var(--fs));color:var(--tm);line-height:1.6;margin-bottom:16px;">We'll create your visitor record with the details above. Your visit history and bookmarks are saved to this email, so you can continue from it on your next visit.</div>
@@ -363,8 +368,8 @@
           <span class="material-icons-round" style="font-size:22px;color:white;">person</span>
         </div>
         <div>
-          <div id="success-name" style="font-size:calc(15px * var(--fs));font-weight:700;color:white;">Juan M. Reyes</div>
-          <div id="success-email" style="font-size:calc(12px * var(--fs));color:rgba(255,255,255,0.7);">juan.reyes@gmail.com</div>
+          <div id="success-name" style="font-size:calc(15px * var(--fs));font-weight:700;color:white;">Juan S. dela Cruz</div>
+          <div id="success-email" style="font-size:calc(12px * var(--fs));color:rgba(255,255,255,0.7);"><!-- set from STATE.email in app.js; left empty so Cloudflare Email Obfuscation has no address to rewrite --></div>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
@@ -1523,9 +1528,20 @@
             <div style="width:36px;height:36px;border-radius:10px;background:var(--gp);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="material-icons-round" style="font-size:18px;color:var(--mode-primary);">confirmation_number</span></div>
             <div><div style="font-size:calc(13px * var(--fs));font-weight:600;color:var(--td);">Admission</div><div id="about-admission" style="font-size:calc(12px * var(--fs));color:var(--tl);">Baler residents enter free with a valid ID · Visitors ₱50.00</div></div>
           </div>
+          <!-- The address below, and the two copies of it on the privacy and
+               terms screens, sit inside Cloudflare "email_off" marker comments.
+               Cloudflare's Email Address Obfuscation rewrites any address it
+               finds in a text node into a /cdn-cgi/l/email-protection link and
+               injects email-decode.min.js to undo it at runtime. On this zone
+               that script 404s and is served back as an HTML error page, so the
+               browser reports a MIME-type refusal on every single load. The
+               markers are Cloudflare's own documented opt-out and leave the
+               address as plain text. All three are overwritten from the museum
+               API by app.js anyway; the markup is the offline fallback, which
+               is why it stays readable rather than being blanked. -->
           <div style="display:flex;align-items:center;gap:12px;padding:14px;">
             <div style="width:36px;height:36px;border-radius:10px;background:var(--gp);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="material-icons-round" style="font-size:18px;color:var(--mode-primary);">phone</span></div>
-            <div><div style="font-size:calc(13px * var(--fs));font-weight:600;color:var(--td);">Contact</div><div id="about-phone" style="font-size:calc(12px * var(--fs));color:var(--tl);">(042) 284-5678</div><div id="about-email" style="font-size:calc(12px * var(--fs));color:var(--tl);">museobaler@aurora.gov.ph</div></div>
+            <div><div style="font-size:calc(13px * var(--fs));font-weight:600;color:var(--td);">Contact</div><div id="about-phone" style="font-size:calc(12px * var(--fs));color:var(--tl);">(042) 284-5678</div><div id="about-email" style="font-size:calc(12px * var(--fs));color:var(--tl);"><!--email_off-->museobaler@aurora.gov.ph<!--/email_off--></div></div>
           </div>
         </div>
 
@@ -1654,7 +1670,7 @@
         <p>Questions about your information, or to exercise any right above:</p>
         <div class="legal-contact-row"><span class="material-icons-round">account_balance</span><span>Museo de Baler, Baler, Aurora</span></div>
         <div class="legal-contact-row"><span class="material-icons-round">call</span><span id="legal-phone-1">(042) 284-5678</span></div>
-        <div class="legal-contact-row"><span class="material-icons-round">mail</span><span id="legal-email-1">museobaler@aurora.gov.ph</span></div>
+        <div class="legal-contact-row"><span class="material-icons-round">mail</span><span id="legal-email-1"><!--email_off-->museobaler@aurora.gov.ph<!--/email_off--></span></div>
       </div>
 
       <div class="legal-foot">© 2026 Municipality of Baler, Aurora</div>
@@ -1769,7 +1785,7 @@
         <h3>Contact us</h3>
         <div class="legal-contact-row"><span class="material-icons-round">account_balance</span><span>Museo de Baler, Baler, Aurora</span></div>
         <div class="legal-contact-row"><span class="material-icons-round">call</span><span id="legal-phone-2">(042) 284-5678</span></div>
-        <div class="legal-contact-row"><span class="material-icons-round">mail</span><span id="legal-email-2">museobaler@aurora.gov.ph</span></div>
+        <div class="legal-contact-row"><span class="material-icons-round">mail</span><span id="legal-email-2"><!--email_off-->museobaler@aurora.gov.ph<!--/email_off--></span></div>
       </div>
 
       <div class="legal-foot">© 2026 Municipality of Baler, Aurora</div>
@@ -1920,6 +1936,52 @@
      are all in css/app.css. Inlined after the stylesheet they also outranked
      its dark-mode overrides, which is why the pills stayed light in dark mode. -->
 
-<script src="./js/app.js?v=20"></script>
+<script src="./js/app.js?v=22"></script>
+
+<!-- Did the app actually start?
+
+     app.js is written in the JavaScript of the last few years - optional
+     chaining, nullish coalescing - which a browser older than about 2020
+     cannot parse. A parse error is silent and total: the file never runs, no
+     handler in it can report anything, and what the visitor gets is this
+     page's background colour and nothing else. The same blank green screen is
+     what a truncated download or a corrupted cache entry produces.
+
+     So the last thing app.js does is set a flag, and this checks for it a
+     moment later. Deliberately written in the oldest JavaScript in the
+     project - var, no arrow functions, no template strings - because it has
+     to run on the browser that could not read the file it is reporting on.
+
+     The exhibit code entry is not offered here: it is part of the app that
+     did not load. What is offered is the one thing that helps, which is
+     knowing it is the phone and not the museum, and being able to ask at the
+     desk. -->
+<script>
+(function () {
+  function complain() {
+    if (window.__museobalerStarted || document.getElementById('mb-dead')) return;
+
+    var box = document.createElement('div');
+    box.id = 'mb-dead';
+    box.setAttribute('style', 'position:fixed;inset:0;z-index:2147483647;background:#2D5016;color:#fff;'
+      + 'display:flex;align-items:center;justify-content:center;padding:28px;text-align:center;'
+      + 'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.5');
+    box.innerHTML = '<div style="max-width:24em">'
+      + '<div style="font-size:19px;font-weight:700;margin-bottom:12px">Museo de Baler</div>'
+      + '<p style="font-size:15px;margin:0 0 14px">This phone\'s browser could not start the museum guide.</p>'
+      + '<p style="font-size:13px;opacity:.85;margin:0 0 18px">Updating the browser usually fixes it. '
+      + 'The museum is open either way - the front desk can help you with a printed guide.</p>'
+      + '<button type="button" onclick="window.location.reload()" '
+      + 'style="font:inherit;font-size:14px;padding:10px 18px;border:0;border-radius:10px;background:#fff;color:#2D5016">'
+      + 'Try again</button></div>';
+
+    document.body.appendChild(box);
+  }
+
+  // Long enough that a slow phone finishing its work is not accused of
+  // failing, short enough that nobody is left staring at an empty screen.
+  setTimeout(complain, 4000);
+})();
+</script>
 </body>
 </html>

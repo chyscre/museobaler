@@ -89,11 +89,23 @@ return Application::configure(basePath: dirname(__DIR__))
         // bodies included), the response headers the raw-PHP API used to
         // set by hand, and a per-address ceiling - see the limiters in
         // AppServiceProvider. CORS is handled by HandleCors from config/cors.php.
+        // ApiResponseHeaders is prepended, not appended, so that it wraps the
+        // rate limiter rather than sitting behind it. Appended, it never ran
+        // on the one answer a probe is most likely to collect: a 429 came back
+        // with no nosniff, no CORP, the wrong Referrer-Policy and PHP's own
+        // X-Powered-By still attached, because the throttle had already ended
+        // the request before the header middleware was reached. Laravel's
+        // routing pipeline renders an exception into a response inside the
+        // pipeline, so an outer middleware still gets to decorate it.
         $middleware->throttleApi('visitor-api');
-        $middleware->api(append: [
-            \App\Http\Middleware\SanitizeInput::class,
-            \App\Http\Middleware\ApiResponseHeaders::class,
-        ]);
+        $middleware->api(
+            prepend: [
+                \App\Http\Middleware\ApiResponseHeaders::class,
+            ],
+            append: [
+                \App\Http\Middleware\SanitizeInput::class,
+            ],
+        );
 
         // Trust Cloudflare as a reverse proxy — fixes scheme/cookie handling
         // (e.g. "Page Expired" on login) when accessed through a Cloudflare

@@ -57,6 +57,48 @@ class VisitorAccountTest extends TestCase
         return ['Authorization' => 'Bearer ' . $v->issueToken()['token']];
     }
 
+    /**
+     * A field sent as an array where a string belongs is a 422, not a 500.
+     *
+     * PHP throws on casting an array to a string, and three places cast
+     * before anything had checked the shape: rules() built the email's local
+     * part, the password rule ran beside the 'string' that should have caught
+     * it, and - worst placed of all - the login rate limiter, which runs
+     * ahead of validation, so the middleware whose job is to absorb abuse was
+     * the one that crashed on it. Each of those answered an unauthenticated
+     * caller with a 500 and, on a production install, sent an exception mail:
+     * an open way to make this system write its own alerts.
+     *
+     * Registration says which field is wrong; sign-in deliberately says only
+     * "invalid_credentials", because telling a malformed address apart from an
+     * unknown one is a way to enumerate accounts.
+     */
+    public function test_a_field_sent_as_an_array_is_refused_not_crashed_on(): void
+    {
+        $shapes = [
+            ['first_name' => ['Maria']],
+            ['last_name'  => ['x' => 'Santos']],
+            ['email'      => ['maria@example.org']],
+            ['password'   => ['correct horse battery'], 'password_confirmation' => ['correct horse battery']],
+            ['barangay'   => ['Buhangin'], 'visitor_type' => 'Local'],
+            ['country'    => ['Japan'], 'visitor_type' => 'Foreign'],
+            ['group_code' => ['ABCD']],
+            ['visitor_type' => ['Tourist']],
+        ];
+
+        foreach ($shapes as $shape) {
+            $this->postJson('/api/v1/visitors', $this->signUp($shape))
+                ->assertStatus(422)
+                ->assertJsonPath('error', 'validation_failed');
+        }
+
+        $this->postJson('/api/v1/visitors/login', ['email' => ['maria@example.org'], 'password' => ['x']])
+            ->assertStatus(401)
+            ->assertJsonPath('error', 'invalid_credentials');
+
+        $this->assertSame(0, Visitor::count(), 'none of that should have created an account');
+    }
+
     // -- Register ------------------------------------------------------------
 
     public function test_a_tourist_registers_owes_the_fee_and_waits_on_the_desk(): void

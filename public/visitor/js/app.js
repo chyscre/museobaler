@@ -35,9 +35,48 @@ const PUBLIC_BASE = (function () {
     : path.replace(/\/[^/]*$/, '') + '/..');  // opened from somewhere unexpected
 })();
 
-// The API returns short-lived signed media URLs. PUBLIC_BASE is retained for
-// the API itself because the visitor app may be hosted below a subdirectory.
 const API_BASE = PUBLIC_BASE + '/api/v1';
+
+/* Where a picture or an audio guide actually lives.
+
+   The API mints these as signed paths relative to the Laravel app -
+   /api/v1/media/... - and Laravel's relative signed URLs do not carry the
+   subdirectory the app is served from, because the signature is checked
+   against the path with that prefix already stripped. So the prefix is ours to
+   put back, and it is PUBLIC_BASE, not the bare origin.
+
+   This used to be window.location.origin, which is the same string on
+   localhost, on the LAN address and through a tunnel - and wrong on the one
+   entry point where the app sits below a path:
+
+     localhost      /visitor/                        origin + path -> 200
+     yeppie.test    /museobaler/public/visitor/      origin + path -> 404
+
+   On that host every exhibit photograph, every thumbnail, every gallery image
+   and every audio guide asked for a URL that does not exist, and the app drew
+   its broken-image fallback for the lot of them. The signature was never the
+   problem; the host was. */
+function mediaUrl(path) {
+  if (!path) return null;
+
+  return /^https?:\/\//i.test(path) ? path : PUBLIC_BASE + path;
+}
+
+/* How long a request may hang before it is treated as a failure.
+
+   Nothing here used to time out at all, and the difference that matters is
+   between a network that is gone and one that is merely not answering.
+   fetch() rejects promptly for the first; for the second - one bar at the back
+   of the museum, a captive portal that swallowed the request, a tunnel that
+   accepted the socket and went quiet - the promise simply stays pending. Every
+   .catch() below is what shows the offline notice or the retry, so none of
+   them ran, and the visitor was left watching a spinner with no way forward
+   while a perfectly good cached copy sat on the phone unused.
+
+   Twelve seconds is longer than any answer this API gives over a working
+   mobile connection, and the one call that legitimately takes longer - a
+   camera frame on its way up - asks for more with timeoutMs. */
+const REQUEST_TIMEOUT_MS = 12000;
 
 // Helper: fetch with the headers every API call needs.
 function apiFetch(url, options = {}) {
@@ -53,6 +92,13 @@ function apiFetch(url, options = {}) {
 
   options.headers = Object.assign(headers, options.headers || {});
 
+  // A caller that brought its own signal is managing this itself.
+  const limit = options.timeoutMs || REQUEST_TIMEOUT_MS;
+  delete options.timeoutMs;
+  const abort = (typeof AbortController === 'function' && !options.signal) ? new AbortController() : null;
+  const timer = abort ? setTimeout(() => abort.abort(), limit) : null;
+  if (abort) options.signal = abort.signal;
+
   return fetch(url, options).then(res => {
     // 401 = the session is gone (expired, or signed out elsewhere).
     // 403 = still registered, but the front desk has not cleared admission.
@@ -67,6 +113,8 @@ function apiFetch(url, options = {}) {
        Name the real cause in the console; the visitor still gets the friendly
        message, but whoever is debugging gets the URL and the status. */
     return res;
+  }).finally(() => {
+    if (timer) clearTimeout(timer);
   });
 }
 
@@ -101,18 +149,17 @@ function normalizeExhibit(ex) {
     author:      (ex.authors && ex.authors !== '0') ? ex.authors : (ex.author && ex.author !== '0' ? ex.author : 'Museum Curator'),
     date:        ex.date_published ? ex.date_published.substring(0,4) : (ex.date || ex.year || ''),
     views:       ex.scan_count   || ex.views || 0,
-    image:       ex.image ? (ex.image.startsWith('http') ? ex.image : window.location.origin + ex.image) : null,
+    image:       mediaUrl(ex.image),
     // The ~400px copy the API offers for list rows and cards. Falls back to
     // the display image when the API has not been updated or has no thumb.
-    thumb:       ex.thumb ? (ex.thumb.startsWith('http') ? ex.thumb : window.location.origin + ex.thumb)
-                 : null,
+    thumb:       mediaUrl(ex.thumb),
     gallery:     (ex.gallery || []).map(g => ({
-                   url: g.url ? (g.url.startsWith('http') ? g.url : window.location.origin + g.url) : '',
+                   url: mediaUrl(g.url) || '',
                    caption: g.caption || ''
                  })),
     languages:   ex.languages    || ['en','fil'],
     audio_file:  ex.audio_file   || null,
-    audio_url:   ex.audio_url ? (ex.audio_url.startsWith('http') ? ex.audio_url : window.location.origin + ex.audio_url) : null,
+    audio_url:   mediaUrl(ex.audio_url),
   };
 }
 
@@ -205,6 +252,22 @@ let tcChecked = false;
 let feedbackRating = 0;
 // Stays 0 for the great majority of visits, which have no guide at all.
 let guideRating = 0;
+
+/* What the visitor had filled in when a send failed.
+
+   The survey is three steps of the ARTA client satisfaction form plus a
+   comment, and the retry offered when it cannot be sent is openFeedback,
+   which starts by clearing every one of those fields. So the notice said
+   "try again", the visitor tapped it, and the form came back empty - on the
+   connection that had just failed, which is the one where they are most
+   likely to need a second attempt. Held here until it is either restored or
+   successfully sent. */
+let _feedbackDraft = null;
+
+// One send at a time. Two taps on Send used to file the survey twice, and a
+// duplicate response is not harmless: these rows are what the CSM percentages
+// in the ARTA report are counted from.
+let _feedbackSending = false;
 let currentFloor = 'ground';
 
 // ═══════════════════════════════════════════════════════════
@@ -248,6 +311,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!data || data.error) { handleSessionLost(); return; }
         applySession(data);
         routeAfterAuth(data);
+        // Anything the last visit could not send: this answer proves there is
+        // a network and a live session to send it with.
+        flushScanQueue();
       })
       .catch(() => {
         // The museum could not be reached and the service worker had no last
@@ -293,7 +359,46 @@ function loadState() {
 // ═══════════════════════════════════════════════════════════
 // NAVIGATION
 // ═══════════════════════════════════════════════════════════
+/**
+ * The screens that are the museum itself, as opposed to the way in.
+ *
+ * Every one of them is drawn from a gated endpoint and carries the bottom
+ * navigation, so reaching any of them without a session puts the visitor
+ * inside app chrome that cannot fill itself. That is not merely a blank
+ * screen: it looks like the admission gate was never there.
+ *
+ * The way in used to be exactly that. The privacy and terms screens are
+ * reachable from the consent line on the welcome and confirm screens - before
+ * an account exists at all - and they carry the same bottom navigation as the
+ * rest of the app. Tapping "Terms & Conditions" while creating an account and
+ * then tapping Home walked straight past registration: museum chrome with no
+ * token behind it, every request 401ing into an empty screen.
+ */
+const GATED_SCREENS = [
+  's-mode-choice', 's-home', 's-home-exhibits', 's-exhibit', 's-map',
+  's-scan-storyline', 's-scan-free',
+  's-profile', 's-profile-scanned', 's-profile-bookmarked', 's-profile-halls',
+  's-settings', 's-about',
+];
+
+/** Signed in AND cleared by the desk: actually admitted, not merely known. */
+function inMuseum() {
+  return !!(STATE.token && STATE.cleared);
+}
+
 function showScreen(id) {
+  // One gate, in front of every route into the museum. The nav bars on the
+  // legal screens were the hole this closes, but they were only one caller of
+  // showScreen among dozens - and any of them is a hole if it can be reached
+  // before the desk has cleared the visitor. So the check lives here, not at
+  // the call sites, and holds for whatever screen is wired up next.
+  if (GATED_SCREENS.indexOf(id) !== -1 && !inMuseum()) {
+    // Registered but not yet admitted: back to the waiting screen, repainted
+    // and polling, rather than a bare screen swap that would leave it stale.
+    if (STATE.token) { showPending(null); return; }
+    id = 's-register';
+  }
+
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const el = document.getElementById(id);
   if (el) {
@@ -657,6 +762,9 @@ function applySession(v) {
   // the server's 403 would wipe it on the first request; offline, this does.
   if (STATE.visitorId && v.visitor_id && String(STATE.visitorId) !== String(v.visitor_id)) {
     clearOfflineApiCache();
+    // And the previous visitor's unsent scans, which would otherwise be filed
+    // under this account the moment the network came back.
+    clearScanQueue();
   }
   STATE.token       = v.token || STATE.token;
   STATE.visitorId   = v.visitor_id;
@@ -1308,6 +1416,56 @@ function openExhibitCard(ex) {
   }
 }
 
+/* The picture on a card, and what is drawn when it never arrives.
+
+   Three templates used to write this markup for themselves and disagreed
+   about the failure. Two hid the <img> and left the black frame that had
+   been put behind it, so a picture whose file is missing showed as a black
+   rectangle; one restored the category gradient. The gradient is the right
+   answer - it is exactly what a card with no picture at all draws - so it is
+   the only one now, written once.
+
+   The title comes from the panel and lands inside an attribute here, so it
+   is escaped on the way in: a curator's quotation mark would otherwise close
+   the attribute early and take the rest of the card with it. */
+function exhibitImg(ex, style) {
+  const bg = escapeHtml(String(ex.gradient || 'var(--ew)').replace(/['"\\]/g, ''));
+
+  return '<img src="' + escapeHtml(ex.thumb || ex.image) + '"'
+    + ' alt="' + escapeHtml(ex.title || '') + '"'
+    + ' loading="lazy" decoding="async" style="' + style + '"'
+    + ' onerror="this.parentElement.style.background=\'' + bg + '\';this.style.display=\'none\'">';
+}
+
+/* The exhibit screen with no photograph: the category's gradient and its
+   icon, at the fixed height the hero has when there is nothing to frame.
+   Used both when the exhibit has no picture and when the one it has fails
+   to load. */
+function heroPlaceholder(ex) {
+  const hero     = document.getElementById('ex-hero');
+  const heroIcon = document.getElementById('ex-hero-icon');
+  const heroImg  = document.getElementById('ex-hero-img');
+
+  if (hero) {
+    hero.style.background = ex.gradient || 'linear-gradient(160deg,var(--bd),var(--bm))';
+    hero.style.height = '220px';
+    hero.style.minHeight = '';
+  }
+  if (heroImg) { heroImg.style.display = 'none'; heroImg.removeAttribute('src'); }
+  if (heroIcon) { heroIcon.parentElement.style.display = ''; heroIcon.textContent = ex.icon || 'museum'; }
+}
+
+/* An exhibit handed to an onclick as JSON.
+
+   Escaped, rather than having only its double quotes turned into entities:
+   inside an attribute the browser decodes entities before the JS parser sees
+   the text, so a title containing the literal characters `&quot;` decoded
+   into a real quotation mark and ended the string - which is a curator's
+   typo breaking every card on the screen. */
+function cardPayload(ex) {
+  return escapeHtml(JSON.stringify(ex));
+}
+
 // A padlock for a locked card; an open lock in the accent colour once scanned.
 function lockGlyph(ex, styleExtra, openColor, lockedColor) {
   const open = isUnlocked(ex);
@@ -1331,17 +1489,17 @@ function renderMostViewed(exhibits) {
   if (!el) return;
   const top = [...exhibits].sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 4);
   el.innerHTML = top.map(ex => `
-    <div onclick="openExhibitCard(${JSON.stringify(ex).replace(/"/g,'&quot;')})" style="flex-shrink:0;width:130px;background:var(--w);border-radius:14px;overflow:hidden;box-shadow:var(--sh);cursor:pointer;">
+    <div onclick="openExhibitCard(${cardPayload(ex)})" style="flex-shrink:0;width:130px;background:var(--w);border-radius:14px;overflow:hidden;box-shadow:var(--sh);cursor:pointer;">
       <div style="height:72px;position:relative;overflow:hidden;${ex.image ? 'background:#000' : (tileBg(ex))};display:flex;align-items:center;justify-content:center;">
         ${ex.image
-          ? `<img src="${ex.thumb || ex.image}" alt="${ex.title}" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;" onerror="this.style.display='none'">`
+          ? exhibitImg(ex, 'width:100%;height:100%;object-fit:cover;position:absolute;inset:0;')
           : `<span class="material-icons-round" style="font-size:32px;color:rgba(255,255,255,0.7);">${ex.icon || 'museum'}</span>`
         }
         ${lockGlyph(ex, 'position:absolute;bottom:4px;right:6px;font-size:14px;z-index:1;text-shadow:0 1px 3px rgba(0,0,0,0.5);', '#a7e08a', 'rgba(255,255,255,0.8)')}
       </div>
       <div style="padding:8px;">
-        <div style="font-size:calc(11px * var(--fs));font-weight:700;color:var(--td);line-height:1.3;">${ex.title}</div>
-        <div style="font-size:calc(10px * var(--fs));color:var(--tl);margin-top:3px;">${ex.hall} · ${ex.category}</div>
+        <div style="font-size:calc(11px * var(--fs));font-weight:700;color:var(--td);line-height:1.3;">${escapeHtml(ex.title)}</div>
+        <div style="font-size:calc(10px * var(--fs));color:var(--tl);margin-top:3px;">${escapeHtml(ex.hall)} · ${escapeHtml(ex.category)}</div>
       </div>
     </div>`).join('');
 }
@@ -1362,16 +1520,16 @@ function populateAllExhibits() {
 function exhibitListItem(ex) {
   const thumb = ex.image
     ? `<div style="width:44px;height:44px;border-radius:12px;overflow:hidden;flex-shrink:0;background:#000;">
-         <img src="${ex.thumb || ex.image}" alt="${ex.title}" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentElement.style.background='${ex.gradient||'var(--ew)'}';this.style.display='none'">
+         ${exhibitImg(ex, 'width:100%;height:100%;object-fit:cover;')}
        </div>`
     : `<div style="width:44px;height:44px;border-radius:12px;${tileBg(ex)};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
          <span class="material-icons-round" style="font-size:22px;color:white;">${ex.icon || 'museum'}</span>
        </div>`;
-  return `<div onclick="openExhibitCard(${JSON.stringify(ex).replace(/"/g,'&quot;')})" style="background:var(--w);border-radius:14px;padding:12px;display:flex;align-items:center;gap:12px;box-shadow:var(--sh);cursor:pointer;">
+  return `<div onclick="openExhibitCard(${cardPayload(ex)})" style="background:var(--w);border-radius:14px;padding:12px;display:flex;align-items:center;gap:12px;box-shadow:var(--sh);cursor:pointer;">
     ${thumb}
     <div style="flex:1;min-width:0;">
-      <div style="font-size:calc(13px * var(--fs));font-weight:700;color:var(--td);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${ex.title}</div>
-      <div style="font-size:calc(11px * var(--fs));color:var(--tl);margin-top:2px;">${ex.hall} · ${ex.category} · ${ex.id}</div>
+      <div style="font-size:calc(13px * var(--fs));font-weight:700;color:var(--td);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(ex.title)}</div>
+      <div style="font-size:calc(11px * var(--fs));color:var(--tl);margin-top:2px;">${escapeHtml(ex.hall)} · ${escapeHtml(ex.category)} · ${escapeHtml(ex.id)}</div>
     </div>
     ${lockGlyph(ex, 'font-size:18px;')}
   </div>`;
@@ -1833,7 +1991,9 @@ const ImageSearchEngine = (() => {
       form.append('frame', blob, 'frame.jpg');
       if (STATE.visitorId) form.append('visitor_id', STATE.visitorId);
 
-      const res = await apiFetch(`${API_BASE}/recognition`, { method: 'POST', body: form });
+      // A frame on its way up, not an answer coming down: allowed longer than
+      // the ordinary ceiling, because a megabyte over museum Wi-Fi can take it.
+      const res = await apiFetch(`${API_BASE}/recognition`, { method: 'POST', body: form, timeoutMs: 25000 });
 
       // Everyone on the museum's Wi-Fi shares one rate-limit budget, so a busy
       // floor can hit the ceiling through ordinary use. Backing off for the
@@ -2106,17 +2266,119 @@ function logScan(exhibit, scanType = 'qr', postToServer = true) {
 
   if (!postToServer) return;
 
-  apiFetch(`${API_BASE}/scans`, {
+  const payload = {
+    // The server attributes the scan to whoever the token belongs to, so no
+    // visitor_id is sent — it would be ignored anyway.
+    exhibit_id:  exhibit.exhibit_id || parseInt(String(exhibit.id).replace(/\D/g,'')) || null,
+    scan_type:   scanType,
+  };
+
+  postScan(payload).then(ok => {
+    if (ok) return flushScanQueue();   // the network is back; empty the backlog
+
+    // scanned_at is added only here, on the way into the queue. Sent on every
+    // scan it would put the phone's clock in charge of the museum's figures -
+    // and a handset two days out would have every scan refused. Sent only for
+    // one that waited, it is the difference between a hall that looks
+    // unvisited and one that looks visited at the moment the signal returned.
+    queueScan(Object.assign({}, payload, { scanned_at: new Date().toISOString() }));
+  });
+}
+
+/* Scans made where there is no signal.
+
+   A scan is the museum's record that an exhibit was opened, and the read half
+   of that was built around the walls that eat the Wi-Fi: the exhibit itself
+   comes from the cache. The write half was not. This posted once and ended in
+   `.catch(() => {})`, so a scan made in the dead zone at the back of the
+   building was dropped without trace, and the halls with the worst reception
+   were the ones the analytics called least interesting.
+
+   Duplicates are guarded, not eliminated: an item leaves the queue before it
+   is sent and goes back if it fails, and a tab will not start a flush while
+   another tab's is still fresh. Two tabs racing could still file one scan
+   twice. That is acceptable here - repeat scans of an exhibit are ordinary
+   data - and it is exactly why the survey is never queued: a duplicate there
+   would move the published CSM percentages. */
+const SCAN_QUEUE_KEY  = 'mb_scan_queue';
+const SCAN_FLUSH_KEY  = 'mb_scan_flush';
+const SCAN_QUEUE_MAX  = 200;     // a long visit with no signal at all
+const SCAN_FLUSH_MS   = 30000;   // how long another tab's flush is respected
+
+let _scanFlushing = false;
+
+function readScanQueue() {
+  try {
+    const list = JSON.parse(localStorage.getItem(SCAN_QUEUE_KEY) || '[]');
+    return Array.isArray(list) ? list : [];
+  } catch (e) { return []; }
+}
+
+function writeScanQueue(list) {
+  try {
+    if (!list.length) localStorage.removeItem(SCAN_QUEUE_KEY);
+    // The oldest go first if there are somehow more than the ceiling: the
+    // recent ones are the likelier to still be inside the API's time window.
+    else localStorage.setItem(SCAN_QUEUE_KEY, JSON.stringify(list.slice(-SCAN_QUEUE_MAX)));
+  } catch (e) { /* quota, or storage blocked: the scan is lost, the visit is not */ }
+}
+
+function queueScan(item) {
+  writeScanQueue(readScanQueue().concat([item]));
+}
+
+function clearScanQueue() {
+  try { localStorage.removeItem(SCAN_QUEUE_KEY); } catch (e) {}
+}
+
+/** One scan. Resolves true when the server has it, or will never take it. */
+function postScan(item) {
+  return apiFetch(`${API_BASE}/scans`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      // The server attributes the scan to whoever the token belongs to, so no
-      // visitor_id is sent — it would be ignored anyway.
-      exhibit_id:  exhibit.exhibit_id || parseInt(String(exhibit.id).replace(/\D/g,'')) || null,
-      scan_type:   scanType,
-    })
-  }).catch(() => {});
+    body: JSON.stringify(item),
+  }).then(r => {
+    // 422 is as final as 200 for a queue: an exhibit deleted since, or a
+    // scanned_at that has aged out of the window the API accepts. Keeping it
+    // would mean a queue that can never empty and retries on every reconnect
+    // for the rest of the visit.
+    if (r.ok || r.status === 422) return true;
+    return false;      // 401, 403, 5xx, a gateway: worth another attempt
+  }).catch(() => false);
 }
+
+function flushScanQueue() {
+  if (_scanFlushing || !STATE.token) return Promise.resolve();
+
+  const queued = readScanQueue();
+  if (!queued.length) return Promise.resolve();
+
+  try {
+    const started = Number(localStorage.getItem(SCAN_FLUSH_KEY) || 0);
+    if (started && Date.now() - started < SCAN_FLUSH_MS) return Promise.resolve();
+    localStorage.setItem(SCAN_FLUSH_KEY, String(Date.now()));
+  } catch (e) { /* no storage: this tab is the only one that could be flushing */ }
+
+  _scanFlushing = true;
+  writeScanQueue([]);    // claimed; only what fails goes back
+
+  // One at a time, in the order they happened: a phone coming back into
+  // coverage should not open sixty connections at once.
+  return queued.reduce(
+    (chain, item) => chain.then(failed => postScan(item).then(ok => ok ? failed : failed.concat([item]))),
+    Promise.resolve([])
+  ).then(failed => {
+    // Anything queued while this was running is still in there.
+    if (failed.length) writeScanQueue(failed.concat(readScanQueue()));
+  }).finally(() => {
+    _scanFlushing = false;
+    try { localStorage.removeItem(SCAN_FLUSH_KEY); } catch (e) {}
+  });
+}
+
+// The network coming back is the moment to try again - the same signal the
+// offline notice listens for.
+window.addEventListener('online', flushScanQueue);
 
 // ── Map pins ─────────────────────────────────────────────────
 // Each exhibit's pin comes from map_x/map_y saved on the admin Museum Map
@@ -2302,13 +2564,13 @@ function showExhibitPreview(ex) {
       <div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:16px;">
         <div style="width:64px;height:64px;border-radius:16px;overflow:hidden;flex-shrink:0;${ex.image ? 'background:#000' : (tileBg(ex))};">
           ${ex.image
-            ? `<img src="${ex.thumb || ex.image}" alt="${ex.title}" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">`
+            ? exhibitImg(ex, 'width:100%;height:100%;object-fit:cover;')
             : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;"><span class="material-icons-round" style="font-size:32px;color:rgba(255,255,255,0.8);">${ex.icon || 'museum'}</span></div>`
           }
         </div>
         <div style="flex:1;min-width:0;">
-          <div style="font-family:'Young Serif',serif;font-size:calc(17px * var(--fs));color:var(--td);line-height:1.3;">${ex.title}</div>
-          <div style="font-size:calc(12px * var(--fs));color:var(--tl);margin-top:4px;">${ex.hall} · ${ex.category}${ex.year ? ' · ' + ex.year : ''}</div>
+          <div style="font-family:'Young Serif',serif;font-size:calc(17px * var(--fs));color:var(--td);line-height:1.3;">${escapeHtml(ex.title)}</div>
+          <div style="font-size:calc(12px * var(--fs));color:var(--tl);margin-top:4px;">${escapeHtml(ex.hall)} · ${escapeHtml(ex.category)}${ex.year ? ' · ' + escapeHtml(ex.year) : ''}</div>
         </div>
       </div>
       <div style="background:var(--w);border-radius:14px;padding:14px 16px;margin-bottom:14px;border:1.5px dashed var(--es);">
@@ -2350,12 +2612,21 @@ function renderExhibit(ex, opts) {
   const heroImg = document.getElementById('ex-hero-img');
   if (ex.image) {
     if (hero) { hero.style.background = '#000'; hero.style.height = 'auto'; hero.style.minHeight = '220px'; }
-    if (heroImg) { heroImg.src = ex.image; heroImg.alt = ex.title || ''; heroImg.style.display = 'block'; }
+    if (heroImg) {
+      // The picture may not arrive - a file missing behind its database row, a
+      // signature that expired while the phone was asleep, a dead zone with
+      // nothing cached. This element had no error handler at all, so what the
+      // visitor got was the black frame put there a line above with the
+      // browser's own broken-image glyph in the middle of it. Fall back to
+      // exactly what an exhibit with no picture draws instead.
+      heroImg.onerror = () => heroPlaceholder(ex);
+      heroImg.src = ex.image;
+      heroImg.alt = ex.title || '';
+      heroImg.style.display = 'block';
+    }
     if (heroIcon) heroIcon.parentElement.style.display = 'none';
   } else {
-    if (hero) { hero.style.background = ex.gradient || 'linear-gradient(160deg,var(--bd),var(--bm))'; hero.style.height = '220px'; hero.style.minHeight = ''; }
-    if (heroImg) { heroImg.style.display = 'none'; heroImg.removeAttribute('src'); }
-    if (heroIcon) { heroIcon.parentElement.style.display = ''; heroIcon.textContent = ex.icon || 'museum'; }
+    heroPlaceholder(ex);
   }
   const badge = document.getElementById('ex-badge');
   if (badge) badge.textContent = `${ex.id} · ${ex.hall}`;
@@ -2377,7 +2648,9 @@ function renderExhibit(ex, opts) {
       { label: ex.year, style: 'background:var(--ew);color:var(--tm);' },
       ex.storyline ? { label: `Storyline #${ex.storyline}`, style: 'background:var(--mode-pale);color:var(--mode-primary);' } : null,
     ].filter(Boolean);
-    tagsEl.innerHTML = tags.map(t => `<div style="border-radius:8px;padding:4px 10px;font-size:calc(11px * var(--fs));font-weight:600;${t.style}">${t.label}</div>`).join('');
+    // The label is a hall name or a category from the panel, so it is escaped:
+    // the styles beside it are ours, the text is not.
+    tagsEl.innerHTML = tags.map(t => `<div style="border-radius:8px;padding:4px 10px;font-size:calc(11px * var(--fs));font-weight:600;${t.style}">${escapeHtml(t.label)}</div>`).join('');
   }
 
   // Description
@@ -3120,8 +3393,8 @@ function onProfileEnter() {
             <span class="material-icons-round" style="font-size:22px;color:white;">${ex.icon || 'museum'}</span>
           </div>
           <div style="flex:1;min-width:0;">
-            <div style="font-size:calc(13px * var(--fs));font-weight:700;color:var(--td);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${ex.title}</div>
-            <div style="font-size:calc(11px * var(--fs));color:var(--tl);margin-top:2px;">${ex.hall} · ${timeAgo(ex.viewedAt)}</div>
+            <div style="font-size:calc(13px * var(--fs));font-weight:700;color:var(--td);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(ex.title)}</div>
+            <div style="font-size:calc(11px * var(--fs));color:var(--tl);margin-top:2px;">${escapeHtml(ex.hall)} · ${timeAgo(ex.viewedAt)}</div>
           </div>
           <span class="material-icons-round" style="font-size:18px;color:var(--tl);">chevron_right</span>
         </div>`).join('');
@@ -3142,7 +3415,7 @@ function populateScanned() {
           <div style="width:44px;height:44px;border-radius:12px;${tileBg(ex)};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
             <span class="material-icons-round" style="font-size:22px;color:white;">${ex.icon || 'museum'}</span>
           </div>
-          <div style="flex:1;"><div style="font-size:calc(13px * var(--fs));font-weight:700;color:var(--td);">${ex.title}</div><div style="font-size:calc(11px * var(--fs));color:var(--tl);margin-top:2px;">${ex.hall} · ${ex.category}</div></div>
+          <div style="flex:1;"><div style="font-size:calc(13px * var(--fs));font-weight:700;color:var(--td);">${escapeHtml(ex.title)}</div><div style="font-size:calc(11px * var(--fs));color:var(--tl);margin-top:2px;">${escapeHtml(ex.hall)} · ${escapeHtml(ex.category)}</div></div>
           <span class="material-icons-round" style="font-size:18px;color:var(--tl);">chevron_right</span>
         </div>`).join('');
     }
@@ -3218,7 +3491,7 @@ function populateBookmarked() {
           <div style="width:44px;height:44px;border-radius:12px;${tileBg(ex)};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
             <span class="material-icons-round" style="font-size:22px;color:white;">${ex.icon || 'museum'}</span>
           </div>
-          <div style="flex:1;"><div style="font-size:calc(13px * var(--fs));font-weight:700;color:var(--td);">${ex.title}</div><div style="font-size:calc(11px * var(--fs));color:var(--tl);margin-top:2px;">${ex.hall} · ${ex.category}</div></div>
+          <div style="flex:1;"><div style="font-size:calc(13px * var(--fs));font-weight:700;color:var(--td);">${escapeHtml(ex.title)}</div><div style="font-size:calc(11px * var(--fs));color:var(--tl);margin-top:2px;">${escapeHtml(ex.hall)} · ${escapeHtml(ex.category)}</div></div>
           <span class="material-icons-round" style="font-size:20px;color:var(--accent-text);">bookmark</span>
         </div>`).join('');
     }
@@ -3704,6 +3977,21 @@ function openFeedback() {
       // SQD5 defaults to N/A — admission is usually free.
       SURVEY.questions.forEach(q => { if (q.default_na) SURVEY.answers[q.code] = null; });
 
+      // Anything the visitor had already answered when a send failed, put
+      // back before the steps are painted - renderSurveyStep draws from
+      // SURVEY.answers, so this is all it takes for the choices to reappear
+      // where they were. Questions that have since left the bank are dropped
+      // rather than sent to a server that would refuse the lot.
+      const draft = _feedbackDraft;
+      _feedbackDraft = null;
+      if (draft) {
+        Object.keys(draft.answers || {}).forEach(code => {
+          if (code.charAt(0) === '_' || SURVEY.questions.some(q => q.code === code)) {
+            SURVEY.answers[code] = draft.answers[code];
+          }
+        });
+      }
+
       const block = document.getElementById('guide-feedback');
       if (block) {
         block.style.display = SURVEY.guided ? 'block' : 'none';
@@ -3719,6 +4007,8 @@ function openFeedback() {
       document.getElementById('survey-loading').style.display = 'none';
       document.getElementById('survey-nav').style.display = 'block';
       showSurveyStep(1);
+
+      if (draft) restoreFeedbackDraft(draft);
     })
     .catch(() => {
       // No survey without the server. This used to drop to a star-only form,
@@ -3915,8 +4205,26 @@ function setRating(n) {
   });
 }
 
+/* The stars, the comment and the step the visitor had reached.
+   The answers themselves are already back in SURVEY.answers by the time this
+   runs - see openFeedback - so this is the rest of the sheet. */
+function restoreFeedbackDraft(draft) {
+  setRating(draft.rating || 0);
+  if (draft.guideRating) setGuideRating(draft.guideRating);
+
+  const textEl = document.getElementById('feedback-text');
+  if (textEl) textEl.value = draft.comment || '';
+
+  if (draft.step && draft.step !== 1) showSurveyStep(draft.step);
+
+  showToast(surveyLang() === 'fil'
+    ? 'Nandito pa ang mga sagot mo — pindutin ang Ipasa kapag ready na.'
+    : 'Your answers are still here — tap Submit when you are ready.', 4000);
+}
+
 function submitFeedback() {
   const lang = surveyLang();
+  if (_feedbackSending) return;
   if (!feedbackRating) { showToast(lang === 'fil' ? 'Pumili ng rating' : 'Please select a rating'); return; }
   const text = document.getElementById('feedback-text')?.value || '';
 
@@ -3938,6 +4246,18 @@ function submitFeedback() {
     body.region = SURVEY.answers._region || '';
   }
 
+  // Everything on the sheet, kept until the server has it. The answers are
+  // copied rather than referenced: reopening the sheet replaces SURVEY.answers
+  // wholesale, and this has to survive that.
+  const draft = {
+    rating: feedbackRating,
+    guideRating: guideRating,
+    comment: text,
+    answers: Object.assign({}, SURVEY.answers),
+    step: SURVEY.step,
+  };
+
+  _feedbackSending = true;
   showLoading(true);
   apiFetch(`${API_BASE}/feedback`, {
     method: 'POST',
@@ -3952,8 +4272,10 @@ function submitFeedback() {
   .then(d => {
     if (!d) return;
     if (d.error === 'missing_answer') {
-      // The question bank changed while the sheet was open; reload it.
+      // The question bank changed while the sheet was open; reload it, with
+      // what they answered carried over into whatever the form asks now.
       showToast(lang === 'fil' ? 'May kulang na sagot — pakisubukang muli' : 'An answer is missing — please try again');
+      _feedbackDraft = draft;
       openFeedback();
       return;
     }
@@ -3965,12 +4287,17 @@ function submitFeedback() {
     showToast(lang === 'fil' ? 'Maraming salamat sa iyong sagot!' : 'Thank you for your feedback!');
   })
   .catch(() => {
-    // This used to thank the visitor anyway. Their answers are still on
-    // the sheet; say so and let them try again when the museum is back.
+    // This used to thank the visitor anyway, and then it closed the sheet and
+    // offered a retry that cleared it. Keep what they wrote, and hand the
+    // notice a retry that puts it back.
+    _feedbackDraft = draft;
     closeFeedback();
     showOfflineNotice(openFeedback);
   })
-  .finally(() => showLoading(false));
+  .finally(() => {
+    _feedbackSending = false;
+    showLoading(false);
+  });
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3990,8 +4317,11 @@ function doLogout() {
   if (STATE.token) {
     apiFetch(`${API_BASE}/visitors/logout`, { method: 'POST' }).catch(() => {});
   }
-  // And the offline copies of what that session was allowed to see.
+  // And the offline copies of what that session was allowed to see, plus any
+  // scan it never managed to send - that history belongs to the account that
+  // is signing out, not to whoever signs in next on this handset.
   clearOfflineApiCache();
+  clearScanQueue();
 
   STATE = {
     visitorId: null, name: '', email: '', provider: 'manual',
@@ -4165,6 +4495,14 @@ function openLegal(screenId) {
     _legalReturn = current.id;
   }
   showScreen(screenId);
+
+  // Read before there is an account, the page must not offer the museum's own
+  // navigation. showScreen now refuses those destinations anyway, but a row of
+  // tabs that bounce the reader back to the welcome screen is its own kind of
+  // broken — so on the way in the bar is simply not there.
+  const nav = document.querySelector('#' + screenId + ' .bnav');
+  if (nav) nav.style.display = inMuseum() ? '' : 'none';
+
   // Fills the contact block with the museum's real phone and email.
   try { loadMuseumInfo(); } catch (e) {}
 }
@@ -4470,6 +4808,12 @@ function logAttendance(lat, lng, accuracy) {
     if (data && data.ok && data.attendance_id) {
       STATE._attendanceId   = data.attendance_id;
       STATE._attendanceDate = _today();
+      // The proof that later calls about this row come from the phone that
+      // made it. An anonymous row has no token behind it, and attendance ids
+      // are sequential, so without this anyone could close out - or inflate -
+      // any unregistered visitor's stay. Kept in saved state because the
+      // exit is reported on a later page load.
+      STATE._attendanceHandle = data.handle || null;
       saveState();
     }
   })
@@ -4500,6 +4844,7 @@ function markLastSeen() {
     body: JSON.stringify({
       event:         'exit',
       duration_mins: Math.round((Date.now() - _entryTime) / 60000),
+      handle:        STATE._attendanceHandle || undefined,
     })
   }).catch(() => {});
 }
@@ -4520,6 +4865,7 @@ function logAttendanceExit(durationMins) {
     body: JSON.stringify({
       event:         'exit',
       duration_mins: durationMins,
+      handle:        STATE._attendanceHandle || undefined,
     })
   }).catch(() => {});
 }
@@ -4533,6 +4879,7 @@ function claimAttendance(visitorId, visitorName) {
     body: JSON.stringify({
       visitor_id:    parseInt(visitorId),
       visitor_name:  visitorName,
+      handle:        STATE._attendanceHandle || undefined,
     })
   })
   .then(r => r.json())
@@ -4549,3 +4896,9 @@ function claimAttendance(visitorId, visitorName) {
   })
   .catch(() => {});
 }
+
+/* The app parsed and ran. index.html checks for this a few seconds after load
+   and, finding it absent, says so rather than leaving a blank green screen -
+   see the note there. Last line in the file on purpose: anything above it
+   failing to parse means this never runs, which is exactly the signal. */
+window.__museobalerStarted = true;

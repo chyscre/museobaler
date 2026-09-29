@@ -101,7 +101,15 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('visitor-register', fn (Request $request) => Limit::perMinute(10)->by('register:' . $request->ip()));
 
         RateLimiter::for('visitor-login', function (Request $request) {
-            $email = mb_strtolower(trim((string) $request->input('email')));
+            // The limiter runs before validation, so it sees whatever was
+            // posted rather than something already checked. `{"email":["a"]}`
+            // reached this cast and threw, and the caller was handed a 500 -
+            // with a stack trace in the body, and an alert mail on a
+            // production install - by the one middleware whose whole job is
+            // to absorb abuse. Anything that is not a scalar is nobody's
+            // account, and shares the empty key.
+            $posted = $request->input('email');
+            $email  = mb_strtolower(trim(is_scalar($posted) ? (string) $posted : ''));
 
             return [
                 Limit::perMinute(6)->by('login:acct:' . md5($email)),
