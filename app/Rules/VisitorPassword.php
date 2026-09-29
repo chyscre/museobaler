@@ -16,6 +16,14 @@ class VisitorPassword implements ValidationRule
 
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
+        // Laravel runs every rule in a set, so this one cannot assume the
+        // 'string' beside it passed. A password posted as an array is that
+        // rule's to refuse; casting it here threw an ErrorException that
+        // reached the caller as a 500 with a stack trace in the body.
+        if (!is_scalar($value)) {
+            return;
+        }
+
         $code = VisitorPasswordPolicy::check((string) $value, $this->personal);
 
         if ($code !== null) {

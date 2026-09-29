@@ -29,6 +29,14 @@ const ctx = createContext({
   Headers,
   Response,
   fetch() {},
+  // The worker waits NETWORK_PATIENCE_MS on a stalled request before it
+  // reaches for the cached copy. That is four seconds by design and four
+  // seconds is not something to spend in a test suite, so the clock the
+  // worker is given here is compressed: anything it asks to wait a second or
+  // more for happens in twenty milliseconds. Nothing else about the race
+  // changes - it is still setTimeout against a pending fetch.
+  setTimeout: (fn, ms) => setTimeout(fn, ms >= 1000 ? 20 : ms),
+  clearTimeout,
 });
 runInContext(source, ctx);
 
@@ -124,4 +132,95 @@ test('everything else keys the way it always did', () => {
   // A third-party URL keeps its query - for Google Fonts it is the request.
   const font = 'https://fonts.googleapis.com/css2?family=Young+Serif';
   assert.equal(ctx.keyFor({ url: font }), font);
+});
+
+// ── networkFirst: which answer the page is actually handed ──────────────────
+//
+// The routing tests above say the exhibit list MAY be answered from the last
+// good copy. These say when it IS - and the case that matters is the one that
+// used to be unreachable: a connection that has not died, it has just stopped
+// answering. fetch() rejects for a dead network and the old catch handled that
+// correctly; for one bar inside a stone building the promise simply stays
+// pending, which is precisely where a phone holding a cached exhibit list was
+// left waiting on the network instead.
+
+const URL_EXHIBITS = 'https://museo.example/api/v1/exhibits?lang=en';
+
+/** A cache stub, seeded with whatever the test wants already held. */
+function withCache(seed = {}) {
+  const store = new Map(Object.entries(seed));
+  const calls = { deleted: 0 };
+
+  ctx.caches = {
+    open: async () => ({
+      match: async (k) => store.get(k),
+      put:   async (k, v) => { store.set(k, v); },
+    }),
+    delete: async () => { calls.deleted++; store.clear(); return true; },
+  };
+
+  return { store, calls };
+}
+
+/** The FetchEvent, reduced to what networkFirst touches. */
+function fetchEvent(url) {
+  const pending = [];
+  return {
+    request: { url, method: 'GET', headers: new Headers() },
+    waitUntil: (p) => pending.push(p),
+    pending,
+  };
+}
+
+test('a stalled network gives way to the last good answer', async () => {
+  withCache({ [URL_EXHIBITS]: new Response('the last good list', { status: 200 }) });
+  ctx.fetch = () => new Promise(() => {});      // accepted, then silence
+
+  const res = await ctx.networkFirst(fetchEvent(URL_EXHIBITS));
+
+  assert.equal(await res.text(), 'the last good list');
+  assert.equal(res.headers.get('X-Museobaler-Cache'), 'slow-network');
+});
+
+test('a dead network gives way to it too, and says which it was', async () => {
+  withCache({ [URL_EXHIBITS]: new Response('the last good list', { status: 200 }) });
+  ctx.fetch = () => Promise.reject(new TypeError('Failed to fetch'));
+
+  const res = await ctx.networkFirst(fetchEvent(URL_EXHIBITS));
+
+  assert.equal(await res.text(), 'the last good list');
+  assert.equal(res.headers.get('X-Museobaler-Cache'), 'offline-fallback');
+});
+
+test('a live answer still beats the cached one, and replaces it', async () => {
+  const { store } = withCache({ [URL_EXHIBITS]: new Response('yesterday', { status: 200 }) });
+  ctx.fetch = () => Promise.resolve(new Response('today', { status: 200 }));
+
+  const event = fetchEvent(URL_EXHIBITS);
+  const res   = await ctx.networkFirst(event);
+
+  assert.equal(await res.text(), 'today');
+  assert.equal(res.headers.get('X-Museobaler-Cache'), null, 'a fresh answer is not labelled stale');
+
+  await Promise.all(event.pending);
+  assert.equal(await store.get(URL_EXHIBITS).text(), 'today', 'the cache followed the network');
+});
+
+test('a phone that is no longer welcome loses the cache it was keeping', async () => {
+  const { calls } = withCache({ [URL_EXHIBITS]: new Response('paid-for content', { status: 200 }) });
+  ctx.fetch = () => Promise.resolve(new Response('{"error":"not_cleared"}', { status: 403 }));
+
+  const event = fetchEvent(URL_EXHIBITS);
+  const res   = await ctx.networkFirst(event);
+
+  assert.equal(res.status, 403, 'the refusal reaches the app, not a cached copy of the museum');
+  await Promise.all(event.pending);
+  assert.equal(calls.deleted, 1);
+});
+
+test('with nothing cached, a failure is still a failure', async () => {
+  withCache();
+  ctx.fetch = () => Promise.reject(new TypeError('Failed to fetch'));
+
+  await assert.rejects(() => ctx.networkFirst(fetchEvent(URL_EXHIBITS)), TypeError);
 });

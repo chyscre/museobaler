@@ -73,6 +73,35 @@ class PublicEndpointsTest extends TestCase
             ->assertHeader('Cache-Control', 'no-store, private');
     }
 
+    /**
+     * Including the answer a probe is most likely to collect.
+     *
+     * The rate limiter ends a request before the rest of the stack runs, and
+     * the header middleware used to be appended - so a 429 came back with no
+     * nosniff, no CORP, the panel's Referrer-Policy instead of the API's, and
+     * PHP's X-Powered-By still attached. Sixty requests is all it took to be
+     * handed the one response that had none of the hardening on it.
+     */
+    public function test_a_throttled_answer_carries_them_too(): void
+    {
+        // The limiter's own ceiling, from AppServiceProvider.
+        for ($i = 0; $i < 61; $i++) {
+            $res = $this->getJson('/api/v1/notifications');
+
+            if ($res->status() === 429) {
+                $res->assertHeader('X-Content-Type-Options', 'nosniff')
+                    ->assertHeader('Cross-Origin-Resource-Policy', 'same-origin')
+                    ->assertHeader('Referrer-Policy', 'no-referrer')
+                    ->assertHeader('Retry-After')
+                    ->assertHeaderMissing('X-Powered-By');
+
+                return;
+            }
+        }
+
+        $this->fail('the limiter never fired, so nothing was verified');
+    }
+
     public function test_an_unlisted_origin_gets_no_cors_headers(): void
     {
         config(['cors.allowed_origins' => ['https://app.example', 'https://kiosk.example']]);

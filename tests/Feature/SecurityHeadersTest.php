@@ -105,6 +105,99 @@ class SecurityHeadersTest extends TestCase
         $this->assertStringNotContainsString('new Function(', $bundle);
     }
 
+    /**
+     * The visitor app's own policy, which no request in this suite goes
+     * through: public/visitor is static, so Apache serves it from a
+     * directory-level .htaccess and Laravel's middleware never runs.
+     *
+     * This exists because the test above reads only
+     * teachablemachine-image.min.js and was taken to mean the whole scanner
+     * ran without eval. tf.min.js does not: it carries a regenerator shim
+     * that builds `Function("return this")` while the model loads. Denying
+     * eval there threw an EvalError inside _loadModel(), which swallows it
+     * and silently drops to the pHash fallback - image recognition was off
+     * in production for anyone who did not open a browser console. Laragon
+     * does serve this file's headers, so a local browser can catch it - but
+     * only once the old service worker is unregistered, because a worker
+     * keeps the policy it was installed with and sw.js itself never changed.
+     */
+    public function test_the_visitor_app_policy_admits_what_the_model_actually_needs(): void
+    {
+        $policy = file_get_contents(public_path('visitor/.htaccess'));
+
+        $this->assertStringContainsString("'unsafe-eval'", $policy,
+            'tf.min.js evals while loading the model; without this the app falls back to pHash.');
+
+        $this->assertStringContainsString('connect-src', $policy);
+
+        // The premise of the whole test: assert the eval is really in there,
+        // so that if a future bundle drops it this fails loudly rather than
+        // leaving a permission nobody can justify.
+        $tf = file_get_contents(public_path('js/vendor/tf.min.js'));
+        $this->assertStringContainsString('Function(', $tf);
+    }
+
+    /**
+     * The visitor app serves its own fonts, and must keep doing so.
+     *
+     * This replaces an assertion that connect-src named fonts.googleapis.com.
+     * That was the other way out of the same bug: sw.js routes every
+     * cross-origin GET through staleWhileRevalidate, which re-issues it as
+     * fetch(), and a fetch() from a worker answers to connect-src rather
+     * than to the style-src or font-src that let the <link> through. With
+     * the Google hosts missing from connect-src, both stylesheets were
+     * refused inside the worker and the <link>s got back Response.error().
+     *
+     * Every Material Icons span carries its glyph name as text content, so
+     * the failure rendered as visitors reading "wifi" and "login" across the
+     * UI. Young Serif and Instrument Sans died at the same moment but only
+     * dropped to system faces, which is why it went unnoticed.
+     *
+     * Same-origin files sidestep all of it - connect-src 'self' covers them
+     * under any policy, including the one an already-installed worker is
+     * still holding - so what is pinned here is the absence of the remote
+     * hosts and the presence of the files that replaced them.
+     */
+    public function test_the_visitor_app_serves_its_own_fonts(): void
+    {
+        $html = file_get_contents(public_path('visitor/index.html'));
+
+        // Comments in this file discuss fonts.googleapis.com on purpose;
+        // what must never come back is a tag that fetches from it.
+        $this->assertDoesNotMatchRegularExpression(
+            '/(?:href|src)\s*=\s*["\']https:\/\/fonts\.(?:googleapis|gstatic)\.com/',
+            $html,
+            'The visitor app must not fetch fonts from Google: the service worker re-requests '
+            .'them through fetch(), which answers to connect-src, and the icon font failing '
+            .'leaves every icon rendering as its own glyph name.'
+        );
+
+        $css = file_get_contents(public_path('visitor/css/fonts.css'));
+
+        foreach (['Material Icons Round', 'Instrument Sans', 'Young Serif'] as $family) {
+            $this->assertStringContainsString("font-family: '{$family}'", $css);
+        }
+
+        // The files the stylesheet names, and that sw.js precaches.
+        foreach ([
+            'material-icons-round',
+            'instrument-sans-latin',
+            'instrument-sans-latin-ext',
+            'young-serif-latin',
+            'young-serif-latin-ext',
+        ] as $face) {
+            $path = public_path("visitor/fonts/{$face}.woff2");
+            $this->assertFileExists($path);
+            $this->assertSame('wOF2', file_get_contents($path, false, null, 0, 4),
+                "{$face}.woff2 is not a woff2 file - a truncated or error-page download.");
+        }
+
+        // A worker that does not precache them puts the icons back at the
+        // mercy of the network on a first offline load.
+        $worker = file_get_contents(public_path('visitor/sw.js'));
+        $this->assertStringContainsString('./fonts/material-icons-round.woff2', $worker);
+    }
+
     public function test_the_rest_of_the_headers_still_stand(): void
     {
         $staff    = Staff::factory()->administrator()->create();

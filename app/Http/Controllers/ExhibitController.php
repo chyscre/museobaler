@@ -436,8 +436,13 @@ class ExhibitController extends Controller
         }
 
         foreach ((array) $request->input('t_code', []) as $i => $code) {
+            // A translation row is four strings and an optional file. Anything
+            // else is a hand-built post rather than this form, and casting an
+            // array to a string in PHP throws - which ended the save as a 500
+            // rather than as "that row is not a translation".
+            if (!is_scalar($code)) continue;
             $code  = strtolower(trim((string) $code));
-            $label = trim((string) $request->input("t_label.$i", ''));
+            $label = trim($this->postedText($request->input("t_label.$i", '')) ?? '');
             if ($code === '') continue;
             if ($label === '') {
                 $label = ExhibitLanguages::label($code);
@@ -445,9 +450,9 @@ class ExhibitController extends Controller
 
             $fields = [
                 'language_label' => $label,
-                'title'          => $request->input("t_title.$i"),
-                'description'    => $request->input("t_desc.$i"),
-                'fun_facts'      => $request->input("t_facts.$i"),
+                'title'          => $this->postedText($request->input("t_title.$i")),
+                'description'    => $this->postedText($request->input("t_desc.$i")),
+                'fun_facts'      => $this->postedText($request->input("t_facts.$i")),
             ];
 
             $existing = $exhibit->translations()->where('language_code', $code)->first();
@@ -484,6 +489,19 @@ class ExhibitController extends Controller
         }
 
         $exhibit->load('translations');
+    }
+
+    /**
+     * A posted field as text, or null when it is not text at all.
+     *
+     * The translation rows arrive as parallel arrays - t_code[], t_title[] and
+     * so on - so every element is whatever the request put there. A nested
+     * array reaching a (string) cast is an ErrorException, which turned a
+     * malformed post into a 500 halfway through a save.
+     */
+    private function postedText(mixed $value): ?string
+    {
+        return is_scalar($value) ? (string) $value : null;
     }
 
     private function deleteAudio(?string $file): void

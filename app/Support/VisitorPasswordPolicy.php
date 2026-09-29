@@ -81,6 +81,9 @@ class VisitorPasswordPolicy
         // Fragments of 3 characters or fewer are ignored, otherwise a
         // surname like "Uy" would ban every password containing those letters.
         foreach ($personal as $value) {
+            // A name that arrived as an array or an object is not a word the
+            // password could be built from, and casting it would throw.
+            if (!is_scalar($value)) continue;
             $value = mb_strtolower(trim((string) $value));
             if (mb_strlen($value) < 4) continue;
             if (str_contains($lower, $value))         return 'password_has_personal_info';

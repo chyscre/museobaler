@@ -57,9 +57,13 @@ Route::prefix('v1')->name('api.')->group(function () {
     // Media URLs are temporary signed URLs issued by the cleared exhibit
     // endpoints. The media element cannot attach the bearer header, so the
     // signature is the authorization proof for this short-lived request.
+    // `signed:relative`, not `signed`: ExhibitController mints these with
+    // absolute: false, and the absolute check rebuilds the scheme and host
+    // before hashing, so it rejected every URL this app signed itself. The
+    // two have to agree about which form was signed.
     Route::get('media/{path}', [MediaController::class, 'show'])
         ->where('path', '.*')
-        ->middleware('signed')
+        ->middleware('signed:relative')
         ->name('media');
 
     // -- Signed in: their own standing with the desk --------------------------

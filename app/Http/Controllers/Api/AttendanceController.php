@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\Visitor;
+use App\Services\GeofenceService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,9 +19,28 @@ use Illuminate\Http\Request;
  * that has not registered yet - which is a legitimate record and stays
  * one. That is why these routes are not behind visitor.auth: the token is
  * read when present and ignored when not, never required.
+ *
+ * Two things stand in for the token an anonymous phone does not have:
+ *
+ *   the fence   a position outside the museum's circle is refused, because
+ *               the app only ever posts an arrival from inside it. This is
+ *               where the visitor count stops being something anyone with
+ *               curl can write.
+ *
+ *   the handle  every arrival comes back with an HMAC of its own id, and an
+ *               anonymous row may only be exited or claimed by a caller that
+ *               can produce it. Without this, `visitor_id IS NULL` was an
+ *               open door: attendance ids are sequential, so a probe could
+ *               walk them and close out, or inflate, every unregistered
+ *               visitor's stay - and duration_mins keeps the largest value
+ *               it is ever sent, so one request stuck permanently.
  */
 class AttendanceController extends Controller
 {
+    public function __construct(private readonly GeofenceService $fence)
+    {
+    }
+
     /** POST /api/v1/attendance - the phone crossed into the fence. */
     public function store(Request $request): JsonResponse
     {
@@ -34,6 +54,25 @@ class AttendanceController extends Controller
 
         $visitor = $this->ownVisitor($request);
 
+        // The fence, on the server this time. The app checks the distance
+        // itself before it calls this, but that check runs on the visitor's
+        // own phone and is therefore a convenience, not a control: it was the
+        // only thing standing between a curl loop and the day's visitor
+        // figures.
+        $fence = $this->fence->visitorCheck(
+            isset($data['latitude'])  ? (float) $data['latitude']  : null,
+            isset($data['longitude']) ? (float) $data['longitude'] : null,
+            isset($data['accuracy'])  ? (int) $data['accuracy']    : null,
+        );
+
+        if (!$fence['ok']) {
+            return response()->json([
+                'error'      => 'outside_fence',
+                'message'    => $fence['reason'],
+                'distance_m' => $fence['distance'],
+            ], 422);
+        }
+
         // One row per visitor per day: reopening the app mid-visit is the
         // same visit, and the app carries on with the id it is handed.
         if ($visitor !== null) {
@@ -43,7 +82,7 @@ class AttendanceController extends Controller
                 ->value('attendance_id');
 
             if ($existing !== null) {
-                return response()->json(['ok' => true, 'already_logged' => true, 'attendance_id' => (int) $existing]);
+                return $this->logged((int) $existing, true);
             }
         }
 
@@ -74,10 +113,10 @@ class AttendanceController extends Controller
                 throw $e;   // Not the race - a real database problem.
             }
 
-            return response()->json(['ok' => true, 'already_logged' => true, 'attendance_id' => (int) $existing]);
+            return $this->logged((int) $existing, true);
         }
 
-        return response()->json(['ok' => true, 'already_logged' => false, 'attendance_id' => (int) $row->attendance_id]);
+        return $this->logged((int) $row->attendance_id, false);
     }
 
     /**
@@ -92,15 +131,25 @@ class AttendanceController extends Controller
     {
         $data = $request->validate([
             'event'         => ['nullable', 'in:claim,exit'],
-            'duration_mins' => ['nullable', 'integer', 'min:0'],
+            // A visit cannot last longer than a day, and this value is kept
+            // if it is the largest ever sent, so an absurd one sticks.
+            'duration_mins' => ['nullable', 'integer', 'min:0', 'max:1440'],
             'visitor_id'    => ['nullable', 'integer'],
             'visitor_name'  => ['nullable', 'string', 'max:255'],
+            'handle'        => ['nullable', 'string', 'max:64'],
         ]);
 
         $visitor = $this->ownVisitor($request);
         $row     = Attendance::find($id);
 
-        if ($row === null || ($row->visitor_id !== null && $row->visitor_id !== $visitor?->visitor_id)) {
+        // Whose row this is: the token's visitor, or whoever can produce the
+        // handle the arrival was answered with.
+        $mine = $row !== null && (
+            ($row->visitor_id !== null && $visitor !== null && (int) $row->visitor_id === (int) $visitor->visitor_id)
+            || $this->handleMatches($request, $id)
+        );
+
+        if (!$mine) {
             return response()->json(['ok' => true, 'claimed' => false]);
         }
 
@@ -137,6 +186,34 @@ class AttendanceController extends Controller
         $row->save();
 
         return response()->json(['ok' => true, 'claimed' => true]);
+    }
+
+    /**
+     * The proof that a later call about this row came from the phone the row
+     * was made for. Derived, not stored: there is nothing to migrate, nothing
+     * to leak, and an id on its own is worth no more than it ever was.
+     */
+    public static function handleFor(int $id): string
+    {
+        return substr(hash_hmac('sha256', 'attendance:' . $id, (string) config('app.key')), 0, 32);
+    }
+
+    private function logged(int $id, bool $already): JsonResponse
+    {
+        return response()->json([
+            'ok'            => true,
+            'already_logged' => $already,
+            'attendance_id' => $id,
+            'handle'        => self::handleFor($id),
+        ]);
+    }
+
+    private function handleMatches(Request $request, int $id): bool
+    {
+        $posted = $request->input('handle', '');
+        $given  = is_scalar($posted) ? (string) $posted : '';
+
+        return $given !== '' && hash_equals(self::handleFor($id), $given);
     }
 
     /**

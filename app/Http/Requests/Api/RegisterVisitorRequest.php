@@ -19,7 +19,7 @@ class RegisterVisitorRequest extends ApiFormRequest
 {
     public function rules(): array
     {
-        $email     = (string) $this->input('email');
+        $email     = $this->scalarInput('email');
         $localPart = strstr($email, '@', true) ?: $email;
 
         return [
@@ -35,12 +35,22 @@ class RegisterVisitorRequest extends ApiFormRequest
             'email'        => ['required', 'string', 'email', 'max:150'],
             'password'     => [
                 'required', 'string', 'confirmed',
-                new VisitorPassword([$this->input('first_name'), $this->input('last_name'), $localPart, $this->input('middle_name')]),
+                new VisitorPassword([
+                    $this->scalarInput('first_name'),
+                    $this->scalarInput('last_name'),
+                    $localPart,
+                    $this->scalarInput('middle_name'),
+                ]),
             ],
             'barangay'     => [
                 Rule::requiredIf(fn () => $this->input('visitor_type') === 'Local'),
                 'nullable', 'string',
-                fn ($attr, $value, $fail) => $this->input('visitor_type') === 'Local' && !BalerBarangays::isOne($value)
+                // is_scalar first, for the same reason as country below: a
+                // barangay posted as an array is the 'string' rule's to
+                // refuse, and isOne() is typed ?string, so handing it one was
+                // a TypeError and a 500 where a 422 was owed.
+                fn ($attr, $value, $fail) => $this->input('visitor_type') === 'Local'
+                    && (!is_scalar($value ?? '') || !BalerBarangays::isOne($value === null ? null : (string) $value))
                     ? $fail('Please select your barangay.')
                     : null,
             ],
@@ -48,7 +58,12 @@ class RegisterVisitorRequest extends ApiFormRequest
             'province'     => ['nullable', 'string', 'max:100'],
             'country'      => [
                 'nullable', 'string', 'max:100',
-                fn ($attr, $value, $fail) => $this->input('visitor_type') === 'Foreign' && (trim((string) $value) === '' || strcasecmp(trim((string) $value), 'Philippines') === 0)
+                // is_scalar first: 'string' above has already refused a country
+                // sent as an array, and casting one here would throw before
+                // that 422 could be assembled.
+                fn ($attr, $value, $fail) => $this->input('visitor_type') === 'Foreign'
+                    && is_scalar($value ?? '')
+                    && (trim((string) $value) === '' || strcasecmp(trim((string) $value), 'Philippines') === 0)
                     ? $fail('Please tell us which country you are visiting from.')
                     : null,
             ],

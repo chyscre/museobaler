@@ -46,6 +46,22 @@ class GeofenceService
         return (bool) config('access.geofence', true);
     }
 
+    /**
+     * The same question for the visitor app's fence, which has its own
+     * switch: VISITOR_GEOFENCE, and likewise never consulted in production.
+     * Kept here rather than in the two places that need it so the app's
+     * "geofence_enforced" answer and the check the server actually applies
+     * cannot drift apart.
+     */
+    public function visitorEnforced(): bool
+    {
+        if (app()->environment('production')) {
+            return true;
+        }
+
+        return (bool) config('access.visitor_geofence', true);
+    }
+
     /** Metres between two coordinates, via the haversine formula. */
     public function distance(float $lat1, float $lng1, float $lat2, float $lng2): float
     {
@@ -127,5 +143,79 @@ class GeofenceService
         }
 
         return ['ok' => true, 'distance' => $distance, 'reason' => null];
+    }
+
+    /**
+     * The visitor app's fence, which is a counting aid rather than an
+     * integrity control and is deliberately more forgiving than the staff
+     * check above.
+     *
+     * The phone's own uncertainty is allowed as margin: a fix taken inside a
+     * stone building is routinely vaguer than the fence is wide, and refusing
+     * those would simply stop counting the visitors who came indoors - which
+     * is the opposite of what this record is for. The allowance is capped at
+     * twice the radius, so a request claiming to be accurate to ten
+     * kilometres cannot buy its way in from anywhere.
+     *
+     * What it does refuse is a position nowhere near Baler, because that is
+     * what a fabricated arrival looks like: the app posts one only from
+     * inside the fence, so a request from five kilometres away did not come
+     * from it. And when the fence is enforced, a request with no position at
+     * all did not come from it either.
+     */
+    public function visitorCheck(?float $lat, ?float $lng, ?int $accuracy): array
+    {
+        $museum = $this->museum();
+
+        if (!$this->visitorEnforced()) {
+            return [
+                'ok'       => true,
+                'distance' => $this->metresFromMuseum($museum, $lat, $lng),
+                'reason'   => null,
+                'skipped'  => true,
+            ];
+        }
+
+        // No pin saved yet: the same call the staff check makes. An admin who
+        // has not filled in the map must not silently stop the visitor count.
+        if (!$museum || $museum->latitude === null || $museum->longitude === null) {
+            return ['ok' => true, 'distance' => null, 'reason' => null];
+        }
+
+        if ($lat === null || $lng === null) {
+            return [
+                'ok'       => false,
+                'distance' => null,
+                'reason'   => 'An arrival is recorded from the museum grounds, and this request carried no position.',
+            ];
+        }
+
+        $distance = (int) round($this->distance(
+            (float) $museum->latitude, (float) $museum->longitude, $lat, $lng
+        ));
+
+        $radius = (int) ($museum->geofence_radius_m ?: 150);
+        $margin = min(max($accuracy ?? 0, 0), $radius * 2);
+
+        if ($distance > $radius + $margin) {
+            return [
+                'ok'       => false,
+                'distance' => $distance,
+                'reason'   => 'This phone measured ' . number_format($distance) . ' m from the museum, '
+                    . 'which is outside the ' . $radius . ' m grounds.',
+            ];
+        }
+
+        return ['ok' => true, 'distance' => $distance, 'reason' => null];
+    }
+
+    /** Metres from the museum's pin, or null when either end is unknown. */
+    private function metresFromMuseum(?MuseumInfo $museum, ?float $lat, ?float $lng): ?int
+    {
+        if (!$museum || $museum->latitude === null || $museum->longitude === null || $lat === null || $lng === null) {
+            return null;
+        }
+
+        return (int) round($this->distance((float) $museum->latitude, (float) $museum->longitude, $lat, $lng));
     }
 }

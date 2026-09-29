@@ -1,0 +1,103 @@
+/* Young Serif, Instrument Sans and Material Icons Round, served from this
+ * origin instead of fonts.googleapis.com.
+ *
+ * These were <link> tags pointing at Google until the CSP went up. The tags
+ * themselves were allowed - style-src and font-src both name the Google
+ * hosts - but sw.js routes every cross-origin GET through
+ * staleWhileRevalidate, which re-issues it as fetch(). A fetch() from inside
+ * a worker answers to connect-src, and connect-src listed only
+ * storage.googleapis.com. So the worker's copy of the request was refused,
+ * the catch swallowed it, and the <link> got back Response.error().
+ *
+ * The visible symptom was the icons: a Material Icons span carries the glyph
+ * name as its text ("wifi", "login", "info_outline"), so with no font to
+ * form the ligature the visitor reads the names. The two text faces failed
+ * in the same breath but only fell back to system sans and serif, which is
+ * quieter and hid how long this had been broken.
+ *
+ * Widening connect-src would have fixed it, but only after the header
+ * reached the server AND every installed worker was replaced - a worker
+ * keeps the CSP its own script response carried at install time. Same-origin
+ * files need neither: connect-src 'self' already covers them, so this works
+ * under the policy that is live right now. It also means the museum's app
+ * stops depending on Google being reachable, which matters in a building
+ * where the wifi is the exhibit's problem too.
+ *
+ * Instrument Sans is a variable font: one file per subset covers 400-700,
+ * which is why four weights point at two files. Subsets are latin and
+ * latin-ext only - Google also offers cyrillic and greek, which this app has
+ * no use for.
+ *
+ * To refresh: re-fetch the two stylesheets from Google with a modern browser
+ * User-Agent (an old one gets .ttf instead of .woff2) and re-download the
+ * url()s they name.
+ */
+
+/* Instrument Sans - variable, weights 400-700 */
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('../fonts/instrument-sans-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('../fonts/instrument-sans-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Young Serif - single weight */
+@font-face {
+  font-family: 'Young Serif';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/young-serif-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Young Serif';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/young-serif-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Material Icons Round.
+ *
+ * font-display is deliberately 'block' and not 'swap': these spans hold the
+ * glyph name as text, so a swap period renders "signal_cellular_alt" across
+ * the status bar before the font lands. Blocking shows nothing for that
+ * moment instead, which is the lesser of the two. The file is local now, so
+ * the moment is short.
+ */
+@font-face {
+  font-family: 'Material Icons Round';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('../fonts/material-icons-round.woff2') format('woff2');
+}
+
+.material-icons-round {
+  font-family: 'Material Icons Round';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
