@@ -44,10 +44,33 @@ class VisitorController extends Controller
             default  => $query->orderByDesc('created_at'),
         };
 
-        // A page is a day the museum registered someone - the logbook read
-        // the way the paper one was, a day at a time. "Oldest first" walks
-        // the calendar forwards; the other sorts order within the day.
-        $visitorDay = DayPage::of($query, 'created_at', newestFirst: $vsort !== 'oldest');
+        // A page is a day at the museum - the logbook read the way the paper
+        // one was, a day at a time. "Oldest first" walks the calendar
+        // forwards; the other sorts order within the day.
+        //
+        // A visitor is on every day they were HERE, not only the day they
+        // registered. Paging on created_at alone put a returning visitor on
+        // their sign-up day and nowhere else, so today's page left out
+        // everyone who had been before - the page looked like today's
+        // logbook and was missing half of it. Registration, the last visit
+        // and every attendance each count as a day they came.
+        $visitorDay = DayPage::using(
+            $query,
+            days: function ($q) {
+                $plain = (clone $q)->reorder();
+
+                return collect()
+                    ->merge((clone $plain)->selectRaw('DATE(created_at) as day')->distinct()->pluck('day'))
+                    ->merge((clone $plain)->whereNotNull('last_visit')->selectRaw('DATE(last_visit) as day')->distinct()->pluck('day'))
+                    ->merge(Attendance::whereIn('visitor_id', (clone $plain)->select('visitors.visitor_id'))
+                        ->distinct()->pluck('visit_date'));
+            },
+            onDay: fn ($q, string $date) => $q->where(fn ($w) => $w
+                ->whereDate('created_at', $date)
+                ->orWhereDate('last_visit', $date)
+                ->orWhereHas('attendances', fn ($a) => $a->whereDate('visit_date', $date))),
+            newestFirst: $vsort !== 'oldest',
+        );
         $visitors   = $visitorDay->rows;
 
         $stats = [
