@@ -24,6 +24,8 @@ class DayPageTest extends TestCase
 
         $this->assertNull($day->previous);
         $this->assertNotNull($day->next);
-        $this->assertStringContainsString('page=2', $day->urlFor($day->next));
+        // Addressed by date, so the link survives a new day shifting every
+        // page number along by one.
+        $this->assertStringContainsString('day=' . now()->subDay()->toDateString(), $day->urlFor($day->next));
     }
 }
