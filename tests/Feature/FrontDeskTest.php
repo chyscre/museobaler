@@ -149,6 +149,71 @@ class FrontDeskTest extends TestCase
         $this->assertSame('Free', $group->payment_status);
     }
 
+    /**
+     * A returning visitor has to be clearable again, and the desk has to be
+     * offered the button that does it.
+     *
+     * Admission lapses overnight, but the flags that recorded it stay set so
+     * Records can say how the earlier visit ended. Everything that decides
+     * what staff may do therefore has to ask clearance(), not those flags.
+     * Both halves broke here at once: markPaid() refused a visitor showing
+     * "Paid" from an earlier day, and the Records row rendered a dash where
+     * the button should have been - so the gate held someone out and the
+     * desk had no way to let them in.
+     */
+    public function test_the_desk_can_take_todays_fee_from_a_visitor_who_paid_on_an_earlier_day(): void
+    {
+        $desk    = Staff::factory()->administrator()->create();
+        $visitor = Visitor::factory()->paid()->create([
+            'paid_at'    => now()->subDays(3),
+            'last_visit' => now(),
+        ]);
+
+        $this->assertSame('pending_payment', $visitor->clearance());
+
+        $this->actingAs($desk)->get('/records?tab=visitors')
+            ->assertOk()
+            ->assertSee(route('visitors.mark-paid', $visitor), false);
+
+        $this->actingAs($desk)->post("/visitors/{$visitor->visitor_id}/mark-paid")
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertSame('cleared', $visitor->fresh()->clearance());
+    }
+
+    public function test_the_desk_can_re_sight_a_locals_id_on_a_later_visit(): void
+    {
+        $desk    = Staff::factory()->administrator()->create();
+        $visitor = Visitor::factory()->local(true)->create([
+            'verified_at' => now()->subDays(3),
+            'last_visit'  => now(),
+        ]);
+
+        $this->assertSame('pending_id', $visitor->clearance());
+
+        $this->actingAs($desk)->get('/records?tab=visitors')
+            ->assertOk()
+            ->assertSee(route('visitors.verify-id', $visitor), false);
+
+        $this->actingAs($desk)->post("/visitors/{$visitor->visitor_id}/verify-id")
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertSame('cleared', $visitor->fresh()->clearance());
+    }
+
+    /** Twice in one day is still a mistake, and still says so. */
+    public function test_clearing_the_same_visitor_twice_in_one_day_is_refused(): void
+    {
+        $desk = Staff::factory()->administrator()->create();
+        $paid = Visitor::factory()->paid()->create(['paid_at' => now(), 'last_visit' => now()]);
+
+        $this->actingAs($desk)->post("/visitors/{$paid->visitor_id}/mark-paid")
+            ->assertRedirect()
+            ->assertSessionHas('error');
+    }
+
     public function test_every_museum_staff_account_can_cover_the_desk(): void
     {
         // The museum runs on a handful of people who all rotate onto the

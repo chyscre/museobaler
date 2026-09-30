@@ -248,8 +248,15 @@ class VisitorAccountTest extends TestCase
 
         $this->getJson('/api/v1/visitors/me', ['Authorization' => 'Bearer ' . $res->json('token')])->assertOk();
 
-        // Same day: paid stays paid.
-        $v->refresh()->forceFill(['payment_status' => 'Paid', 'last_visit' => now()])->save();
+        // Same day: paid stays paid. paid_at is set alongside the status
+        // because that is what a real payment does - markPaid() writes both,
+        // and clearance() now reads the date as well as the flag, so a
+        // status on its own describes a payment that never happened.
+        $v->refresh()->forceFill([
+            'payment_status' => 'Paid',
+            'paid_at'        => now(),
+            'last_visit'     => now(),
+        ])->save();
         $this->postJson('/api/v1/visitors/login', ['email' => 'maria@example.org', 'password' => 'correct horse battery'])
             ->assertOk()->assertJsonPath('cleared', true);
     }
