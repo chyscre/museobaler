@@ -3013,11 +3013,29 @@ function setLang(lang) {
             var descEl = document.getElementById('ex-desc');
             if (titleEl) titleEl.textContent = ex.title;
             if (descEl) descEl.textContent = ex.description;
-            audioState.text = ex.description || '';
-            audioState.audioFile = null;
-            if (ex.audio_url) {
-              audioState.audioFile = ex.audio_url;
+            // recordedUrl, and not only audioFile. It is the copy switchTab
+            // puts back when the visitor returns from Fun Facts, so leaving it
+            // on the previous language meant a single tap on a tab restored the
+            // old narration underneath a screen that had already changed - the
+            // label read in Filipino and the guide heard in English, for the
+            // rest of the exhibit.
+            audioState.recordedUrl = ex.audio_url || null;
+
+            // Fun Facts has no recording and words of its own, so only the
+            // Overview source is rewritten here; switchTab rebuilds whichever
+            // one the visitor moves to from this same exhibit.
+            if (audioState.source === 'facts') {
+              audioState.text = generateFunFacts(ex).map(function (f, i) { return (i + 1) + '. ' + f; }).join(' ');
+              audioState.audioFile = null;
+            } else {
+              audioState.text = ex.description || '';
+              audioState.audioFile = audioState.recordedUrl;
             }
+
+            // The bar's estimate was measured against the old language's
+            // wording; a recording overrides it again on loadedmetadata.
+            var words = audioState.text ? audioState.text.split(/\s+/).length : 0;
+            audioState.duration = Math.round(words / 2.5);
             stopAudio();
             resetAudio();
             updateAudioUI();
