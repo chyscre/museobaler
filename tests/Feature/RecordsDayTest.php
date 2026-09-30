@@ -57,8 +57,21 @@ class RecordsDayTest extends TestCase
             ->assertSee($empty->format('l, j F Y'))
             ->assertSee('0 visitors')
             ->assertDontSee('>Today</td>', false)
-            // The arrow still leads back to the day that has someone on it.
-            ->assertSee('day=' . today()->toDateString(), false);
+            // The calendar opens on the day being shown, not on today.
+            ->assertSee('value="' . $empty->toDateString() . '"', false);
+    }
+
+    public function test_the_day_bar_has_a_calendar_and_no_arrows(): void
+    {
+        $desk = Staff::factory()->administrator()->create();
+        Visitor::factory()->create(['last_visit' => now()]);
+        Visitor::factory()->create(['last_visit' => now()->subDay(), 'created_at' => now()->subDay()]);
+
+        $this->actingAs($desk)->get('/records?tab=visitors')
+            ->assertOk()
+            ->assertSee('Pick a date')
+            ->assertDontSee('rel="next"', false)
+            ->assertDontSee('rel="prev"', false);
     }
 
     public function test_a_future_date_is_read_as_today(): void
