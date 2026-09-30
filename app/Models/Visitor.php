@@ -168,11 +168,27 @@ class Visitor extends Authenticatable
             return $this->group->clearsMembers() ? 'cleared' : 'pending_group';
         }
 
+        // Admission is per visit, so what clears somebody is staff acting on
+        // THIS visit - not a flag set on an earlier one. Both branches ask
+        // the date as well as the flag, the way the group branch above has
+        // always asked visit_date.
+        //
+        // Reading the date here rather than trusting touchReturning() to have
+        // reset the flag is deliberate. That method only runs on login, and a
+        // token is good for 24 hours, so an app resumed the next morning
+        // never called it: a visitor who paid at 6pm Monday was still
+        // 'cleared' on Tuesday. The gate is re-evaluated on every request,
+        // so asking the date here closes that without depending on which
+        // path the app took to get here.
         if ($this->visitor_type === 'Local') {
-            return $this->id_verified ? 'cleared' : 'pending_id';
+            return $this->id_verified && $this->verified_at?->isToday()
+                ? 'cleared'
+                : 'pending_id';
         }
 
-        return $this->payment_status === 'Paid' ? 'cleared' : 'pending_payment';
+        return $this->payment_status === 'Paid' && $this->paid_at?->isToday()
+            ? 'cleared'
+            : 'pending_payment';
     }
 
     /**
@@ -217,7 +233,16 @@ class Visitor extends Authenticatable
      *
      * Admission is charged per visit, so a paying visitor whose last visit
      * was on an earlier date owes the fee again and their payment status
-     * resets to Unpaid. Locals stay Free, and their ID check carries over.
+     * resets to Unpaid. Locals stay Free - there is no fee to re-charge -
+     * but their ID check no longer carries over either: clearance() reads
+     * verified_at, so a residency check sighted on an earlier day stops
+     * clearing them the moment the date rolls, without this method having to
+     * run at all.
+     *
+     * The flags themselves are left standing rather than cleared, because
+     * isCleared() reads them to say how a PAST visit ended, and a Records
+     * page that reported every previous visitor as "Waiting for ID check"
+     * would be rewriting history to describe today.
      */
     public function touchReturning(): void
     {
@@ -310,13 +335,26 @@ class Visitor extends Authenticatable
      */
     public function scopePendingClearance($query)
     {
-        return $query->whereNull('group_id')->where(function ($q) {
-            $q->where(function ($local) {
-                $local->where('visitor_type', 'Local')->where('id_verified', false);
-            })->orWhere(function ($paying) {
-                $paying->where('visitor_type', '!=', 'Local')->where('payment_status', '!=', 'Paid');
+        return $query
+            // Here today. Clearance lapses overnight, so without this every
+            // visitor who ever came and did not return would queue at the
+            // desk forever - the list is who is waiting at the door now, not
+            // everyone whose last visit has gone stale.
+            ->whereDate('last_visit', today())
+            ->whereNull('group_id')
+            ->where(function ($q) {
+                $q->where(function ($local) {
+                    $local->where('visitor_type', 'Local')
+                        ->where(fn ($c) => $c->where('id_verified', false)
+                            ->orWhereNull('verified_at')
+                            ->orWhereDate('verified_at', '<', today()));
+                })->orWhere(function ($paying) {
+                    $paying->where('visitor_type', '!=', 'Local')
+                        ->where(fn ($c) => $c->where('payment_status', '!=', 'Paid')
+                            ->orWhereNull('paid_at')
+                            ->orWhereDate('paid_at', '<', today()));
+                });
             });
-        });
     }
 
     public function scans()

@@ -126,11 +126,20 @@ class VisitorController extends Controller
      */
     public function markPaid(Visitor $visitor)
     {
-        if ($visitor->payment_status === 'Free') {
+        // Who is free is a property of the person, not of a status left over
+        // from an earlier visit. Reading 'Free' here refused a returning
+        // visitor whose fee had been the party's on some previous day: the
+        // gate wanted today's fee, the button offered to take it, and this
+        // line answered that they were a local who owed nothing.
+        if ($visitor->visitor_type === 'Local') {
             return back()->with('error', 'Local visitors are admitted free — there is no fee to collect.');
         }
-        if ($visitor->payment_status === 'Paid') {
-            return back()->with('error', 'This admission fee is already marked as paid.');
+        // "Already paid" means paid for THIS visit. The fee falls due again
+        // on a later day, so a flag left over from an earlier visit must not
+        // stop the desk collecting today's - that refusal would leave a
+        // visitor the gate treats as unpaid with no way to become paid.
+        if ($visitor->payment_status === 'Paid' && $visitor->paid_at?->isToday()) {
+            return back()->with('error', 'This admission fee is already marked as paid for today.');
         }
 
         $visitor->update([
@@ -153,8 +162,10 @@ class VisitorController extends Controller
         if ($visitor->visitor_type !== 'Local') {
             return back()->with('error', 'Only local visitors need an ID checked for free admission.');
         }
-        if ($visitor->id_verified) {
-            return back()->with('error', 'This ID has already been verified.');
+        // Same reasoning as markPaid(): the ID is sighted per visit, so a
+        // check done on an earlier day is history, not today's clearance.
+        if ($visitor->id_verified && $visitor->verified_at?->isToday()) {
+            return back()->with('error', 'This ID has already been verified today.');
         }
 
         $visitor->update([

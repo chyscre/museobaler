@@ -189,21 +189,33 @@
                Tourism office reads this list from the municipal building and
                does neither, so she gets no buttons — the routes behind them
                are museum-only in any case. --}}
+          {{-- These ask clearance(), the same question the admission gate
+               asks, rather than reading payment_status and id_verified
+               directly. Those flags stay set after the visit that earned
+               them - Records needs them to say how a past visit ended - so a
+               button keyed to them vanished exactly when it was needed: a
+               returning visitor read "Paid" from an earlier day, the gate
+               refused them because the payment was not today's, and the desk
+               had no button to take today's fee with. Asking the gate's own
+               question is what keeps the two from drifting apart again. --}}
+          @php
+            $state = $v->clearance();
+          @endphp
           @if(auth()->user()->isTourismHead())
             <span style="color:var(--text-4);font-size:12px">—</span>
-          @elseif($v->group && $v->group->payment_status === 'Unpaid' && ($v->isWithGroupToday() || $v->payment_status === 'Free'))
+          @elseif($state === 'pending_group')
           {{-- A group member's fee is the party's fee, so Mark Paid here
                settles the group — and unlocks every member at once. --}}
           <form method="POST" action="{{ route('desk.groups.paid', $v->group) }}" style="display:inline">
             @csrf
             <button type="submit" class="btn btn-green btn-xs" title="Collects the fee for the whole party">Mark Paid</button>
           </form>
-          @elseif($v->payment_status === 'Unpaid')
+          @elseif($state === 'pending_payment')
           <form method="POST" action="{{ route('visitors.mark-paid', $v) }}" style="display:inline">
             @csrf
             <button type="submit" class="btn btn-green btn-xs">Mark Paid</button>
           </form>
-          @elseif($v->visitor_type === 'Local' && !$v->id_verified)
+          @elseif($state === 'pending_id')
           <form method="POST" action="{{ route('visitors.verify-id', $v) }}" style="display:inline">
             @csrf
             <button type="submit" class="btn btn-outline btn-xs">Verify ID</button>

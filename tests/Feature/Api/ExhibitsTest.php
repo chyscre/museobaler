@@ -121,6 +121,64 @@ class ExhibitsTest extends TestCase
             ->assertJsonPath('clearance', 'pending_id');
     }
 
+    /**
+     * Admission is per visit for everyone, so yesterday's clearance opens
+     * nothing today - whichever branch cleared them.
+     *
+     * The paying case is the one that was live: touchReturning() re-charges
+     * a returning visitor, but it only runs on login, and a token lasts 24
+     * hours. An app resumed the next morning never called it, so somebody
+     * who paid at 6pm Monday walked back in free on Tuesday. The gate runs
+     * on every request; the date check belongs there, not on one path
+     * through it.
+     */
+    public function test_yesterdays_payment_does_not_clear_today(): void
+    {
+        $v = Visitor::factory()->paid()->create(['paid_at' => now()->subDay()]);
+
+        $this->getJson('/api/v1/exhibits', $this->token($v))
+            ->assertStatus(403)
+            ->assertJsonPath('clearance', 'pending_payment');
+    }
+
+    public function test_yesterdays_id_check_does_not_clear_today(): void
+    {
+        $v = Visitor::factory()->local(true)->create(['verified_at' => now()->subDay()]);
+
+        $this->getJson('/api/v1/exhibits', $this->token($v))
+            ->assertStatus(403)
+            ->assertJsonPath('clearance', 'pending_id');
+    }
+
+    public function test_a_clearance_given_today_does_open_the_museum(): void
+    {
+        $paid  = Visitor::factory()->paid()->create(['paid_at' => now()]);
+        $local = Visitor::factory()->local(true)->create(['verified_at' => now()]);
+
+        $this->getJson('/api/v1/exhibits', $this->token($paid))->assertOk();
+        $this->getJson('/api/v1/exhibits', $this->token($local))->assertOk();
+    }
+
+    /**
+     * The gap this closes, stated as the visitor experiences it: no second
+     * login happens, because the phone still holds a valid token.
+     */
+    public function test_a_still_valid_token_does_not_survive_the_date_rolling(): void
+    {
+        $v = Visitor::factory()->paid()->create(['paid_at' => now()]);
+        $h = $this->token($v);
+
+        $this->getJson('/api/v1/exhibits', $h)->assertOk();
+
+        // The next morning. The token has not expired - it is good for 24
+        // hours - and the app resumes without ever calling login again.
+        $this->travel(14)->hours();
+
+        $this->getJson('/api/v1/exhibits', $h)
+            ->assertStatus(403)
+            ->assertJsonPath('clearance', 'pending_payment');
+    }
+
     public function test_a_member_of_an_unpaid_group_waits_on_the_group(): void
     {
         $group = VisitGroup::create([
