@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Admission;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Facades\Hash;
@@ -32,7 +33,8 @@ class Visitor extends Authenticatable
         'city', 'barangay', 'province', 'country', 'email', 'password', 'auth_provider',
         'explore_mode',
         'group_id', 'source', 'registered_by',
-        'admission_fee', 'payment_status', 'paid_at',
+        'admission_fee', 'discount_id', 'discount_name', 'discount_percent',
+        'payment_status', 'paid_at',
         'id_verified', 'verified_at', 'verified_by',
         'last_visit',
     ];
@@ -128,12 +130,52 @@ class Visitor extends Authenticatable
     // -- Admission -----------------------------------------------------------
 
     /**
-     * Baler locals enter free (subject to showing a valid ID); everyone else
-     * pays the flat fee set on the Museum Info page.
+     * Locals enter free (subject to showing a valid ID); everyone else pays
+     * the fee set on the Museum Info page, less any discount category they
+     * claimed. See App\Support\Admission.
      */
-    public static function feeFor(string $visitorType): float
+    public static function feeFor(string $visitorType, ?AdmissionDiscount $discount = null): float
     {
-        return $visitorType === 'Local' ? 0.00 : MuseumInfo::admissionFee();
+        return Admission::priceFor($visitorType, $discount);
+    }
+
+    /**
+     * The discount columns for a claimed category - its name and percentage
+     * copied now, so a later edit to the category does not rewrite what this
+     * visitor was charged - or all null for none.
+     */
+    public static function discountColumns(?AdmissionDiscount $discount): array
+    {
+        return [
+            'discount_id'      => $discount?->discount_id,
+            'discount_name'    => $discount?->name,
+            'discount_percent' => $discount?->percent_off,
+        ];
+    }
+
+    /**
+     * Whether this visitor enters free on a document the desk has to see:
+     * a local's residency ID, or the proof for a category that is free
+     * (a senior citizen ID where seniors enter free). A category that only
+     * takes something off is checked when the reduced fee is collected, so
+     * Mark Paid covers it.
+     */
+    public function needsIdCheck(): bool
+    {
+        return $this->visitor_type === 'Local' || (int) $this->discount_percent >= 100;
+    }
+
+    /** needsIdCheck(), as a query. */
+    public function scopeAwaitsIdCheck($query)
+    {
+        return $query->where(fn ($q) => $q->where('visitor_type', 'Local')
+            ->orWhere('discount_percent', '>=', 100));
+    }
+
+    public function scopePaysAtCounter($query)
+    {
+        return $query->where('visitor_type', '!=', 'Local')
+            ->where(fn ($q) => $q->whereNull('discount_percent')->orWhere('discount_percent', '<', 100));
     }
 
     /**
@@ -180,7 +222,7 @@ class Visitor extends Authenticatable
         // 'cleared' on Tuesday. The gate is re-evaluated on every request,
         // so asking the date here closes that without depending on which
         // path the app took to get here.
-        if ($this->visitor_type === 'Local') {
+        if ($this->needsIdCheck()) {
             return $this->id_verified && $this->verified_at?->isToday()
                 ? 'cleared'
                 : 'pending_id';
@@ -213,6 +255,14 @@ class Visitor extends Authenticatable
             'province'       => $this->province,
             'country'        => $this->country,
             'admission_fee'  => (float) $this->admission_fee,
+            // The category they claimed, so the waiting screen can say which
+            // document to show ("Senior citizen ID") rather than "residency".
+            'discount'       => $this->discount_name ? [
+                'name'        => $this->discount_name,
+                'percent_off' => (int) $this->discount_percent,
+                'proof'       => Admission::discount($this->discount_id)?->proof,
+            ] : null,
+            'resident_place' => Admission::residentPlace(),
             'payment_status' => $this->payment_status,
             'id_verified'    => (bool) $this->id_verified,
             'explore_mode'   => $this->explore_mode,
@@ -249,8 +299,14 @@ class Visitor extends Authenticatable
         $newDay = $this->last_visit === null || !$this->last_visit->isToday();
 
         if ($this->visitor_type !== 'Local' && $newDay) {
-            $this->admission_fee  = MuseumInfo::admissionFee();
-            $this->payment_status = 'Unpaid';
+            // Priced at today's rules. A senior is still a senior, so the
+            // category carries over - at its current percentage, and only
+            // while the museum still offers it.
+            $discount = $this->discount_id ? Admission::discount($this->discount_id) : null;
+            $this->fill(self::discountColumns($discount));
+
+            $this->admission_fee  = self::feeFor($this->visitor_type, $discount);
+            $this->payment_status = $this->admission_fee > 0 ? 'Unpaid' : 'Free';
             $this->paid_at        = null;
         }
 
@@ -307,7 +363,7 @@ class Visitor extends Authenticatable
                 || $this->group->payment_status === 'Paid';
         }
 
-        return $this->visitor_type === 'Local'
+        return $this->needsIdCheck()
             ? (bool) $this->id_verified
             : $this->payment_status === 'Paid';
     }
@@ -320,7 +376,7 @@ class Visitor extends Authenticatable
         // A group member waits on the same thing as anyone else — the money —
         // it is just collected once for the party. The row's "With …" line
         // says which party; the badge does not need to repeat it.
-        return $this->visitor_type === 'Local' && !$this->group
+        return $this->needsIdCheck() && !$this->group
             ? 'Waiting for ID check'
             : 'Waiting for payment';
     }
@@ -344,12 +400,12 @@ class Visitor extends Authenticatable
             ->whereNull('group_id')
             ->where(function ($q) {
                 $q->where(function ($local) {
-                    $local->where('visitor_type', 'Local')
+                    $local->awaitsIdCheck()
                         ->where(fn ($c) => $c->where('id_verified', false)
                             ->orWhereNull('verified_at')
                             ->orWhereDate('verified_at', '<', today()));
                 })->orWhere(function ($paying) {
-                    $paying->where('visitor_type', '!=', 'Local')
+                    $paying->paysAtCounter()
                         ->where(fn ($c) => $c->where('payment_status', '!=', 'Paid')
                             ->orWhereNull('paid_at')
                             ->orWhereDate('paid_at', '<', today()));

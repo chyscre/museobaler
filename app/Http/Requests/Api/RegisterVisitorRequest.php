@@ -3,6 +3,8 @@
 namespace App\Http\Requests\Api;
 
 use App\Rules\VisitorPassword;
+use App\Support\Admission;
+use App\Support\AuroraTowns;
 use App\Support\BalerBarangays;
 use Illuminate\Validation\Rule;
 
@@ -11,9 +13,10 @@ use Illuminate\Validation\Rule;
  *
  * SECURITY: the fee and payment status are NEVER taken from the request -
  * a visitor could otherwise post admission_fee=0 and skip paying. They are
- * derived in the controller from the validated visitor_type alone. Locals
- * claim free admission, which is for Baler residents only, so a Local must
- * name one of Baler's barangays; the town and province follow from that.
+ * derived in the controller from the validated visitor_type and discount
+ * category alone. Locals claim free admission, which is for residents of
+ * Baler (or of Aurora, if the museum has widened it), so a Local must name
+ * one of Baler's barangays or one of Aurora's towns accordingly.
  */
 class RegisterVisitorRequest extends ApiFormRequest
 {
@@ -21,6 +24,10 @@ class RegisterVisitorRequest extends ApiFormRequest
     {
         $email     = $this->scalarInput('email');
         $localPart = strstr($email, '@', true) ?: $email;
+
+        $local           = $this->input('visitor_type') === 'Local';
+        $localByBarangay = $local && Admission::scope() === 'baler';
+        $localByTown     = $local && Admission::scope() === 'aurora';
 
         return [
             'first_name'   => ['required', 'string', 'max:100'],
@@ -42,19 +49,42 @@ class RegisterVisitorRequest extends ApiFormRequest
                     $this->scalarInput('middle_name'),
                 ]),
             ],
+            // Which of these a local must give depends on the resident scope:
+            // a Baler barangay, or an Aurora town.
             'barangay'     => [
-                Rule::requiredIf(fn () => $this->input('visitor_type') === 'Local'),
+                Rule::requiredIf(fn () => $localByBarangay),
                 'nullable', 'string',
                 // is_scalar first, for the same reason as country below: a
                 // barangay posted as an array is the 'string' rule's to
                 // refuse, and isOne() is typed ?string, so handing it one was
                 // a TypeError and a 500 where a 422 was owed.
-                fn ($attr, $value, $fail) => $this->input('visitor_type') === 'Local'
+                fn ($attr, $value, $fail) => $localByBarangay
                     && (!is_scalar($value ?? '') || !BalerBarangays::isOne($value === null ? null : (string) $value))
                     ? $fail('Please select your barangay.')
                     : null,
             ],
-            'city'         => ['nullable', 'string', 'max:100'],
+            'city'         => [
+                Rule::requiredIf(fn () => $localByTown),
+                'nullable', 'string', 'max:100',
+                fn ($attr, $value, $fail) => $localByTown
+                    && (!is_scalar($value ?? '') || !AuroraTowns::isOne($value === null ? null : (string) $value))
+                    ? $fail('Please select your town.')
+                    : null,
+            ],
+            // A category the visitor claims (senior citizen, PWD...). Only
+            // the id is taken; the price is worked out on the server.
+            'discount_id'  => [
+                'nullable', 'integer',
+                function ($attr, $value, $fail) {
+                    if ($this->input('visitor_type') === 'Local' || $value === null || $value === '') {
+                        return;
+                    }
+                    $error = Admission::refusal(Admission::discount($value), $this->scalarInput('age'));
+                    if ($error !== null) {
+                        $fail($error);
+                    }
+                },
+            ],
             'province'     => ['nullable', 'string', 'max:100'],
             'country'      => [
                 'nullable', 'string', 'max:100',
@@ -84,6 +114,7 @@ class RegisterVisitorRequest extends ApiFormRequest
             'email.email'          => 'Please enter a valid email address.',
             'password.confirmed'   => 'The two passwords do not match.',
             'barangay.required'    => 'Please select your barangay.',
+            'city.required'        => 'Please select your town.',
             'group_code.regex'     => 'That group code was not found for today. Check it with the person who signed you in at the desk.',
         ];
     }

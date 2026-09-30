@@ -34,7 +34,7 @@ class VisitorController extends Controller
             'pending'     => $query->pendingClearance(),
             'unpaid'      => $query->where('payment_status', 'Unpaid'),
             'paid'        => $query->where('payment_status', 'Paid'),
-            'unverified'  => $query->where('visitor_type', 'Local')->where('id_verified', false),
+            'unverified'  => $query->awaitsIdCheck()->where('id_verified', false),
             default       => null,
         };
         $vsort = $request->input('vsort', 'newest');
@@ -79,7 +79,7 @@ class VisitorController extends Controller
             'tourist'    => Visitor::where('visitor_type', 'Tourist')->count(),
             'foreign'    => Visitor::where('visitor_type', 'Foreign')->count(),
             'unpaid'     => Visitor::where('payment_status', 'Unpaid')->count(),
-            'unverified' => Visitor::where('visitor_type', 'Local')->where('id_verified', false)->count(),
+            'unverified' => Visitor::awaitsIdCheck()->where('id_verified', false)->count(),
             // Everyone currently locked out of the visitor app waiting on staff.
             'pending'    => Visitor::pendingClearance()->count(),
         ];
@@ -157,6 +157,9 @@ class VisitorController extends Controller
         if ($visitor->visitor_type === 'Local') {
             return back()->with('error', 'Local visitors are admitted free — there is no fee to collect.');
         }
+        if ($visitor->needsIdCheck()) {
+            return back()->with('error', "{$visitor->discount_name} visitors are admitted free — verify their ID instead.");
+        }
         // "Already paid" means paid for THIS visit. The fee falls due again
         // on a later day, so a flag left over from an earlier visit must not
         // stop the desk collecting today's - that refusal would leave a
@@ -177,13 +180,14 @@ class VisitorController extends Controller
     }
 
     /**
-     * Confirm that a local visitor presented a valid proof of residency
-     * at the entrance desk, which is what entitles them to free admission.
+     * Confirm that a visitor presented the document that entitles them to
+     * free admission: a local's proof of residency, or the proof for a free
+     * category (a senior citizen ID, a PWD ID).
      */
     public function verifyId(Visitor $visitor)
     {
-        if ($visitor->visitor_type !== 'Local') {
-            return back()->with('error', 'Only local visitors need an ID checked for free admission.');
+        if (!$visitor->needsIdCheck()) {
+            return back()->with('error', 'Only visitors admitted free need an ID checked.');
         }
         // Same reasoning as markPaid(): the ID is sighted per visit, so a
         // check done on an earlier day is history, not today's clearance.
@@ -197,9 +201,10 @@ class VisitorController extends Controller
             'verified_by' => auth()->id(),
         ]);
 
-        $this->log('ID Verified', "Verified residency ID for {$visitor->first_name} {$visitor->last_name} ({$visitor->city})");
+        $what = $visitor->visitor_type === 'Local' ? 'residency ID' : "{$visitor->discount_name} ID";
+        $this->log('ID Verified', "Verified {$what} for {$visitor->first_name} {$visitor->last_name} ({$visitor->city})");
 
-        return back()->with('success', 'Residency ID verified — free admission granted.');
+        return back()->with('success', ucfirst($what) . ' verified — free admission granted.');
     }
 
     private function log(string $action, string $details): void

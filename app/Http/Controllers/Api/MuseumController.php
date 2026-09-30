@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\MuseumHall;
 use App\Models\MuseumInfo;
 use App\Services\GeofenceService;
+use App\Support\Admission;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -27,6 +28,9 @@ class MuseumController extends Controller
         $fee = MuseumInfo::admissionFee();
         $info['admission_fee'] = $fee;
         $info['admission']     = MuseumInfo::admissionSentence($fee);
+        // Who enters free and who pays less: what the sign-up form asks a
+        // local for, and the categories it offers everyone else.
+        $info['admission_rules'] = Admission::forClients();
 
         // Whether the app must actually be inside the fence before it logs
         // an entry. Decided here, not by the phone looking at its hostname:

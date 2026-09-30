@@ -27,6 +27,22 @@
 .hall-view-val{color:var(--text-2);flex:1}
 .btn-muted{background:var(--surface);color:var(--text-3);border:1.5px solid var(--border)}
 .btn-muted:hover{border-color:var(--text-3);color:var(--text)}
+
+/* Admission */
+.adm-radio{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--text-2);cursor:pointer;line-height:1.45}
+.adm-radio input{margin-top:3px}
+.adm-table-wrap{border:1px solid var(--border);border-radius:var(--r-sm);overflow-x:auto}
+.adm-table{width:100%;border-collapse:collapse;min-width:620px}
+.adm-table th{font-size:10.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em;text-align:left;padding:8px 8px;background:var(--border-light);border-bottom:1px solid var(--border)}
+.adm-table td{padding:6px 8px;border-bottom:1px solid var(--border-light);vertical-align:middle}
+.adm-table tr:last-child td{border-bottom:none}
+.adm-table .fi{padding:6px 8px;font-size:12.5px}
+.adm-ages{display:flex;align-items:center;gap:4px}
+.adm-ages .fi{min-width:0;text-align:center}
+.adm-ages span{font-size:11px;color:var(--text-3)}
+.adm-x{border:none;background:none;font-size:18px;line-height:1;color:var(--text-3);cursor:pointer;padding:2px 6px;border-radius:6px}
+.adm-x:hover{background:#fef2f2;color:var(--red)}
+.adm-empty{font-size:12.5px;color:var(--text-3);padding:12px;text-align:center}
 </style>
 @endpush
 
@@ -39,7 +55,9 @@
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
       Floor Map
     </a>
-    <button class="btn btn-green btn-sm" onclick="document.getElementById('museumForm').submit()">
+    {{-- requestSubmit(), not submit(): only the former runs the form's submit
+         handler, which is what writes the halls and discounts into it. --}}
+    <button class="btn btn-green btn-sm" onclick="document.getElementById('museumForm').requestSubmit()">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
       Save All Changes
     </button>
@@ -100,25 +118,102 @@
         <div class="fg"><label class="fl">Opening Hours</label><input class="fi" name="hours" value="{{ $info->hours }}"></div>
         <div class="fg"><label class="fl">Closed On</label><input class="fi" name="closed_on" value="{{ $info->closed_on }}"></div>
       </div>
-      {{-- One number drives every screen that mentions admission: the desk
-           register, the poster, the visitor app's sign-up and About screens. --}}
+      <div class="fi-row" style="margin-bottom:0">
+        <div class="fg" style="margin-bottom:0"><label class="fl">Phone</label><input class="fi" name="phone" value="{{ $info->phone }}"></div>
+        <div class="fg" style="margin-bottom:0"><label class="fl">Email</label><input class="fi" name="email" value="{{ $info->email }}"></div>
+      </div>
+    </div>
+  </div>
+
+  {{-- ── Section: Admission ──
+       Everything that decides what someone pays at the door: the fee, which
+       residents enter free, and the discount categories. The desk, the
+       poster and the visitor app all price from these (App\Support\Admission).
+       Opened by itself when a save bounced on one of its fields. --}}
+  @php
+    $admErr = $errors->hasAny(['admission_fee', 'resident_scope', 'discounts']);
+    $scope  = old('resident_scope', $info->resident_scope ?: \App\Support\Admission::DEFAULT_SCOPE);
+  @endphp
+  <div class="info-section">
+    <div class="info-hd {{ $admErr ? 'open' : '' }}" onclick="toggleSection(this)">
+      <div class="info-hd-left">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--green-dark)"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
+        <div>
+          <div class="info-hd-title">Admission</div>
+          <div class="info-hd-sub">Fee, free entry for residents, and discounts</div>
+        </div>
+      </div>
+      <svg class="info-chevron" @if($admErr) style="transform:rotate(180deg)" @endif xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <div class="info-body {{ $admErr ? 'open' : '' }}">
       <div class="fi-row">
         <div class="fg">
           <label class="fl">Admission Fee (PHP, per visitor)</label>
           <input class="fi" type="number" name="admission_fee" id="admissionFee" min="0" max="99999.99" step="0.01" required
                  value="{{ old('admission_fee', $info->admission_fee ?? \App\Models\MuseumInfo::DEFAULT_ADMISSION_FEE) }}"
                  oninput="previewAdmission()">
+          <div style="font-size:11.5px;color:var(--text-3);margin-top:4px">The full price, before any discount. Set 0 to make admission free for everyone.</div>
           @error('admission_fee')<div style="font-size:12px;color:var(--red);margin-top:4px">{{ $message }}</div>@enderror
         </div>
         <div class="fg">
-          <label class="fl">Shown to visitors as</label>
-          <div class="fi" id="admissionPreview" style="background:var(--border-light);color:var(--text-2);cursor:default">{{ $info->admission_sentence }}</div>
-          <div style="font-size:11.5px;color:var(--text-3);margin-top:4px">Baler residents always enter free with a valid ID. Set 0 to make admission free for everyone.</div>
+          <label class="fl">Free entry for residents of</label>
+          <div style="display:grid;gap:6px;margin-top:2px">
+            <label class="adm-radio"><input type="radio" name="resident_scope" value="baler" @checked($scope === 'baler') onchange="previewAdmission()">
+              <span><strong>Baler</strong> — the 13 barangays of the municipality</span></label>
+            <label class="adm-radio"><input type="radio" name="resident_scope" value="aurora" @checked($scope === 'aurora') onchange="previewAdmission()">
+              <span><strong>All of Aurora</strong> — the province's 8 towns</span></label>
+          </div>
+          <div style="font-size:11.5px;color:var(--text-3);margin-top:4px">Locals show a valid ID at the desk. This changes what the sign-up form asks them: a barangay, or a town.</div>
         </div>
       </div>
-      <div class="fi-row" style="margin-bottom:0">
-        <div class="fg" style="margin-bottom:0"><label class="fl">Phone</label><input class="fi" name="phone" value="{{ $info->phone }}"></div>
-        <div class="fg" style="margin-bottom:0"><label class="fl">Email</label><input class="fi" name="email" value="{{ $info->email }}"></div>
+
+      <label class="fl" style="margin-top:4px">Discounts</label>
+      <div style="font-size:11.5px;color:var(--text-3);margin:-2px 0 8px">
+        For visitors who are not locals. 100% off means free: they wait for an ID check, the way locals do.
+        Anything less, and the desk collects the reduced fee and checks the ID then.
+        Set an age range to have the system refuse a claim that does not fit the age the visitor gives.
+      </div>
+      <div class="adm-table-wrap">
+        <table class="adm-table">
+          <thead>
+            <tr><th>Name</th><th>Desk checks</th><th style="width:74px">% off</th><th style="width:170px">Ages</th><th style="width:56px">On</th><th style="width:34px"></th></tr>
+          </thead>
+          <tbody id="discountRows">
+            @foreach($discounts as $d)
+            <tr data-id="{{ $d->discount_id }}">
+              <td><input class="fi d-name" value="{{ $d->name }}" maxlength="80"></td>
+              <td><input class="fi d-proof" value="{{ $d->proof }}" maxlength="150" placeholder="e.g. Senior citizen ID"></td>
+              <td><input class="fi d-pct" type="number" min="1" max="100" value="{{ $d->percent_off }}" oninput="previewAdmission()"></td>
+              <td><div class="adm-ages"><input class="fi d-min" type="number" min="0" max="120" value="{{ $d->min_age }}" placeholder="any"><span>to</span><input class="fi d-max" type="number" min="0" max="120" value="{{ $d->max_age }}" placeholder="any"></div></td>
+              <td style="text-align:center"><input type="checkbox" class="d-active" @checked($d->active) onchange="previewAdmission()"></td>
+              <td><button type="button" class="adm-x" title="Remove" onclick="removeDiscount(this)">×</button></td>
+            </tr>
+            @endforeach
+          </tbody>
+        </table>
+        <div id="discountEmpty" class="adm-empty" @if($discounts->isNotEmpty()) hidden @endif>No discounts. Only locals enter free.</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center">
+        <button type="button" class="btn btn-outline btn-sm" onclick="addDiscount()">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add discount
+        </button>
+        {{-- Starting points only - each row is fully editable once added. 20%
+             is the statutory senior and PWD discount on admission (RA 9994,
+             RA 10754); the museum may choose to give more. --}}
+        <span style="font-size:11.5px;color:var(--text-3);margin-left:6px">Quick add:</span>
+        <button type="button" class="btn btn-muted btn-xs" onclick="addDiscount({name:'Senior citizen', proof:'Senior citizen ID', pct:20, min:60})">Senior citizen</button>
+        <button type="button" class="btn btn-muted btn-xs" onclick="addDiscount({name:'PWD', proof:'PWD ID', pct:20})">PWD</button>
+        <button type="button" class="btn btn-muted btn-xs" onclick="addDiscount({name:'Child', proof:'', pct:100, max:6})">Child</button>
+        <button type="button" class="btn btn-muted btn-xs" onclick="addDiscount({name:'Student', proof:'School ID', pct:20})">Student</button>
+      </div>
+      @error('discounts')<div style="font-size:12px;color:var(--red);margin-top:6px">{{ $message }}</div>@enderror
+      <input type="hidden" name="discounts" id="discountsInput">
+
+      <div class="fg" style="margin:16px 0 0">
+        <label class="fl">Shown to visitors as</label>
+        <div class="fi" id="admissionPreview" style="background:var(--border-light);color:var(--text-2);cursor:default;height:auto;line-height:1.5">{{ $info->admission_sentence }}</div>
+        <div style="font-size:11.5px;color:var(--text-3);margin-top:4px">On the entrance poster, the About screen and the sign-up form. Nothing changes for visitors until you save.</div>
       </div>
     </div>
   </div>
@@ -310,8 +405,6 @@
 
 @push('scripts')
 <script>
-// ── Admission: show the sentence visitors will read as the fee is typed ───
-// Mirrors MuseumInfo::admissionSentence(); the server writes the real one.
 // ── Report logo: show the chosen file before it is saved ─────────────────
 function previewLogo(input) {
   var img = document.getElementById('logoPreview'), none = document.getElementById('logoNone');
@@ -331,14 +424,88 @@ function previewHeader(input) {
   box.style.display = '';
 }
 
+// ── Admission ────────────────────────────────────────────────
+// The rows are read straight off the table on submit; there is no hidden
+// copy to keep in step while they are edited.
+function discountRowsData() {
+  return Array.from(document.querySelectorAll('#discountRows tr')).map(function (r) {
+    return {
+      id:          r.dataset.id || '',
+      name:        r.querySelector('.d-name').value.trim(),
+      proof:       r.querySelector('.d-proof').value.trim(),
+      percent_off: r.querySelector('.d-pct').value,
+      min_age:     r.querySelector('.d-min').value,
+      max_age:     r.querySelector('.d-max').value,
+      active:      r.querySelector('.d-active').checked,
+    };
+  });
+}
+
+function ageRange(min, max) {
+  if (min !== '' && max !== '') return min + '–' + max;
+  if (min !== '') return min + ' and over';
+  if (max !== '') return max + ' and under';
+  return '';
+}
+
+// Mirrors App\Support\Admission::sentence(); the server writes the real one.
 function previewAdmission() {
   const fee = parseFloat(document.getElementById('admissionFee').value);
   const out = document.getElementById('admissionPreview');
   if (!out) return;
-  out.textContent = (!isNaN(fee) && fee > 0)
-    ? 'Baler residents enter free with a valid ID · Visitors ₱' + fee.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    : 'Free for all visitors';
+  if (isNaN(fee) || fee <= 0) { out.textContent = 'Free for all visitors'; return; }
+
+  const scope = document.querySelector('input[name="resident_scope"]:checked');
+  const parts = [(scope && scope.value === 'aurora' ? 'Aurora' : 'Baler') + ' residents enter free with a valid ID'];
+  discountRowsData().forEach(function (d) {
+    const pct = parseInt(d.percent_off, 10);
+    if (!d.active || !d.name || !(pct >= 1)) return;
+    const ages = ageRange(d.min_age, d.max_age);
+    parts.push(d.name + (ages ? ' (' + ages + ')' : '') + ': ' + (pct >= 100 ? 'Free' : pct + '% off'));
+  });
+  parts.push('Visitors ₱' + fee.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  out.textContent = parts.join(' · ');
 }
+
+function addDiscount(preset) {
+  preset = preset || {};
+  const tr = document.createElement('tr');
+  tr.dataset.id = '';
+  tr.innerHTML =
+    '<td><input class="fi d-name" maxlength="80" placeholder="e.g. Senior citizen"></td>' +
+    '<td><input class="fi d-proof" maxlength="150" placeholder="e.g. Senior citizen ID"></td>' +
+    '<td><input class="fi d-pct" type="number" min="1" max="100"></td>' +
+    '<td><div class="adm-ages"><input class="fi d-min" type="number" min="0" max="120" placeholder="any"><span>to</span><input class="fi d-max" type="number" min="0" max="120" placeholder="any"></div></td>' +
+    '<td style="text-align:center"><input type="checkbox" class="d-active" checked></td>' +
+    '<td><button type="button" class="adm-x" title="Remove" onclick="removeDiscount(this)">×</button></td>';
+  // Set as values, not written into the markup, so nothing typed can ever
+  // be read as HTML.
+  tr.querySelector('.d-name').value  = preset.name  || '';
+  tr.querySelector('.d-proof').value = preset.proof || '';
+  tr.querySelector('.d-pct').value   = preset.pct   || '';
+  tr.querySelector('.d-min').value   = preset.min != null ? preset.min : '';
+  tr.querySelector('.d-max').value   = preset.max != null ? preset.max : '';
+  tr.querySelectorAll('input').forEach(function (i) { i.addEventListener('input', previewAdmission); i.addEventListener('change', previewAdmission); });
+  document.getElementById('discountRows').appendChild(tr);
+  document.getElementById('discountEmpty').hidden = true;
+  (preset.name ? tr.querySelector('.d-proof') : tr.querySelector('.d-name')).focus();
+  previewAdmission();
+}
+
+function removeDiscount(btn) {
+  const tr = btn.closest('tr');
+  const name = tr.querySelector('.d-name').value.trim();
+  if (tr.dataset.id && !confirm('Remove "' + (name || 'this discount') + '"? Visitors who already claimed it keep what they were charged. To pause it instead, untick On.')) return;
+  tr.remove();
+  document.getElementById('discountEmpty').hidden = document.querySelectorAll('#discountRows tr').length > 0;
+  previewAdmission();
+}
+
+document.querySelectorAll('#discountRows input').forEach(function (i) { i.addEventListener('input', previewAdmission); });
+
+document.getElementById('museumForm').addEventListener('submit', function () {
+  document.getElementById('discountsInput').value = JSON.stringify(discountRowsData());
+});
 
 // ── Set the geofence pin from where this device is standing ───
 (function () {

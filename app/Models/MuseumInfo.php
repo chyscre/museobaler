@@ -12,8 +12,8 @@ class MuseumInfo extends Model
 
     /**
      * What the museum charges when nobody has set anything yet: the fee it
-     * has always charged. Baler locals enter free regardless; this is the
-     * flat per-head amount for everyone else.
+     * has always charged. Locals enter free regardless; this is the flat
+     * per-head amount for everyone else, before any discount category.
      */
     public const DEFAULT_ADMISSION_FEE = 50.00;
 
@@ -21,7 +21,7 @@ class MuseumInfo extends Model
         'name', 'tagline', 'story', 'story2',
         'address', 'hours', 'closed_on', 'phone', 'email',
         'report_logo', 'report_header_image',
-        'admission', 'admission_fee',
+        'admission', 'admission_fee', 'resident_scope',
         'latitude', 'longitude', 'geofence_radius_m',
     ];
 
@@ -128,20 +128,20 @@ class MuseumInfo extends Model
 
     /**
      * The one sentence every screen shows for admission, generated from the
-     * fee so it can never disagree with what the desk actually collects.
+     * fee and the free-admission rules so it can never disagree with what
+     * the desk actually collects. See App\Support\Admission::sentence().
      */
-    public static function admissionSentence(float $fee): string
+    public static function admissionSentence(float $fee, ?string $scope = null): string
     {
-        if ($fee <= 0) {
-            return 'Free for all visitors';
-        }
-
-        return 'Baler residents enter free with a valid ID · Visitors ₱' . number_format($fee, 2);
+        return \App\Support\Admission::sentence($fee, $scope);
     }
 
     public function getAdmissionSentenceAttribute(): string
     {
-        return self::admissionSentence((float) ($this->admission_fee ?? self::DEFAULT_ADMISSION_FEE));
+        return self::admissionSentence(
+            (float) ($this->admission_fee ?? self::DEFAULT_ADMISSION_FEE),
+            $this->resident_scope,
+        );
     }
 
     protected static function booted(): void
@@ -150,7 +150,7 @@ class MuseumInfo extends Model
         // number so anything still reading `admission` gets the right line.
         static::saving(function (self $info) {
             if ($info->admission_fee !== null) {
-                $info->admission = self::admissionSentence((float) $info->admission_fee);
+                $info->admission = self::admissionSentence((float) $info->admission_fee, $info->resident_scope);
             }
         });
 
