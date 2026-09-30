@@ -198,8 +198,11 @@ let STATE = {
   visitType: 'Walk-in',
   visitorType: 'Local',
   // Admission is settled at the entrance desk: locals show an ID for free
-  // entry, everyone else pays the flat fee at the counter.
+  // entry, everyone else pays the fee at the counter, less any discount.
   admissionFee: 0,
+  // The discount category claimed at sign-up ({name, percent_off, proof}),
+  // or null. Display only - it says which ID to show at the desk.
+  discount: null,
   paymentStatus: 'Free',
   idVerified: false,
   // Bearer token for the visitor API. Not a secret the app derives anything
@@ -480,21 +483,59 @@ function feeLabel(amount) {
   return n > 0 ? '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 'FREE';
 }
 
-// Baler locals enter free but must show proof of residency at the desk.
-// Everyone else pays the flat fee at the entrance counter. Fee and label are
-// read live so a fee that arrives after this table is built still shows.
+// Who enters free and who pays less, as set on the admin's Museum Info page
+// (App\Support\Admission). Replaced by _loadMuseumConfig(); until then the
+// app behaves as it always has - Baler barangays, no discounts.
+//   resident_scope  'baler' asks a local for a barangay, 'aurora' for a town
+//   discounts       [{id, name, proof, percent_off, min_age, max_age,
+//                     benefit, age_range}] offered to everyone else
+let ADMISSION_CONFIG = {
+  resident_scope: 'baler',
+  resident_place: 'Baler',
+  towns: [],
+  discounts: [],
+};
+
+/** The discount picked on the sign-up form, or null. */
+function selectedDiscount() {
+  const id = document.getElementById('vi-discount')?.value;
+  if (!id) return null;
+  return ADMISSION_CONFIG.discounts.find(d => String(d.id) === String(id)) || null;
+}
+
+/** Mirrors Admission::discounted() - a preview only; the server prices it. */
+function discountedFee(percentOff) {
+  return Math.round(ADMISSION_FEE * (100 - percentOff)) / 100;
+}
+
+// Locals enter free but must show proof of residency at the desk. Everyone
+// else pays the fee at the entrance counter, less any discount they pick.
+// Read live, so settings that arrive after this table is built still show.
+const FREE_STYLE   = { bg: '#F0FDF4', border: '#BBF7D0', fg: '#15803D' };
+const PAYING_STYLE = { bg: '#FFFBEB', border: '#FDE68A', fg: '#B45309' };
 const PAYING_RULE = {
-  get fee()   { return ADMISSION_FEE; },
-  get label() { return feeLabel(); },
-  note: 'Please pay at the entrance counter before starting your tour.',
-  bg: '#FFFBEB', border: '#FDE68A', fg: '#B45309',
+  get label() {
+    const d = selectedDiscount();
+    return feeLabel(d ? discountedFee(d.percent_off) : ADMISSION_FEE);
+  },
+  get note() {
+    const d = selectedDiscount();
+    if (!d) return 'Please pay at the entrance counter before starting your tour.';
+    const proof = d.proof || `${d.name} ID`;
+    return d.percent_off >= 100
+      ? `${d.name}: free. Show your ${proof} at the entrance desk.`
+      : `${d.name}: ${d.percent_off}% off. Pay at the counter and show your ${proof}.`;
+  },
+  get style() {
+    const d = selectedDiscount();
+    return d && discountedFee(d.percent_off) <= 0 ? FREE_STYLE : PAYING_STYLE;
+  },
 };
 const ADMISSION_RULES = {
   Local: {
-    fee: 0,
     label: 'FREE',
-    note: 'Baler residents enter free. Show your ID at the entrance desk.',
-    bg: '#F0FDF4', border: '#BBF7D0', fg: '#15803D',
+    get note() { return `${ADMISSION_CONFIG.resident_place} residents enter free. Show your ID at the entrance desk.`; },
+    style: FREE_STYLE,
   },
   Tourist: PAYING_RULE,
   Foreign: PAYING_RULE,
@@ -781,6 +822,8 @@ function applySession(v) {
   if (v.province!== undefined && v.province!== null) STATE.province = v.province;
   if (v.country)      STATE.country     = v.country;
   STATE.admissionFee  = Number(v.admission_fee || 0);
+  if (v.discount !== undefined) STATE.discount = v.discount || null;
+  if (v.resident_place) STATE.residentPlace = v.resident_place;
   STATE.paymentStatus = v.payment_status || STATE.paymentStatus;
   STATE.idVerified    = !!v.id_verified;
   STATE.clearance     = v.clearance || (v.cleared ? 'cleared' : STATE.clearance);
@@ -850,6 +893,8 @@ function showPending(v) {
     if (v.payment_status) STATE.paymentStatus = v.payment_status;
     if (v.admission_fee !== undefined) STATE.admissionFee = Number(v.admission_fee);
     if (v.visitor_type) STATE.visitorType = v.visitor_type;
+    if (v.discount !== undefined) STATE.discount = v.discount || null;
+    if (v.resident_place) STATE.residentPlace = v.resident_place;
     saveState();
   }
 
@@ -893,7 +938,12 @@ function showPending(v) {
     box.style.color      = '#1D4ED8';
     icon.textContent     = 'badge';
     title.textContent    = 'Show your ID at the entrance desk';
-    text.textContent     = 'Present proof of Baler residency — barangay certificate, PhilSys ID, driver’s licence, school or company ID. Staff will verify it and this screen unlocks by itself.';
+    // Free on a discount (a senior entering free) rather than as a local:
+    // the desk wants that category's ID, not proof of residency.
+    const disc = STATE.visitorType !== 'Local' && STATE.discount;
+    text.textContent     = disc
+      ? `Present your ${disc.proof || disc.name + ' ID'} for free admission as ${disc.name.toLowerCase()}. Staff will verify it and this screen unlocks by itself.`
+      : `Present proof of ${STATE.residentPlace || ADMISSION_CONFIG.resident_place} residency — barangay certificate, PhilSys ID, driver’s licence, school or company ID. Staff will verify it and this screen unlocks by itself.`;
     feeRow.style.display = 'none';
   }
 
@@ -1009,6 +1059,62 @@ function selectVisitorType(input) {
   document.getElementById('panel-local').style.display   = type === 'Local'   ? 'block' : 'none';
   document.getElementById('panel-tourist').style.display = type === 'Tourist' ? 'block' : 'none';
   document.getElementById('panel-foreign').style.display = type === 'Foreign' ? 'block' : 'none';
+  showDiscountPicker();
+  updateFeeBox();
+}
+
+/** The discount picker is for non-locals, and only when there is a choice. */
+function showDiscountPicker() {
+  const wrap = document.getElementById('discount-wrap');
+  if (!wrap) return;
+  const show = currentVisitorType() !== 'Local' && ADMISSION_CONFIG.discounts.length > 0;
+  wrap.style.display = show ? 'block' : 'none';
+  if (!show) document.getElementById('vi-discount').value = '';
+}
+
+/** Fill a <select> with options, keeping what was picked if it still exists. */
+function fillSelect(sel, items, placeholder) {
+  if (!sel) return;
+  const keep = sel.value;
+  sel.innerHTML = '';
+  const first = document.createElement('option');
+  first.value = '';
+  first.textContent = placeholder;
+  if (sel.id === 'vi-town') { first.disabled = true; }
+  sel.appendChild(first);
+  items.forEach(([value, text]) => {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = text;   // textContent: names come from the admin, never markup
+    sel.appendChild(o);
+  });
+  sel.value = items.some(([v]) => String(v) === keep) ? keep : '';
+}
+
+/** Point the sign-up form at the museum's current admission rules. */
+function _applyAdmissionRules(rules) {
+  if (!rules) return;
+  ADMISSION_CONFIG = {
+    resident_scope: rules.resident_scope === 'aurora' ? 'aurora' : 'baler',
+    resident_place: rules.resident_place || 'Baler',
+    towns:          Array.isArray(rules.towns) ? rules.towns : [],
+    discounts:      Array.isArray(rules.discounts) ? rules.discounts : [],
+  };
+
+  const byTown = ADMISSION_CONFIG.resident_scope === 'aurora';
+  const townWrap = document.getElementById('local-town-wrap');
+  const brgyWrap = document.getElementById('local-barangay-wrap');
+  if (townWrap) townWrap.style.display = byTown ? 'block' : 'none';
+  if (brgyWrap) brgyWrap.style.display = byTown ? 'none' : 'block';
+  fillSelect(document.getElementById('vi-town'),
+    ADMISSION_CONFIG.towns.map(t => [t, t]), 'Select your town');
+
+  fillSelect(document.getElementById('vi-discount'),
+    ADMISSION_CONFIG.discounts.map(d => [d.id,
+      d.name + (d.age_range ? ` (${d.age_range})` : '') + ' — ' + d.benefit]),
+    'None');
+
+  showDiscountPicker();
   updateFeeBox();
 }
 
@@ -1022,16 +1128,17 @@ function currentVisitorType() {
 }
 
 function updateFeeBox() {
-  const rule = ADMISSION_RULES[currentVisitorType()] || ADMISSION_RULES.Local;
-  const box  = document.getElementById('fee-box');
+  const rule  = ADMISSION_RULES[currentVisitorType()] || ADMISSION_RULES.Local;
+  const style = rule.style;
+  const box   = document.getElementById('fee-box');
   if (!box) return;
-  box.style.background  = rule.bg;
-  box.style.border      = '1px solid ' + rule.border;
-  document.getElementById('fee-label').style.color  = rule.fg;
-  document.getElementById('fee-amount').style.color = rule.fg;
+  box.style.background  = style.bg;
+  box.style.border      = '1px solid ' + style.border;
+  document.getElementById('fee-label').style.color  = style.fg;
+  document.getElementById('fee-amount').style.color = style.fg;
   document.getElementById('fee-amount').textContent = rule.label;
   const note = document.getElementById('fee-note');
-  note.style.color   = rule.fg;
+  note.style.color   = style.fg;
   note.textContent   = rule.note;
 }
 
@@ -1051,13 +1158,18 @@ function submitRegistration() {
   if (!sex) { showToast('Please select your sex'); return; }
 
   // Location depends on the visitor type — locals must name their barangay
-  // so the free-admission claim (Baler residents only) can be checked
-  // against what their ID says at the desk.
+  // (or their town, if free entry covers all of Aurora) so the free-admission
+  // claim can be checked against what their ID says at the desk.
   let city = '', province = '', country = 'Philippines', barangay = '';
   if (visitorType === 'Local') {
-    barangay = document.getElementById('vi-barangay').value;
-    if (!barangay) { showToast('Please select your barangay'); return; }
-    city = 'Baler';
+    if (ADMISSION_CONFIG.resident_scope === 'aurora') {
+      city = document.getElementById('vi-town').value;
+      if (!city) { showToast('Please select your town'); return; }
+    } else {
+      barangay = document.getElementById('vi-barangay').value;
+      if (!barangay) { showToast('Please select your barangay'); return; }
+      city = 'Baler';
+    }
     province = 'Aurora';
   } else if (visitorType === 'Tourist') {
     city     = document.getElementById('vi-city').value.trim();
@@ -1070,6 +1182,16 @@ function submitRegistration() {
       : picked;
     if (!country) { showToast('Please tell us which country you are from'); return; }
     city = document.getElementById('vi-city-foreign').value.trim();
+  }
+
+  // Caught here for a quicker answer; the server refuses the same claims.
+  const discount = visitorType === 'Local' ? null : selectedDiscount();
+  if (discount) {
+    const n = Number(age);
+    if ((discount.min_age != null && n < discount.min_age) || (discount.max_age != null && n > discount.max_age)) {
+      showToast(`${discount.name} is for ages ${discount.age_range}.`);
+      return;
+    }
   }
 
   STATE.age         = age;
@@ -1098,6 +1220,8 @@ function submitRegistration() {
       city:             STATE.city,
       barangay:         STATE.barangay,
       province:         STATE.province,
+      // Which category, never what it costs.
+      discount_id:      discount ? discount.id : null,
       email:            pendingSignup.email,
       password:              pendingSignup.password,
       password_confirmation: pendingSignup.password,
@@ -1169,11 +1293,15 @@ function finishRegistration() {
 
   const free = STATE.paymentStatus === 'Free';
   document.getElementById('success-fee').textContent = free ? 'FREE' : feeLabel(STATE.admissionFee || ADMISSION_FEE);
+  const disc  = STATE.visitorType !== 'Local' && STATE.discount;
+  const proof = disc ? (disc.proof || disc.name + ' ID') : 'ID';
   document.getElementById('success-fee-note').textContent = STATE.group
     ? `You're with ${STATE.group.label}. The group's payment covers your admission.`
     : free
-      ? 'Show your ID at the entrance desk to claim free entry.'
-      : 'Payable at the entrance counter before your tour.';
+      ? `Show your ${proof} at the entrance desk to claim free entry.`
+      : disc
+        ? `${disc.name} rate. Pay at the entrance counter and show your ${proof}.`
+        : 'Payable at the entrance counter before your tour.';
 
   showScreen('s-reg-success');
 }
@@ -4346,7 +4474,7 @@ function doLogout() {
     firstName: '', lastName: '', middleName: '', age: '', sex: '',
     country: 'Philippines', city: '', province: '',
     visitType: 'Walk-in', visitorType: 'Local',
-    admissionFee: 0, paymentStatus: 'Free', idVerified: false,
+    admissionFee: 0, discount: null, paymentStatus: 'Free', idVerified: false,
     token: null, clearance: 'pending_payment', cleared: false, group: null, modeSelected: false,
     mode: 'storyline', lang: 'en',
     scanned: [], bookmarks: [], recentlyViewed: [],
@@ -4636,6 +4764,8 @@ function _loadMuseumConfig() {
         ADMISSION_FEE = parseFloat(info.admission_fee);
         try { updateFeeBox(); } catch (e) {}
       }
+      // Who enters free and the discounts on offer - what the sign-up form asks.
+      try { _applyAdmissionRules(info.admission_rules); } catch (e) {}
       if (info.latitude != null && info.longitude != null) {
         MUSEUM_LAT = parseFloat(info.latitude);
         MUSEUM_LNG = parseFloat(info.longitude);

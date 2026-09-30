@@ -8,6 +8,7 @@ use App\Http\Requests\Api\LoginRequest;
 use App\Http\Requests\Api\RegisterVisitorRequest;
 use App\Models\Visitor;
 use App\Models\VisitGroup;
+use App\Support\Admission;
 use App\Support\MailDomain;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,9 +27,11 @@ class VisitorController extends Controller
     /**
      * POST /api/v1/visitors - register.
      *
-     * Admission is resolved here from the visitor type. Local: free, but the
-     * record starts with id_verified = 0 until staff sight a Baler ID.
-     * Tourist and Foreign: the flat fee, collected at the counter. A group
+     * Admission is resolved here from the visitor type and any discount
+     * category claimed. Local: free, but the record starts with
+     * id_verified = 0 until staff sight a residency ID. Tourist and Foreign:
+     * the fee less the category's discount, collected at the counter - or,
+     * for a free category, nothing but the same ID check. A group
      * code resolves before the insert, so a bad code costs a retype and not
      * a half-made account; a member owes nothing personally and takes the
      * visit type of the party.
@@ -60,12 +63,18 @@ class VisitorController extends Controller
 
         $type = $data['visitor_type'];
 
+        // Validation has already refused a local without the barangay or
+        // town the resident scope asks for; this only fills in the rest.
+        $discount = null;
         if ($type === 'Local') {
-            $data['city']     = 'Baler';
-            $data['province'] = 'Aurora';
-            $data['country']  = 'Philippines';
+            $where = Admission::residence($data['city'] ?? null, $data['barangay'] ?? null);
+            $data['city']     = $where['city'];
+            $data['barangay'] = $where['barangay'];
+            $data['province'] = $where['province'];
+            $data['country']  = $where['country'];
         } else {
             $data['barangay'] = null;
+            $discount = Admission::discount($data['discount_id'] ?? null);
         }
 
         $group = null;
@@ -75,6 +84,9 @@ class VisitorController extends Controller
                 return response()->json(['error' => $error, 'field' => 'group_code', 'message' => self::groupErrorMessage($error)], 422);
             }
         }
+
+        // A member owes nothing personally; the party pays.
+        $fee = $group ? 0.00 : Visitor::feeFor($type, $discount);
 
         $visitor = Visitor::create([
             'first_name'     => $data['first_name'],
@@ -92,8 +104,11 @@ class VisitorController extends Controller
             'password'       => $data['password'],
             'auth_provider'  => 'manual',
             'explore_mode'   => $data['explore_mode'] ?? 'Storyline',
-            'admission_fee'  => $group || $type === 'Local' ? 0.00 : Visitor::feeFor($type),
-            'payment_status' => $group || $type === 'Local' ? 'Free' : 'Unpaid',
+            // The category is recorded even for a group member, who owes
+            // nothing personally: it is part of who they are next visit.
+            ...Visitor::discountColumns($discount),
+            'admission_fee'  => $fee,
+            'payment_status' => $fee > 0 ? 'Unpaid' : 'Free',
             'group_id'       => $group?->group_id,
             'source'         => 'app',
             'id_verified'    => false,

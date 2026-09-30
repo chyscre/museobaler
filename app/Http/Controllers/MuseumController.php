@@ -2,11 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AdmissionDiscount;
 use App\Models\Exhibit;
 use App\Models\Log;
 use App\Models\MuseumHall;
 use App\Models\MuseumInfo;
+use App\Support\Admission;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 
 class MuseumController extends Controller
 {
@@ -23,8 +28,10 @@ class MuseumController extends Controller
             'admission_fee' => MuseumInfo::DEFAULT_ADMISSION_FEE,
         ]);
         $halls = MuseumHall::orderBy('sort_order')->get();
+        // Every category, the paused ones too - this is where they are resumed.
+        $discounts = AdmissionDiscount::orderBy('sort_order')->orderBy('discount_id')->get();
 
-        return view('museum.index', compact('info', 'halls'));
+        return view('museum.index', compact('info', 'halls', 'discounts'));
     }
 
     public function update(Request $request)
@@ -49,6 +56,9 @@ class MuseumController extends Controller
             'report_header_image' => 'nullable|image|mimes:png,jpg,jpeg,webp|max:4096',
             'remove_header'       => 'nullable|boolean',
             'admission_fee'     => 'required|numeric|min:0|max:99999.99',
+            // Left out, the current setting stands.
+            'resident_scope'    => 'nullable|in:' . implode(',', array_keys(Admission::SCOPES)),
+            'discounts'         => 'nullable|string|max:20000',
             'latitude'          => 'nullable|numeric|between:-90,90',
             'longitude'         => 'nullable|numeric|between:-180,180',
             'geofence_radius_m' => 'nullable|integer|min:20|max:2000',
@@ -59,12 +69,28 @@ class MuseumController extends Controller
             'report_header_image.max'   => 'The letterhead must be 4 MB or smaller.',
         ]);
 
+        // Checked before anything is written, so a bad row cannot leave the
+        // museum with half its settings saved.
+        // filled(), not has(): the field is written by the page's script, and
+        // a post it never ran on arrives empty. Empty means "not sent", not
+        // "delete them all" - a list emptied on purpose arrives as "[]".
+        $discounts = $request->filled('discounts') ? $this->validatedDiscounts($request->input('discounts')) : null;
+
         $info = MuseumInfo::firstOrCreate(['info_id' => 1]);
         $info->fill($request->only([
             'name', 'tagline', 'story', 'story2',
             'address', 'hours', 'closed_on', 'phone', 'email', 'admission_fee',
             'latitude', 'longitude', 'geofence_radius_m',
         ]));
+        if ($request->filled('resident_scope')) {
+            $info->resident_scope = $request->input('resident_scope');
+        }
+
+        // Before the save, so the admission sentence it writes already
+        // lists the categories as they now stand.
+        if ($discounts !== null) {
+            $this->syncDiscounts($discounts);
+        }
 
         $info->report_logo = $this->swapBrandingFile(
             $request, 'report_logo', 'remove_logo', 'report-logo', $info->report_logo
@@ -76,8 +102,11 @@ class MuseumController extends Controller
 
         $info->save();
 
-        // Sync halls
-        if ($request->has('halls')) {
+        // Sync halls. filled(), for the reason given for the discounts above:
+        // with has(), a post whose hall list was never written - the Save
+        // button used to submit the form without running the script that
+        // writes it - read as an empty list and deleted every hall.
+        if ($request->filled('halls')) {
             $halls = json_decode($request->input('halls'), true) ?? [];
             $kept  = [];
             foreach ($halls as $h) {
@@ -162,6 +191,93 @@ class MuseumController extends Controller
         $this->log('Museum Map Updated', 'Repositioned ' . count($data['positions']) . ' exhibit pin(s) on the floor plan');
 
         return response()->json(['ok' => true, 'saved' => count($data['positions'])]);
+    }
+
+    /**
+     * The discount categories posted from the Museum Info page, checked.
+     *
+     * They arrive as one JSON list, the way the halls do, because the page
+     * edits them as rows in place. Each is validated as if it had been its
+     * own form, and the first problem is reported against `discounts` with
+     * the row's name, so the admin can find it.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function validatedDiscounts(?string $json): array
+    {
+        $rows = json_decode((string) $json, true);
+        if (!is_array($rows)) {
+            throw ValidationException::withMessages(['discounts' => 'The discount list could not be read. Reload the page and try again.']);
+        }
+
+        $clean = [];
+        foreach (array_values($rows) as $i => $row) {
+            $row = is_array($row) ? $row : [];
+            foreach (['min_age', 'max_age', 'proof', 'id'] as $optional) {
+                if (($row[$optional] ?? null) === '') {
+                    $row[$optional] = null;
+                }
+            }
+
+            $v = Validator::make($row, [
+                'id'          => 'nullable|integer',
+                'name'        => 'required|string|max:80',
+                'proof'       => 'nullable|string|max:150',
+                'percent_off' => 'required|integer|min:1|max:100',
+                'min_age'     => 'nullable|integer|min:0|max:120',
+                'max_age'     => 'nullable|integer|min:0|max:120',
+                'active'      => 'nullable|boolean',
+            ], [
+                'name.required'        => 'Every discount needs a name.',
+                'percent_off.required' => 'Say how much comes off, from 1% to 100% (free).',
+                'percent_off.min'      => 'Say how much comes off, from 1% to 100% (free).',
+                'percent_off.max'      => 'Say how much comes off, from 1% to 100% (free).',
+            ]);
+
+            $label = trim((string) ($row['name'] ?? '')) ?: 'Discount ' . ($i + 1);
+
+            if ($v->fails()) {
+                throw ValidationException::withMessages(['discounts' => "{$label}: " . $v->errors()->first()]);
+            }
+            if (isset($row['min_age'], $row['max_age']) && (int) $row['min_age'] > (int) $row['max_age']) {
+                throw ValidationException::withMessages(['discounts' => "{$label}: the youngest age is above the oldest."]);
+            }
+            // Two options the desk cannot tell apart.
+            if (in_array(mb_strtolower(trim($row['name'])), array_map(fn ($c) => mb_strtolower($c['name']), $clean), true)) {
+                throw ValidationException::withMessages(['discounts' => "{$label} is listed twice."]);
+            }
+
+            $clean[] = [
+                'id'          => isset($row['id']) ? (int) $row['id'] : null,
+                'name'        => trim($row['name']),
+                'proof'       => isset($row['proof']) ? trim($row['proof']) : null,
+                'percent_off' => (int) $row['percent_off'],
+                'min_age'     => isset($row['min_age']) ? (int) $row['min_age'] : null,
+                'max_age'     => isset($row['max_age']) ? (int) $row['max_age'] : null,
+                'active'      => (bool) ($row['active'] ?? true),
+                'sort_order'  => $i,
+            ];
+        }
+
+        return $clean;
+    }
+
+    /**
+     * Make the categories match the page. A row taken off the page is
+     * deleted: visitors who claimed it keep its name and percentage on their
+     * own record, so what they paid still reads correctly, and a returning
+     * one is simply charged the full fee.
+     */
+    private function syncDiscounts(array $rows): void
+    {
+        $kept = [];
+        foreach ($rows as $row) {
+            $record = ($row['id'] ? AdmissionDiscount::find($row['id']) : null) ?? new AdmissionDiscount();
+            $record->fill(Arr::except($row, ['id']))->save();
+            $kept[] = $record->discount_id;
+        }
+
+        AdmissionDiscount::whereNotIn('discount_id', $kept)->get()->each->delete();
     }
 
     /**

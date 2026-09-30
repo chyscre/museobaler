@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Admission;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 
@@ -14,7 +15,7 @@ class VisitGroup extends Model
         'join_code',
         'group_name', 'group_type', 'contact_name', 'contact_phone',
         'visitor_type', 'city', 'province', 'country',
-        'headcount', 'local_count', 'paying_count', 'total_fee', 'payment_status', 'paid_at',
+        'headcount', 'local_count', 'discounts', 'paying_count', 'total_fee', 'payment_status', 'paid_at',
         'refunded_amount', 'refunded_at', 'refunded_by',
         'visit_date', 'registered_by', 'notes',
     ];
@@ -27,6 +28,7 @@ class VisitGroup extends Model
             'refunded_at'     => 'datetime',
             'total_fee'       => 'decimal:2',
             'refunded_amount' => 'decimal:2',
+            'discounts'       => 'array',
         ];
     }
 
@@ -64,12 +66,15 @@ class VisitGroup extends Model
      */
     public function correctLocals(int $localCount, int $byStaffId): array
     {
-        $localCount = min(max(0, $localCount), (int) $this->headcount);
+        // Heads the desk put in a discount category are neither locals nor
+        // full payers, so the locals can be at most everyone else.
+        $localCount = min(max(0, $localCount), (int) $this->headcount - $this->discountedCount());
         $wasFee     = (float) $this->total_fee;
         $wasStatus  = $this->payment_status;
 
-        $paying = self::payingFor($this->visitor_type, (int) $this->headcount, $localCount);
-        $newFee = self::feeFor($this->visitor_type, $paying);
+        $price  = Admission::groupPrice($this->visitor_type, (int) $this->headcount, $localCount, $this->discounts ?? []);
+        $paying = $price['paying'];
+        $newFee = $price['fee'];
 
         $this->local_count  = $localCount;
         $this->paying_count = $paying;
@@ -216,7 +221,26 @@ class VisitGroup extends Model
             return false;
         }
 
-        return $this->visitor_type === 'Local' || $this->payment_status === 'Paid';
+        // A party the desk priced at nothing - every head a local or in a
+        // free category - clears the same way a Local group does: the desk
+        // saw them, and their documents, when it counted them in.
+        return $this->visitor_type === 'Local'
+            || $this->payment_status === 'Paid'
+            || ($this->payment_status === 'Free' && (float) $this->total_fee <= 0);
+    }
+
+    /** Heads in a discount category, of any kind. */
+    public function discountedCount(): int
+    {
+        return (int) array_sum(array_column($this->discounts ?? [], 'count'));
+    }
+
+    /** "2 Senior citizen · 1 PWD", or null when nobody claimed one. */
+    public function getDiscountSummaryAttribute(): ?string
+    {
+        $parts = array_map(fn ($d) => $d['count'] . ' ' . $d['name'], $this->discounts ?? []);
+
+        return $parts ? implode(' · ', $parts) : null;
     }
 
     public function visitors()

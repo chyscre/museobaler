@@ -178,9 +178,9 @@
             @elseif($v->payment_status === 'Free')
               {{-- Ternary, not a nested @if: Blade will not compile a directive
                    that follows a word character ("entry@if"), so it printed raw. --}}
-              Free entry{{ $v->id_verified ? ' · ID checked' : '' }}
+              Free entry{{ $v->discount_name ? ' · ' . $v->discount_name : '' }}{{ $v->id_verified ? ' · ID checked' : '' }}
             @else
-              {{ $v->payment_status }} · ₱{{ number_format((float) $v->admission_fee, 2) }}
+              {{ $v->payment_status }} · ₱{{ number_format((float) $v->admission_fee, 2) }}{{ $v->discount_name ? ' · ' . $v->discount_name . ' ' . $v->discount_percent . '% off' : '' }}
             @endif
           </div>
         </td>
@@ -290,8 +290,10 @@
         <td><span class="badge {{ $g->visitor_type==='Local'?'b-green':($g->visitor_type==='Tourist'?'b-gold':'b-purple') }}">{{ $g->visitor_type }}</span></td>
         <td>
           {{ $g->headcount }}
-          @if($g->visitor_type !== 'Local' && $g->local_count > 0)
-            <div style="font-size:11px;color:var(--text-3)">{{ $g->local_count }} from Baler · {{ $g->paying_count }} paying</div>
+          {{-- "local" rather than "from Baler": which towns count as local is
+               a setting, and this row may predate the current one. --}}
+          @if($g->visitor_type !== 'Local' && ($g->local_count > 0 || $g->discount_summary))
+            <div style="font-size:11px;color:var(--text-3)">{{ collect([$g->local_count > 0 ? $g->local_count . ' local' : null, $g->discount_summary, $g->paying_count . ' paying'])->filter()->implode(' · ') }}</div>
           @endif
           @php
             $unaccounted = $g->unaccountedLocals();
@@ -336,7 +338,7 @@
               <form method="POST" action="{{ route('desk.groups.correct', $g) }}" style="display:inline-flex;align-items:center;gap:5px;margin-left:6px">
                 @csrf
                 <input class="fi" name="local_count" type="number" min="0" max="{{ $g->headcount }}" value="{{ $g->local_count }}"
-                       style="width:52px;padding:4px 6px;font-size:12px;text-align:center" title="How many of this party are from Baler">
+                       style="width:52px;padding:4px 6px;font-size:12px;text-align:center" title="How many of this party are locals">
                 <button type="submit" class="btn btn-outline btn-xs" title="Re-price for this many locals. If already paid, the difference is recorded as a refund.">Locals</button>
               </form>
             @endif

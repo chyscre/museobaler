@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\Log;
 use App\Models\Staff;
 use App\Models\Visitor;
-use App\Support\BalerBarangays;
+use App\Models\AdmissionDiscount;
+use App\Support\Admission;
 use App\Models\VisitGroup;
 use App\Services\Qr;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -49,6 +51,7 @@ class DeskController extends Controller
         'province'    => 'nullable|string|max:100',
         'country'     => 'nullable|string|max:100',
         'email'       => 'nullable|email|max:150',
+        'discount_id' => 'nullable|integer',
     ];
 
     // -- Desk-assisted registration ---------------------------------------
@@ -56,6 +59,8 @@ class DeskController extends Controller
     public function create()
     {
         return view('desk.register', [
+            // What the forms ask a local for, and the discounts they offer.
+            'admission'    => Admission::forClients(),
             'todayCount'   => Visitor::whereDate('created_at', today())->count(),
             'todayHeads'   => $this->headcountToday(),
             'recent'       => Visitor::with('group')->whereDate('created_at', today())
@@ -75,10 +80,19 @@ class DeskController extends Controller
             'visit_type' => 'nullable|in:Solo,Group,School,Family,Walk-in',
         ]);
 
-        $visitor = $this->createVisitor($data, 'desk', auth()->id());
+        $discount = null;
+        if ($data['visitor_type'] !== 'Local' && !empty($data['discount_id'])) {
+            $discount = Admission::discount($data['discount_id']);
+            if ($error = Admission::refusal($discount, $data['age'] ?? null)) {
+                return back()->withInput()->withErrors(['discount_id' => $error]);
+            }
+        }
+
+        $visitor = $this->createVisitor($data, $discount, 'desk', auth()->id());
 
         $this->log('Visitor Registered',
-            "Registered {$visitor->full_name} ({$visitor->visitor_type}) at the desk");
+            "Registered {$visitor->full_name} ({$visitor->visitor_type}"
+            . ($discount ? ", {$discount->name}" : '') . ') at the desk');
 
         return redirect()->route('desk.register')
             ->with('success', "{$visitor->full_name} registered." . $this->feeHint($visitor));
@@ -100,6 +114,11 @@ class DeskController extends Controller
             'visitor_type'  => 'required|in:Local,Tourist,Foreign',
             'headcount'     => 'required|integer|min:1|max:500',
             'local_count'   => 'nullable|integer|min:0|max:500',
+            // Heads per discount category, keyed by its id. Ids that are not
+            // an active category are ignored rather than refused: the form
+            // only offers active ones, so a stale id is a page left open.
+            'discounts'     => 'nullable|array',
+            'discounts.*'   => 'nullable|integer|min:0|max:500',
             // Still accepted for anything that posts the old shape; the form
             // no longer asks it. "Paying heads" is not a question a party
             // can answer at a counter - "anyone from Baler?" is.
@@ -113,7 +132,8 @@ class DeskController extends Controller
         $headcount = (int) $data['headcount'];
 
         // Locals enter free. The desk says how many of the party are from
-        // Baler and the paying count follows; a Local group is all of them.
+        // Baler (or Aurora) and the paying count follows; a Local group is
+        // all of them.
         if ($data['visitor_type'] === 'Local') {
             $localCount = $headcount;
         } elseif (isset($data['local_count'])) {
@@ -124,12 +144,19 @@ class DeskController extends Controller
             $localCount = 0;
         }
 
+        $place     = Admission::residentPlace();
+        $discounts = $data['visitor_type'] === 'Local' ? [] : Admission::groupDiscounts($data['discounts'] ?? []);
+        $price     = Admission::groupPrice($data['visitor_type'], $headcount, $localCount, $discounts);
+
         if ($localCount > $headcount || $localCount < 0) {
-            return back()->withInput()->with('error', 'The number from Baler cannot exceed the headcount.');
+            return back()->withInput()->with('error', "The number from {$place} cannot exceed the headcount.");
+        }
+        if ($price['over']) {
+            return back()->withInput()->with('error', 'The locals and discounted visitors add up to more than the headcount.');
         }
 
-        $payingCount = VisitGroup::payingFor($data['visitor_type'], $headcount, $localCount);
-        $fee         = VisitGroup::feeFor($data['visitor_type'], $payingCount);
+        $payingCount = $price['paying'];
+        $fee         = $price['fee'];
 
         // array_merge, not `$data + [...]`: with the union operator the FORM
         // wins on any key present in both. The browser always posts the
@@ -137,11 +164,12 @@ class DeskController extends Controller
         // arrives as null, which then beat the computed count and MySQL
         // refused the row. The values worked out above must be the ones
         // that are written.
-        $group = VisitGroup::create(array_merge($data, [
+        $group = VisitGroup::create(array_merge(Arr::except($data, ['discounts']), [
             // The code the members type into the app to be counted as part of
             // this party rather than as a sixth visitor owing a second fee.
             'join_code'      => VisitGroup::freshJoinCode(),
             'local_count'    => $localCount,
+            'discounts'      => $discounts ?: null,
             'paying_count'   => $payingCount,
             'total_fee'      => $fee,
             'payment_status' => $fee > 0 ? 'Unpaid' : 'Free',
@@ -150,14 +178,19 @@ class DeskController extends Controller
         ]));
 
         $this->log('Group Registered',
-            "Registered group '{$group->contact_name}' ({$group->headcount} pax, {$localCount} local, {$group->visitor_type}, code {$group->join_code})");
+            "Registered group '{$group->contact_name}' ({$group->headcount} pax, {$localCount} local"
+            . ($group->discount_summary ? ", {$group->discount_summary}" : '')
+            . ", {$group->visitor_type}, code {$group->join_code})");
 
         $message = "Group of {$group->headcount} registered.";
         if ($fee > 0) {
             $message .= ' Collect PHP ' . number_format($fee, 2) . " for {$payingCount} paying.";
         }
         if ($localCount > 0 && $data['visitor_type'] !== 'Local') {
-            $message .= " Check {$localCount} Baler " . ($localCount === 1 ? 'ID' : 'IDs') . '.';
+            $message .= " Check {$localCount} {$place} " . ($localCount === 1 ? 'ID' : 'IDs') . '.';
+        }
+        foreach ($discounts as $d) {
+            $message .= " Check {$d['count']} × " . self::proofFor($d['id'], $d['name']) . '.';
         }
 
         // Flashed separately so the view can set it in large type: this is
@@ -184,8 +217,10 @@ class DeskController extends Controller
             'local_count' => 'required|integer|min:0|max:500',
         ]);
 
-        if ((int) $data['local_count'] > (int) $group->headcount) {
-            return back()->with('error', 'The number from Baler cannot exceed the headcount.');
+        if ((int) $data['local_count'] > (int) $group->headcount - $group->discountedCount()) {
+            return back()->with('error', $group->discountedCount() > 0
+                ? 'The locals and discounted visitors cannot add up to more than the headcount.'
+                : 'The number from ' . Admission::residentPlace() . ' cannot exceed the headcount.');
         }
 
         if (!$group->visit_date->isToday()) {
@@ -198,7 +233,7 @@ class DeskController extends Controller
         $before = $group->local_count;
         $change = $group->correctLocals((int) $data['local_count'], auth()->id());
 
-        $summary = "{$group->label}: {$before} → {$group->local_count} from Baler, fee PHP "
+        $summary = "{$group->label}: {$before} → {$group->local_count} from " . Admission::residentPlace() . ', fee PHP '
                  . number_format($change['was_fee'], 2) . ' → PHP ' . number_format($change['fee'], 2);
 
         if ($change['refund'] > 0) {
@@ -273,24 +308,26 @@ class DeskController extends Controller
      * member's details here would make them a second, separately-charged
      * visitor - the exact double count the join code exists to prevent.
      */
-    private function createVisitor(array $data, string $source, ?int $staffId): Visitor
+    private function createVisitor(array $data, ?AdmissionDiscount $discount, string $source, ?int $staffId): Visitor
     {
-        $fee = Visitor::feeFor($data['visitor_type']);
+        $fee = Visitor::feeFor($data['visitor_type'], $discount);
+        unset($data['discount_id']);
 
-        // A local is a Baler resident by definition; the barangay is theirs
-        // to state, the town is not. Nobody else has a barangay here.
+        // A local is a resident by definition. Under the Baler rule the town
+        // is Baler and the barangay is theirs to state; under the Aurora rule
+        // they state the town. Both are optional at the desk, where the ID
+        // they hand over is the real check. Nobody else has a barangay here.
         if ($data['visitor_type'] === 'Local') {
-            $data['city']     = 'Baler';
-            $data['province'] = 'Aurora';
-            $data['country']  = 'Philippines';
-            if (!BalerBarangays::isOne($data['barangay'] ?? null)) {
-                unset($data['barangay']);
-            }
+            $where = Admission::residence($data['city'] ?? null, $data['barangay'] ?? null);
+            $data['city']     = $where['city'];
+            $data['barangay'] = $where['barangay'];
+            $data['province'] = $where['province'];
+            $data['country']  = $where['country'];
         } else {
             unset($data['barangay']);
         }
 
-        return DB::transaction(fn () => Visitor::create($data + [
+        return DB::transaction(fn () => Visitor::create($data + Visitor::discountColumns($discount) + [
             'visit_type'    => $data['visit_type'] ?? 'Walk-in',
             'country'       => $data['country'] ?? 'Philippines',
             'auth_provider' => 'manual',
@@ -298,7 +335,8 @@ class DeskController extends Controller
             'registered_by' => $staffId,
             'admission_fee' => $fee,
             // A local owes nothing but still has to show proof of residency,
-            // which is a separate check the desk makes in Records.
+            // which is a separate check the desk makes in Records. So does
+            // anyone in a free category, with that category's proof.
             'payment_status'=> $fee > 0 ? 'Unpaid' : 'Free',
             'id_verified'   => false,
             'last_visit'    => now(),
@@ -311,8 +349,23 @@ class DeskController extends Controller
             return ' Local - check their ID, no fee.';
         }
 
-        return ' Collect PHP ' . number_format((float) $visitor->admission_fee, 2) . '.';
+        if (!$visitor->discount_name) {
+            return ' Collect PHP ' . number_format((float) $visitor->admission_fee, 2) . '.';
+        }
+
+        $proof = self::proofFor($visitor->discount_id, $visitor->discount_name);
+
+        return $visitor->needsIdCheck()
+            ? " {$visitor->discount_name} - check their {$proof}, no fee."
+            : ' Collect PHP ' . number_format((float) $visitor->admission_fee, 2) . " ({$visitor->discount_name}) - check their {$proof}.";
     }
+
+    /** What the desk asks to see for a category: its proof, or "<name> ID". */
+    private static function proofFor(?int $discountId, string $name): string
+    {
+        return Admission::discount($discountId)?->proof ?: "{$name} ID";
+    }
+
 
     /** Individual walk-ins plus every head counted in a group today. */
     private function headcountToday(): int

@@ -167,7 +167,7 @@ class NotificationController extends Controller
         return Visitor::where(function (Builder $q) {
                 $q->where('payment_status', 'Unpaid')
                   ->orWhere(function (Builder $local) {
-                      $local->where('visitor_type', 'Local')->where('id_verified', false);
+                      $local->awaitsIdCheck()->where('id_verified', false);
                   });
             })
             ->orderByDesc('visitor_id')

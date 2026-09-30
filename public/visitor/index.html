@@ -267,9 +267,18 @@
 
       <!-- ── Visitor-type dependent fields ─────────────────────────────── -->
 
-      <!-- LOCAL — Baler resident, free entry, ID sighted at the desk -->
+      <!-- LOCAL — resident, free entry, ID sighted at the desk. Which
+           residents count is a museum setting: Baler asks for a barangay,
+           all of Aurora for a town. _applyAdmissionRules() shows the one
+           that applies. -->
       <div id="panel-local" class="vistype-panel">
-        <div class="fg">
+        <div class="fg" id="local-town-wrap" style="display:none;">
+          <label class="fl">Town <span style="color:#ef4444;">*</span></label>
+          <select id="vi-town" class="fi">
+            <option value="" disabled selected>Select your town</option>
+          </select>
+        </div>
+        <div class="fg" id="local-barangay-wrap">
           <label class="fl">Barangay <span style="color:#ef4444;">*</span></label>
           <select id="vi-barangay" class="fi">
             <option value="" disabled selected>Select your barangay</option>
@@ -331,6 +340,16 @@
           <label class="fl">City <span style="font-size:calc(10px * var(--fs));color:#9ca3af;">(optional)</span></label>
           <input id="vi-city-foreign" class="fi" type="text" placeholder="e.g. Tokyo">
         </div>
+      </div>
+
+      <!-- Discount — senior citizen, PWD, child... for anyone who is not a
+           local, and only when the museum offers some. Filled from
+           GET /api/v1/museum; the server prices it, never this page. -->
+      <div class="fg" id="discount-wrap" style="display:none;">
+        <label class="fl">Discount <span style="font-size:calc(10px * var(--fs));color:#9ca3af;">(optional)</span></label>
+        <select id="vi-discount" class="fi" onchange="updateFeeBox()">
+          <option value="">None</option>
+        </select>
       </div>
 
       <!-- Admission fee summary — updates with the selected visitor type -->
@@ -1605,8 +1624,8 @@
       <div class="legal-card">
         <h3>What we collect</h3>
         <p><strong>When you register</strong> — your first, middle and last name, age, sex, and email address. Your password is stored only as a scrambled (hashed) value; nobody at the museum can read it, including us.</p>
-        <p><strong>Where you are visiting from</strong> — your barangay, city or municipality, province and country, and whether you are a Baler local, a domestic tourist, or a foreign visitor. This is what the free-admission rule for residents depends on.</p>
-        <p><strong>Your visit</strong> — whether you came alone, with a family, with a group or with a school; the admission fee due and whether it was paid; and, for residents, that a staff member sighted a valid ID. We record that the ID was checked, not a copy of it.</p>
+        <p><strong>Where you are visiting from</strong> — your barangay, city or municipality, province and country, and whether you are a local resident, a domestic tourist, or a foreign visitor. This is what the free-admission rule for residents depends on.</p>
+        <p><strong>Your visit</strong> — whether you came alone, with a family, with a group or with a school; the admission fee due and whether it was paid; any admission discount you claimed, such as for senior citizens or persons with disability, and only its name — not your condition or ID number; and, for residents and anyone admitted free on a discount, that a staff member sighted a valid ID. We record that the ID was checked, not a copy of it.</p>
         <p><strong>What you do in the app</strong> — which exhibits you scan, what you bookmark, your chosen explore mode and language.</p>
         <p><strong>Your location, only at check-in</strong> — when you check in on arrival, the app reads your coordinates and their accuracy to confirm you are actually at the museum. We do not track your location at any other time, and we do not follow you after you leave.</p>
         <p><strong>Feedback you choose to send</strong> — your rating and comments, including the client satisfaction survey.</p>
@@ -1727,8 +1746,8 @@
       <div class="legal-card">
         <h3>Admission and fees</h3>
         <ul>
-          <li><strong>Residents of Baler and Aurora enter free</strong>, on presenting a valid proof of residency to staff at the entrance desk.</li>
-          <li><strong>Domestic tourists and foreign visitors pay the posted admission fee</strong>, collected at the entrance counter.</li>
+          <li><strong>Local residents enter free</strong>, on presenting a valid proof of residency to staff at the entrance desk. Which residents count as local is posted at the entrance and on the About screen.</li>
+          <li><strong>Other visitors pay the posted admission fee</strong>, collected at the entrance counter, less any posted discount they qualify for — for example as a senior citizen or a person with disability. Staff check the ID that entitles you to it.</li>
           <li>The app unlocks the exhibit content <strong>only after a staff member confirms</strong> your payment or sights your ID. Until then you will see the waiting screen.</li>
           <li><strong>Admission is charged per visit.</strong> Returning on a later day means the fee is due again.</li>
           <li><strong>Group codes</strong> given to a party at the desk work only on the day they were issued, and only for as many people as the desk counted and charged for. Please do not pass them to anyone outside your party.</li>

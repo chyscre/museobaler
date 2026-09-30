@@ -62,7 +62,7 @@
      validation error re-opens the form it came from so the message is not
      hidden behind a closed card. --}}
 @php
-  $groupErr = $errors->hasAny(['contact_name', 'headcount', 'group_type', 'paying_count']);
+  $groupErr = $errors->hasAny(['contact_name', 'headcount', 'group_type', 'paying_count', 'discounts']);
   $soloErr  = $errors->any() && !$groupErr;
 @endphp
 
@@ -121,28 +121,55 @@
           </div>
         </div>
 
-        {{-- Free admission is for Baler residents, so a local names a barangay
-             (what their ID says) and the town is filled in as Baler; anyone
-             else says where they are from. The two swap with the type buttons. --}}
+        {{-- Free admission is for residents, so a local names what their ID
+             says - a Baler barangay, or an Aurora town if the museum has
+             widened it - and anyone else says where they are from. The
+             fields swap with the type buttons; the disabled ones are not sent. --}}
         <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-top:14px">
           <div id="fromCity">
             <label class="fl">From (city or country)</label>
-            <input class="fi" name="city" value="{{ old('city') }}" placeholder="Baler, Quezon City, Japan…" autocomplete="off">
+            <input class="fi" name="city" value="{{ old('city') }}" placeholder="Quezon City, Japan…" autocomplete="off">
           </div>
-          <div id="fromBarangay" hidden>
-            <label class="fl">Barangay</label>
-            <select class="fi" name="barangay">
-              <option value="">— Not stated —</option>
-              @foreach(\App\Support\BalerBarangays::ALL as $brgy)
-              <option value="{{ $brgy }}" @selected(old('barangay') === $brgy)>{{ $brgy }}</option>
-              @endforeach
-            </select>
+          <div id="fromLocal" hidden>
+            @if($admission['resident_scope'] === 'aurora')
+              <label class="fl">Town</label>
+              <select class="fi" name="city">
+                <option value="">— Not stated —</option>
+                @foreach($admission['towns'] as $town)
+                <option value="{{ $town }}" @selected(old('city') === $town)>{{ $town }}</option>
+                @endforeach
+              </select>
+            @else
+              <label class="fl">Barangay</label>
+              <select class="fi" name="barangay">
+                <option value="">— Not stated —</option>
+                @foreach($admission['barangays'] as $brgy)
+                <option value="{{ $brgy }}" @selected(old('barangay') === $brgy)>{{ $brgy }}</option>
+                @endforeach
+              </select>
+            @endif
           </div>
           <div>
             <label class="fl">Age</label>
             <input class="fi" name="age" type="number" min="1" max="120" value="{{ old('age') }}">
           </div>
         </div>
+        {{-- Only for non-locals, and only when the museum offers any. The
+             price shown is what the desk will be told to collect. --}}
+        @if(count($admission['discounts']))
+        <div id="soloDiscount" style="margin-top:14px">
+          <label class="fl">Discount</label>
+          <select class="fi" name="discount_id">
+            <option value="">None — full price</option>
+            @foreach($admission['discounts'] as $d)
+            <option value="{{ $d['id'] }}" @selected((string) old('discount_id') === (string) $d['id'])>
+              {{ $d['name'] }}{{ $d['age_range'] ? ' (' . $d['age_range'] . ')' : '' }} — {{ $d['benefit'] }}{{ $d['percent_off'] < 100 ? ', PHP ' . number_format(\App\Support\Admission::discounted($admission['fee'], $d['percent_off']), 2) : '' }}{{ $d['proof'] ? ' · check ' . $d['proof'] : '' }}
+            </option>
+            @endforeach
+          </select>
+          @error('discount_id')<div style="font-size:12px;color:var(--red);margin-top:4px">{{ $message }}</div>@enderror
+        </div>
+        @endif
 
         <button type="submit" class="btn btn-green" style="width:100%;margin-top:18px;justify-content:center">Register visitor</button>
       </form>
@@ -190,7 +217,7 @@
             <label class="fl">Visitor type *</label>
             <select class="fi" name="visitor_type" id="gType">
               <option value="Tourist">Tourist (other province)</option>
-              <option value="Local">Local (Baler)</option>
+              <option value="Local">Local ({{ $admission['resident_place'] }})</option>
               <option value="Foreign">Foreign</option>
             </select>
           </div>
@@ -198,7 +225,7 @@
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
           <div>
-            <label class="fl">How many are from Baler? <span style="font-weight:400;text-transform:none;color:var(--text-3)">(free — check their IDs)</span></label>
+            <label class="fl">How many are from {{ $admission['resident_place'] }}? <span style="font-weight:400;text-transform:none;color:var(--text-3)">(free — check their IDs)</span></label>
             {{-- Mixed parties are the common case: out-of-town relatives
                  visiting with a local. This used to ask for "paying heads",
                  which nobody asks a party at a counter, so it defaulted to
@@ -212,6 +239,20 @@
           </div>
         </div>
 
+        {{-- One box per discount on offer. The same question as the locals
+             box, asked per category: "any seniors?" --}}
+        @if(count($admission['discounts']))
+        <div id="gDiscounts" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-top:14px">
+          @foreach($admission['discounts'] as $d)
+          <div>
+            <label class="fl">{{ $d['name'] }} <span style="font-weight:400;text-transform:none;color:var(--text-3)">({{ strtolower($d['benefit']) }})</span></label>
+            <input class="fi g-disc" name="discounts[{{ $d['id'] }}]" type="number" min="0" max="500"
+                   value="{{ old('discounts.' . $d['id'], 0) }}" data-pct="{{ $d['percent_off'] }}"
+                   data-proof="{{ $d['proof'] ?: $d['name'] . ' ID' }}">
+          </div>
+          @endforeach
+        </div>
+        @endif
         <div id="gFee" style="margin-top:14px;padding:11px 14px;border-radius:8px;background:var(--green-pale);font-size:13px;font-weight:600;color:var(--green-dark)"></div>
 
         <button type="submit" class="btn btn-green" style="width:100%;margin-top:14px;justify-content:center">Register group</button>
@@ -281,7 +322,7 @@
     <table style="width:100%;border-collapse:collapse;margin-bottom:18px">
       <thead>
         <tr style="border-bottom:1.5px solid var(--border)">
-          @foreach(['Time','Group','Code','Joined','From Baler','Fee','Payment',''] as $h)
+          @foreach(['Time','Group','Code','Joined','Locals','Fee','Payment',''] as $h)
             <th style="padding:10px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;text-align:left">{{ $h }}</th>
           @endforeach
         </tr>
@@ -292,7 +333,7 @@
             <td style="padding:10px;font-size:13px;color:var(--text-2)">{{ $g->created_at->format('g:i A') }}</td>
             <td style="padding:10px;font-size:13px">
               <div style="font-weight:600;color:var(--text)">{{ $g->label }}</div>
-              <div style="font-size:11px;color:var(--text-3)">{{ $g->group_type }} · {{ $g->headcount }} people{{ $g->city ? ' · ' . $g->city : '' }}</div>
+              <div style="font-size:11px;color:var(--text-3)">{{ $g->group_type }} · {{ $g->headcount }} people{{ $g->city ? ' · ' . $g->city : '' }}{{ $g->discount_summary ? ' · ' . $g->discount_summary : '' }}</div>
             </td>
             <td style="padding:10px">
               <code style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;font-weight:700;letter-spacing:.1em;background:var(--border-light);border-radius:6px;padding:3px 8px;user-select:all">{{ $g->join_code ?? '—' }}</code>
@@ -311,7 +352,7 @@
                 <form method="POST" action="{{ route('desk.groups.correct', $g) }}" style="display:flex;align-items:center;gap:6px">
                   @csrf
                   <input class="fi" name="local_count" type="number" min="0" max="{{ $g->headcount }}" value="{{ $g->local_count }}"
-                         style="width:58px;padding:5px 8px;font-size:13px;text-align:center" title="How many of this party are from Baler">
+                         style="width:58px;padding:5px 8px;font-size:13px;text-align:center" title="How many of this party are from {{ $admission['resident_place'] }}">
                   <span style="font-size:12px;color:var(--text-3)">of {{ $g->headcount }}</span>
                   <button type="submit" class="btn btn-outline btn-xs" title="Re-price the group. If it already paid, the difference is recorded as a refund.">Correct</button>
                 </form>
@@ -389,7 +430,7 @@
 @push('styles')
 <style>
   /* Visitor-type picker: three big tap targets. */
-  #fromBarangay[hidden], #fromCity[hidden] { display: none; }
+  #fromLocal[hidden], #fromCity[hidden], #soloDiscount[hidden] { display: none; }
   .vtype-opt { cursor: pointer; }
   .vtype-opt input { display: none; }
   .vtype-opt span {
@@ -460,22 +501,38 @@
     const out   = document.getElementById('gFee');
     if (!out) return;
 
-    // Walk-in form: a local names a barangay, everyone else a place.
+    // Walk-in form: a local names a barangay or town, everyone else a place
+    // and, if they have one, a discount. Hidden fields are also disabled so
+    // they are not posted - both halves can carry a field called "city".
     (function () {
       const radios = document.querySelectorAll('input[name="visitor_type"]');
       const city = document.getElementById('fromCity');
-      const brgy = document.getElementById('fromBarangay');
-      if (!radios.length || !city || !brgy) return;
+      const home = document.getElementById('fromLocal');
+      const disc = document.getElementById('soloDiscount');
+      if (!radios.length || !city || !home) return;
+      function show(el, on) {
+        if (!el) return;
+        el.hidden = !on;
+        el.querySelectorAll('input, select').forEach(f => { f.disabled = !on; });
+      }
       function swap() {
         const local = document.querySelector('input[name="visitor_type"]:checked')?.value === 'Local';
-        city.hidden = local;
-        brgy.hidden = !local;
+        show(city, !local);
+        show(home, local);
+        show(disc, !local);
       }
       radios.forEach(r => r.addEventListener('change', swap));
       swap();
     })();
 
-    const FEE = {{ \App\Models\MuseumInfo::admissionFee() }};
+    // Mirrors App\Support\Admission::groupPrice(); the server works out the
+    // real figure and the flash after saving is what to collect.
+    const FEE   = {{ $admission['fee'] }};
+    const PLACE = @json($admission['resident_place']);
+    const discs = Array.from(document.querySelectorAll('.g-disc'));
+    const discBox = document.getElementById('gDiscounts');
+
+    function each(pct) { return Math.round(FEE * (100 - pct)) / 100; }
 
     function render() {
       const isLocal = type.value === 'Local';
@@ -483,31 +540,46 @@
       let   locals  = isLocal ? heads : Math.max(0, parseInt(local.value || '0', 10));
 
       // A Local group is all locals: say so in the box rather than letting
-      // the desk type a number that means nothing.
+      // the desk type a number that means nothing. Its discounts are moot.
       local.disabled = isLocal;
       if (isLocal) local.value = heads;
+      if (discBox) discBox.style.display = isLocal ? 'none' : 'grid';
+      discs.forEach(d => { d.disabled = isLocal; });
 
-      if (locals > heads) {
+      const claimed = isLocal ? [] : discs
+        .map(d => ({ n: Math.max(0, parseInt(d.value || '0', 10)), pct: +d.dataset.pct, proof: d.dataset.proof }))
+        .filter(d => d.n > 0);
+      const discounted = claimed.reduce((s, d) => s + d.n, 0);
+
+      if (locals + discounted > heads) {
         out.style.background = '#fef2f2';
         out.style.color      = '#991b1b';
-        out.textContent      = 'More from Baler than people in the party — check the numbers.';
+        out.textContent      = discounted > 0
+          ? 'The locals and discounted visitors add up to more than the party — check the numbers.'
+          : 'More from ' + PLACE + ' than people in the party — check the numbers.';
         return;
       }
       out.style.background = 'var(--green-pale)';
       out.style.color      = 'var(--green-dark)';
 
-      const paying = heads - locals;
-      const total  = paying * FEE;
+      const full = heads - locals - discounted;
+      let total  = full * FEE;
+      let paying = full;
+      claimed.forEach(d => { total += d.n * each(d.pct); if (each(d.pct) > 0) paying += d.n; });
+
+      const checks = [];
+      if (locals > 0 && !isLocal) checks.push(locals + ' ' + PLACE + ' ' + (locals === 1 ? 'ID' : 'IDs'));
+      claimed.forEach(d => checks.push(d.n + ' × ' + d.proof));
+      const checkLine = checks.length ? ' Check ' + checks.join(', ') + '.' : '';
 
       if (total > 0) {
-        out.textContent = 'Collect PHP ' + total.toFixed(2) + ' — ' + paying + ' paying of ' + heads
-          + (locals > 0 ? '. Check ' + locals + ' Baler ' + (locals === 1 ? 'ID' : 'IDs') + '.' : '.');
+        out.textContent = 'Collect PHP ' + total.toFixed(2) + ' — ' + paying + ' paying of ' + heads + '.' + checkLine;
       } else {
-        out.textContent = 'No fee. Locals enter free, but check their IDs.';
+        out.textContent = 'No fee.' + (checkLine || ' Locals enter free, but check their IDs.');
       }
     }
 
-    [head, local, type].forEach(el => { el.addEventListener('input', render); el.addEventListener('change', render); });
+    [head, local, type, ...discs].forEach(el => { el.addEventListener('input', render); el.addEventListener('change', render); });
     render();
   })();
 </script>
