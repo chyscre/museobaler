@@ -16,7 +16,16 @@
 set -euo pipefail
 
 APP_ROOT="${APP_ROOT:-/var/www/museobaler}"
-REPO="${REPO:-git@github.com:chyscre/museobaler.git}"
+# HTTPS rather than the git@ form: the repository is public, so a clone
+# needs no credentials at all, where SSH needs a deploy key registered with
+# GitHub on every host that deploys. The first deploy run from the server
+# died on exactly that - "git@github.com: Permission denied (publickey)" -
+# after step 1 had already made the release directory, leaving a stub behind
+# that counts against the KEEP pruning below.
+#
+# Override this if the repository is ever made private and the server has
+# been given a key:  REPO=git@github.com:chyscre/museobaler.git deploy.sh main
+REPO="${REPO:-https://github.com/chyscre/museobaler.git}"
 REF="${1:?usage: deploy.sh <git-ref>}"
 
 RELEASES="$APP_ROOT/releases"
