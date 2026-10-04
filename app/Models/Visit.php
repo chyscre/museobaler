@@ -27,7 +27,7 @@ class Visit extends Model
     ];
 
     protected $fillable = [
-        'visitor_id', 'visit_date', 'arrived_at', 'group_id', 'visitor_type', 'visit_type',
+        'visitor_id', 'visit_date', 'arrived_at', 'group_id', 'joined_group_at', 'headcount', 'companions', 'visitor_type', 'visit_type',
         'discount_id', 'discount_name', 'discount_percent', 'admission_fee',
         'payment_status', 'paid_at', 'id_verified', 'verified_at', 'source', 'backfilled',
     ];
@@ -37,11 +37,13 @@ class Visit extends Model
         return [
             'visit_date'    => 'date',
             'arrived_at'    => 'datetime',
+            'joined_group_at' => 'datetime',
             'paid_at'       => 'datetime',
             'verified_at'   => 'datetime',
             'id_verified'   => 'boolean',
             'backfilled'    => 'boolean',
             'admission_fee' => 'decimal:2',
+            'companions'    => 'array',
         ];
     }
 
@@ -64,7 +66,21 @@ class Visit extends Model
         $visit->arrived_at ??= $visitor->last_visit;
         $visit->source     ??= $visitor->source;
 
+        // The free companions they brought (Visitor::setCompanions). Each is
+        // a visitor with a visit row of its own, so headcount is this visit's
+        // party size for reading, never a figure to add up across visits.
+        $companions = $visitor->companionSummary();
+
+        // The moment they joined today's party, kept from the first write
+        // that put them in it.
+        $groupToday = $visitor->isWithGroupToday() ? (int) $visitor->group_id : null;
+        if ($groupToday !== (int) $visit->group_id || $groupToday === null) {
+            $visit->joined_group_at = $groupToday ? now() : null;
+        }
+
         $visit->fill([
+            'headcount'        => 1 + array_sum(array_column($companions, 'count')),
+            'companions'       => $companions ?: null,
             // Only a party that is here today. The visitor's group_id is the
             // last party they came with, kept as history, and copying it
             // filed every later solo visit under that old group.
@@ -99,7 +115,7 @@ class Visit extends Model
             ->where('kind', AdmissionPayment::PAYMENT);
     }
 
-    /** "Paid ₱50.00", "Free · Senior citizen", "With Maria's group". */
+    /** "Paid ₱50.00", "Free · Senior citizen", "With Maria's group", "… · +2 Child". */
     public function getSummaryAttribute(): string
     {
         if ($this->payment_status === null) {
@@ -109,10 +125,18 @@ class Visit extends Model
             return 'With ' . ($this->group?->label ?? 'a group');
         }
         if ($this->payment_status === 'Free') {
-            return 'Free' . ($this->discount_name ? ' · ' . $this->discount_name : '');
+            return 'Free' . ($this->discount_name ? ' · ' . $this->discount_name : '') . $this->companionsSuffix();
         }
 
         return $this->payment_status . ' ₱' . number_format((float) $this->admission_fee, 2)
-            . ($this->discount_name ? ' · ' . $this->discount_name : '');
+            . ($this->discount_name ? ' · ' . $this->discount_name : '') . $this->companionsSuffix();
+    }
+
+    /** " · +1 Senior citizen, 2 Child" - the free companions they brought. */
+    private function companionsSuffix(): string
+    {
+        $parts = array_map(fn ($c) => $c['count'] . ' ' . $c['name'], $this->companions ?? []);
+
+        return $parts ? ' · +' . implode(', ', $parts) : '';
     }
 }

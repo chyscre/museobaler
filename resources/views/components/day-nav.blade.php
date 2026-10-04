@@ -33,18 +33,8 @@
       @foreach($carried as [$k, $v])
         <input type="hidden" name="{{ $k }}" value="{{ $v }}">
       @endforeach
-      {{-- The date input sits invisibly inside the button; clicking the
-           button opens the browser's own calendar. showPicker() is the
-           modern way in, and focus+click the fallback for older browsers. --}}
-      <label class="day-nav-btn day-pick-btn" title="Go to a date"
-             onclick="event.preventDefault();var i=this.querySelector('input');try{i.showPicker()}catch(e){i.focus();i.click()}">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        Pick a date
-        <input type="date" name="day" aria-label="Go to a date"
-               max="{{ today()->toDateString() }}"
-               value="{{ $day->date?->toDateString() ?? today()->toDateString() }}"
-               onchange="if(this.value){this.form.submit()}">
-      </label>
+      <x-date-field name="day" :value="$day->date ?? today()" submit
+                    label="Go to a date" :max="today()->toDateString()" />
     </form>
   </div>
 </div>

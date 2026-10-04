@@ -12,6 +12,7 @@ use App\Services\AttendanceStatusService;
 use App\Services\GeofenceService;
 use App\Services\Qr;
 use App\Support\Device;
+use App\Support\Reports\StaffAttendanceSummary;
 use chillerlan\QRCode\Common\EccLevel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -273,12 +274,18 @@ class StaffAttendanceController extends Controller
             'status' => $row['in'] ? AttendanceStatusService::PRESENT : AttendanceStatusService::ABSENT,
         ]);
 
+        $present = $board->where('status', AttendanceStatusService::PRESENT)->count();
+        $absent  = $board->where('status', AttendanceStatusService::ABSENT)->count();
+        $rate    = StaffAttendanceSummary::rate($present, $absent);
+
         return view('staff-attendance.index', [
             'date'   => $date,
             'board'  => $board,
             'counts' => [
-                'present' => $board->where('status', AttendanceStatusService::PRESENT)->count(),
-                'absent'  => $board->where('status', AttendanceStatusService::ABSENT)->count(),
+                'present'      => $present,
+                'absent'       => $absent,
+                'present_rate' => $rate,
+                'absent_rate'  => $rate === null ? null : 100 - $rate,
             ],
             'pendingCorrections' => AttendanceCorrection::where('status', 'Pending')->count(),
         ]);
@@ -322,14 +329,23 @@ class StaffAttendanceController extends Controller
         abort_unless($staff->role === Staff::ROLE_ADMIN, 404);
     }
 
+    /**
+     * Present and Absent, and nothing else. A late check-in is a day
+     * present; how late is on the printed DTR. Rest days and days with no
+     * shift on file are neither, so the percentages are out of the two.
+     */
     private function totals($days): array
     {
+        $present = $days->whereIn('status', [AttendanceStatusService::PRESENT, AttendanceStatusService::LATE])->count();
+        $absent  = $days->where('status', AttendanceStatusService::ABSENT)->count();
+        $rate    = StaffAttendanceSummary::rate($present, $absent);
+
         return [
-            'present' => $days->where('status', AttendanceStatusService::PRESENT)->count(),
-            'late'    => $days->where('status', AttendanceStatusService::LATE)->count(),
-            'absent'  => $days->where('status', AttendanceStatusService::ABSENT)->count(),
-            'manual'  => $days->where('is_manual', true)->count(),
-            'minutes' => $days->sum('worked_minutes'),
+            'present'      => $present,
+            'absent'       => $absent,
+            'present_rate' => $rate,
+            'absent_rate'  => $rate === null ? null : 100 - $rate,
+            'manual'       => $days->where('is_manual', true)->count(),
         ];
     }
 

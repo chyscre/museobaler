@@ -21,7 +21,7 @@ class VisitorController extends Controller
         // ── Visitor tab ──────────────────────────────────────
         // Group is needed per row: isCleared() follows the group's payment
         // for members, and the row says which party they came with.
-        $query = Visitor::with(['group', 'visits.group', 'visits.payment']);
+        $query = Visitor::with(['group', 'holder', 'visits.group', 'visits.payment']);
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('first_name', 'like', "%$search%")
@@ -181,19 +181,38 @@ class VisitorController extends Controller
 
         // The row says this visit is paid; the ledger keeps the payment after
         // the row is reset for the next visit.
-        $payment = DB::transaction(function () use ($visitor) {
+        // Their free companions are standing at the counter with them, so
+        // the desk checks those documents as it takes the money: one action
+        // clears the whole visit, and the companions go on the same receipt.
+        [$payment, $checked] = DB::transaction(function () use ($visitor) {
             $visitor->update([
                 'payment_status' => 'Paid',
                 'paid_at'        => now(),
             ]);
+            $checked = $visitor->checkCompanions(auth()->id());
 
-            return AdmissionPayment::forVisitor($visitor, auth()->id());
+            return [AdmissionPayment::forVisitor($visitor, auth()->id()), $checked];
         });
 
         $fee = number_format((float) $visitor->admission_fee, 2);
-        $this->log('Admission Paid', "Collected PHP {$fee} from {$visitor->full_name} ({$payment->reference})");
+        $this->log('Admission Paid', "Collected PHP {$fee} from {$visitor->full_name}"
+            . ($checked ? " with {$checked} free " . ($checked === 1 ? 'companion' : 'companions') : '')
+            . " ({$payment->reference})");
 
-        return $this->answer(true, "Admission fee marked as paid — transaction {$payment->reference}.");
+        return $this->answer(true, "Admission fee marked as paid — transaction {$payment->reference}."
+            . $this->companionHint($visitor, $checked));
+    }
+
+    /** " Companions: 1 Senior citizen, 2 Child — IDs checked." for the flash. */
+    private function companionHint(Visitor $visitor, int $checked): string
+    {
+        if ($checked === 0) {
+            return '';
+        }
+
+        $parts = array_map(fn ($c) => $c['count'] . ' ' . $c['name'], $visitor->companionSummary());
+
+        return ' Companions: ' . implode(', ', $parts) . ' — documents checked.';
     }
 
     /**
@@ -234,25 +253,52 @@ class VisitorController extends Controller
     {
         $this->arrivedToday($visitor);
 
-        if (!$visitor->needsIdCheck()) {
+        // Companions whose documents nobody has seen yet are an ID check of
+        // their own, even on a visitor who paid.
+        $companionsWaiting = $visitor->hasUncheckedCompanions();
+
+        if (!$visitor->needsIdCheck() && !$companionsWaiting) {
             return $this->answer(false, 'Only visitors admitted free need an ID checked.');
         }
         // Same reasoning as markPaid(): the ID is sighted per visit, so a
         // check done on an earlier day is history, not today's clearance.
-        if ($visitor->id_verified && $visitor->verified_at?->isToday()) {
+        $ownDone = !$visitor->needsIdCheck() || ($visitor->id_verified && $visitor->verified_at?->isToday());
+        if ($ownDone && !$companionsWaiting) {
             return $this->answer(false, 'This ID has already been verified today.');
         }
 
-        $visitor->update([
-            'id_verified' => true,
-            'verified_at' => now(),
-            'verified_by' => auth()->id(),
-        ]);
+        // The holder and the companions with them are checked as one, and a
+        // free visit that brought companions gets its ₱0.00 entry, so it has
+        // a transaction number like any other.
+        [$checked, $entry] = DB::transaction(function () use ($visitor, $ownDone) {
+            if (!$ownDone) {
+                $visitor->update([
+                    'id_verified' => true,
+                    'verified_at' => now(),
+                    'verified_by' => auth()->id(),
+                ]);
+            }
+            $checked = $visitor->checkCompanions(auth()->id());
+            $entry   = $visitor->needsIdCheck() ? AdmissionPayment::forFreeVisit($visitor, auth()->id()) : null;
+
+            return [$checked, $entry];
+        });
+
+        if ($ownDone) {
+            $this->log('ID Verified', "Checked documents for {$checked} free "
+                . ($checked === 1 ? 'companion' : 'companions') . " of {$visitor->full_name}");
+
+            return $this->answer(true, 'Companions\' documents checked.' . $this->companionHint($visitor, $checked));
+        }
 
         $what = $visitor->visitor_type === 'Local' ? 'residency ID' : "{$visitor->discount_name} ID";
-        $this->log('ID Verified', "Verified {$what} for {$visitor->full_name} ({$visitor->city})");
+        $this->log('ID Verified', "Verified {$what} for {$visitor->full_name} ({$visitor->city})"
+            . ($checked ? " with {$checked} free " . ($checked === 1 ? 'companion' : 'companions') : '')
+            . ($entry ? " ({$entry->reference})" : ''));
 
-        return $this->answer(true, ucfirst($what) . ' verified — free admission granted.');
+        return $this->answer(true, ucfirst($what) . ' verified — free admission granted.'
+            . ($entry ? " Transaction {$entry->reference}." : '')
+            . $this->companionHint($visitor, $checked));
     }
 
     /**
@@ -295,6 +341,8 @@ class VisitorController extends Controller
                     $refund = AdmissionPayment::refundForVisitor($visitor, $paid, auth()->id());
                 }
             }
+            // They came in on this visitor's entry.
+            $visitor->uncheckCompanions();
 
             // SECURITY: the gate re-checks clearance on every request, but a
             // live token would still let the app sit on cached content. Ending

@@ -55,8 +55,9 @@
       </div>
       <div>
         <label style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em">Date</label>
-        <input type="date" name="work_date" required max="{{ today()->toDateString() }}"
-               style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;margin-top:4px;background:var(--surface)">
+        <div style="margin-top:4px">
+          <x-date-field name="work_date" block required :max="today()->toDateString()" label="Date" />
+        </div>
       </div>
       <div>
         <label style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em">Type</label>

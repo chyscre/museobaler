@@ -13,21 +13,17 @@
       <a href="{{ route('staff-attendance.schedule', $staff) }}" class="btn btn-outline btn-sm">Edit shift</a>
     @endif
     <form method="GET">
-      <input type="month" name="month" value="{{ $month->format('Y-m') }}" onchange="this.form.submit()"
-             style="padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:var(--surface)">
+      <x-date-field type="month" name="month" :value="$month" submit label="Month"
+                    :max="today()->format('Y-m')" />
     </form>
   </div>
 </div>
 
 <div class="stats-row" style="margin-bottom:22px">
   <div class="stat"><div class="stat-ico green"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></div>
-    <div><div class="stat-val">{{ $totals['present'] }}</div><div class="stat-lbl">Present</div></div></div>
-  <div class="stat"><div class="stat-ico gold"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-    <div><div class="stat-val">{{ $totals['late'] }}</div><div class="stat-lbl">Late</div></div></div>
-  <div class="stat"><div class="stat-ico red"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/></svg></div>
-    <div><div class="stat-val">{{ $totals['absent'] }}</div><div class="stat-lbl">Absent</div></div></div>
-  <div class="stat"><div class="stat-ico blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-    <div><div class="stat-val">{{ intdiv($totals['minutes'], 60) }}h</div><div class="stat-lbl">Total worked</div></div></div>
+    <div><div class="stat-val">{{ $totals['present'] }}</div><div class="stat-lbl">Present @if($totals['present_rate'] !== null)· {{ $totals['present_rate'] }}% @endif</div></div></div>
+  <div class="stat"><div class="stat-ico red"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>
+    <div><div class="stat-val">{{ $totals['absent'] }}</div><div class="stat-lbl">Absent @if($totals['absent_rate'] !== null)· {{ $totals['absent_rate'] }}% @endif</div></div></div>
 </div>
 
 @if($totals['manual'] > 0)
@@ -61,9 +57,16 @@
             @if($day['worked_minutes'] !== null){{ intdiv($day['worked_minutes'], 60) }}h {{ $day['worked_minutes'] % 60 }}m @else — @endif
           </td>
           <td style="padding:10px">
-            <span class="badge {{ $day['status'] === 'Present' ? 'b-green' : ($day['status'] === 'Late' ? 'b-gold' : ($day['status'] === 'Absent' ? 'b-red' : 'b-gray')) }}">
-              {{ $day['status'] }}@if($day['late_minutes'] > 0) · {{ $day['late_minutes'] }}m @endif
-            </span>
+            {{-- Present or Absent only. Late is a day present (the minutes
+                 are on the printed DTR); a rest day or a day with no shift
+                 is neither, and the Shift column already says which. --}}
+            @if(in_array($day['status'], ['Present', 'Late'], true))
+              <span class="badge b-green">Present</span>
+            @elseif($day['status'] === 'Absent')
+              <span class="badge b-red">Absent</span>
+            @else
+              <span style="color:var(--text-3)">—</span>
+            @endif
             @if($day['is_manual'])<span class="badge b-gray">Manual</span>@endif
           </td>
         </tr>

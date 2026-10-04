@@ -84,12 +84,22 @@ class DeskController extends Controller
             'last_name'     => 'exclude_if:express,1|required|string|max:100',
             'express'       => 'nullable|boolean',
             'express_count' => 'nullable|integer|min:1|max:30',
+            // Free companions by category id; see Visitor::setCompanions().
+            'companions'    => 'nullable|array',
+            'companions.*'  => 'nullable|integer|min:0|max:' . Visitor::MAX_COMPANIONS,
         ]));
 
         if (!empty($data['express'])) {
+            unset($data['companions']);
             return $this->storeExpress($data);
         }
-        unset($data['express'], $data['express_count']);
+        $companions = Admission::companionCounts($data['companions'] ?? []);
+        unset($data['express'], $data['express_count'], $data['companions']);
+
+        if (array_sum(array_column($companions, 'count')) > Visitor::MAX_COMPANIONS) {
+            return back()->withInput()->withErrors(['companions' =>
+                'That is more than one visitor can bring - register them as a group.']);
+        }
 
         $discount = null;
         if ($data['visitor_type'] !== 'Local' && !empty($data['discount_id'])) {
@@ -99,14 +109,28 @@ class DeskController extends Controller
             }
         }
 
-        $visitor = $this->createVisitor($data, $discount, 'desk', auth()->id());
+        // The desk is looking at the companions and their documents, so they
+        // are counted in checked; the holder's own Verify or Mark Paid in
+        // Records is still what clears the visit and numbers its receipt.
+        $visitor = DB::transaction(function () use ($data, $discount, $companions) {
+            $visitor = $this->createVisitor($data, $discount, 'desk', auth()->id());
+            if ($companions) {
+                $visitor->setCompanions(array_column($companions, 'count', 'id'), auth()->id());
+            }
+
+            return $visitor;
+        });
+
+        $with = $companions
+            ? ' with ' . implode(', ', array_map(fn ($c) => $c['count'] . ' ' . $c['name'], $companions)) . ' (free)'
+            : '';
 
         $this->log('Visitor Registered',
             "Registered {$visitor->full_name} ({$visitor->visitor_type}"
-            . ($discount ? ", {$discount->name}" : '') . ') at the desk');
+            . ($discount ? ", {$discount->name}" : '') . ")$with at the desk");
 
         return redirect()->route('desk.register')
-            ->with('success', "{$visitor->full_name} registered." . $this->feeHint($visitor));
+            ->with('success', "{$visitor->full_name} registered{$with}." . $this->feeHint($visitor));
     }
 
     /**
@@ -238,12 +262,16 @@ class DeskController extends Controller
             'registered_by'  => auth()->id(),
         ]));
 
+        // Nothing to collect, so nothing will ever number it at the till.
+        $entry = AdmissionPayment::forFreeGroup($group, auth()->id());
+
         $this->log('Group Registered',
             "Registered group '{$group->contact_name}' ({$group->headcount} pax, {$localCount} local"
             . ($group->discount_summary ? ", {$group->discount_summary}" : '')
-            . ", {$group->visitor_type}, code {$group->join_code})");
+            . ", {$group->visitor_type}, code {$group->join_code}"
+            . ($entry ? ", {$entry->reference}" : '') . ')');
 
-        $message = "Group of {$group->headcount} registered.";
+        $message = "Group of {$group->headcount} registered." . ($entry ? " Transaction {$entry->reference}." : '');
         if ($fee > 0) {
             $message .= ' Collect PHP ' . number_format($fee, 2) . " for {$payingCount} paying.";
         }

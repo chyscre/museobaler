@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\AdmissionDiscount;
 use App\Models\MuseumInfo;
+use App\Models\Visitor;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 
@@ -32,6 +33,9 @@ class Admission
     public const SCOPES = ['baler' => 'Baler', 'aurora' => 'Aurora'];
 
     public const DEFAULT_SCOPE = 'baler';
+
+    /** Set once admission_discounts has been seen to exist. See discounts(). */
+    private static bool $discountsTable = false;
 
     /** 'baler' or 'aurora'. Resolved once per request, like the fee. */
     public static function scope(): string
@@ -65,11 +69,19 @@ class Admission
      */
     public static function discounts(): Collection
     {
-        return once(function (): Collection {
+        // "No table yet" is answered without being remembered. An earlier
+        // migration builds the admission sentence before this table exists,
+        // and once() would otherwise hand that empty list to everything else
+        // in the same process - every discount lookup after `migrate` in a
+        // test run came back empty.
+        if (!self::$discountsTable) {
             if (!Schema::hasTable('admission_discounts')) {
                 return collect();
             }
+            self::$discountsTable = true;
+        }
 
+        return once(function (): Collection {
             return AdmissionDiscount::query()
                 ->where('active', true)
                 ->orderBy('sort_order')
@@ -253,6 +265,45 @@ class Admission
         return [self::line($label, 1, $charged)];
     }
 
+    /**
+     * The categories a visitor's companions can be counted under: the ones
+     * that enter free. A partial discount means money changing hands, and
+     * a payment needs somebody to be recorded against - the same reason
+     * express entry is free categories only.
+     *
+     * @return Collection<int, AdmissionDiscount>
+     */
+    public static function companionCategories(): Collection
+    {
+        return self::discounts()->filter->isFree()->values();
+    }
+
+    /**
+     * Companion counts as posted (category id => heads), cut down to free
+     * categories with somebody in them. Same shape as groupDiscounts().
+     *
+     * @param  array<int|string, int|string|null>  $counts
+     * @return list<array{id: int, name: string, percent_off: int, count: int}>
+     */
+    public static function companionCounts(array $counts): array
+    {
+        return array_values(array_filter(
+            self::groupDiscounts($counts),
+            fn ($d) => $d['percent_off'] >= 100,
+        ));
+    }
+
+    /**
+     * A ₱0.00 line per category of companion, for the holder's receipt.
+     *
+     * @param  list<array{name: string, count: int}>  $companions
+     * @return list<array{label: string, count: int, unit: float, amount: float}>
+     */
+    public static function companionLines(array $companions): array
+    {
+        return array_map(fn ($c) => self::line($c['name'] . ' (free)', (int) $c['count'], 0.0), $companions);
+    }
+
     /** @return array{label: string, count: int, unit: float, amount: float} */
     private static function line(string $label, int $count, float $unit): array
     {
@@ -292,6 +343,10 @@ class Admission
             'barangays'      => BalerBarangays::ALL,
             'towns'          => AuroraTowns::ALL,
             'discounts'      => self::discounts()->map->toPublicArray()->values()->all(),
+            // Ids of the categories a visitor's companions may be counted
+            // under. See companionCategories().
+            'companion_ids'  => self::companionCategories()->pluck('discount_id')->map(fn ($id) => (int) $id)->all(),
+            'max_companions' => Visitor::MAX_COMPANIONS,
         ];
     }
 }

@@ -35,7 +35,8 @@ class ReportBuilder
     public const FORMATS = [
         'logbook'  => ['csv', 'xlsx', 'pdf'],
         'dtr'      => ['csv', 'xlsx', 'pdf'],
-        'visitors' => ['csv', 'xlsx', 'pdf'],
+        'staff-attendance' => ['csv', 'xlsx', 'pdf'],
+        'visitors'=> ['csv', 'xlsx', 'pdf'],
         'earnings' => ['csv', 'xlsx', 'pdf'],
         'exhibits' => ['csv', 'docx', 'pdf'],
         'feedback' => ['csv', 'docx', 'pdf'],
@@ -155,6 +156,48 @@ class ReportBuilder
                 'Absent'       => (string) $days->where('status', AttendanceStatusService::ABSENT)->count(),
                 'Manual entry' => (string) $days->where('is_manual', true)->count(),
                 'Total hours'  => intdiv($minutes, 60) . 'h ' . ($minutes % 60) . 'm',
+            ],
+        );
+    }
+
+    // -- All staff attendance ----------------------------------------------
+
+    public function staffAttendance(Carbon $from, Carbon $to): ReportDataset
+    {
+        $s = StaffAttendanceSummary::build($from, $to);
+        $t = $s['totals'];
+
+        $rows = [];
+        foreach ($s['rows']->values() as $i => $r) {
+            $rows[] = [
+                $i + 1,
+                $r['staff']->name,
+                $r['present'],
+                $r['absent'],
+                $r['rate'],
+                round($r['minutes'] / 60, 2),
+                $r['verified'],
+            ];
+        }
+
+        return new ReportDataset(
+            key: 'staff-attendance',
+            title: 'Staff Attendance Summary',
+            meta: $s['from']->format('F j, Y') . ' to ' . $s['to']->format('F j, Y'),
+            filename: 'staff-attendance-' . $s['from']->toDateString() . '-to-' . $s['to']->toDateString(),
+            sections: [new ReportSection(
+                heading: null,
+                columns: ['No.', 'Name', 'Present', 'Absent', 'Present (%)', 'Hours', 'Verification'],
+                rows: $rows,
+                footer: ['', 'TOTAL', $t['present'], $t['absent'], $t['rate'], round($t['minutes'] / 60, 2), ''],
+                numeric: [0, 2, 3, 4, 5],
+            )],
+            summary: [
+                'Staff'       => (string) $t['staff'],
+                'Present'     => (string) $t['present'],
+                'Absent'      => (string) $t['absent'],
+                'Present (%)' => $t['rate'] === null ? '-' : $t['rate'] . '%',
+                'Total hours' => StaffAttendanceSummary::hours($t['minutes']),
             ],
         );
     }

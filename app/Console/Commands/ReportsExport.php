@@ -62,6 +62,7 @@ class ReportsExport extends Command
 
         $jobs = [
             'logbook'  => fn () => $builder->logbook($date),
+            'staff-attendance' => fn () => $builder->staffAttendance($from, $to),
             'visitors' => fn () => $builder->visitors($from, $to),
             'earnings' => fn () => $builder->earnings($from, $to),
             'exhibits' => fn () => $builder->exhibits($from, $to),

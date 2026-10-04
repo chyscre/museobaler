@@ -216,6 +216,36 @@
         </div>
         @endif
 
+        {{-- Free people they brought along: counted on this visitor's entry,
+             checked now since the desk can see them, and listed at PHP 0.00
+             on its receipt. Free categories only; see Visitor::setCompanions(). --}}
+        @php
+          $companionCats = collect($admission['discounts'])->whereIn('id', $admission['companion_ids'])->values();
+        @endphp
+        @if($companionCats->isNotEmpty())
+        <div id="soloCompanions" class="comp-box">
+          <div class="comp-head">
+            <strong>Accompanying free visitors</strong>
+            <small>Anyone with them who enters free — check their documents now.</small>
+          </div>
+          @foreach($companionCats as $d)
+          <div class="comp-row">
+            <div class="comp-label">
+              {{ $d['name'] }}{{ $d['age_range'] ? ' (' . $d['age_range'] . ')' : '' }}
+              <small>PHP 0.00{{ $d['proof'] ? ' · ' . $d['proof'] : '' }}</small>
+            </div>
+            <div class="comp-step">
+              <button type="button" class="comp-btn" data-step="-1" aria-label="One fewer {{ $d['name'] }}">−</button>
+              <input class="comp-n" name="companions[{{ $d['id'] }}]" type="number" min="0" max="{{ $admission['max_companions'] }}"
+                     value="{{ old('companions.' . $d['id'], 0) }}" inputmode="numeric" aria-label="{{ $d['name'] }}">
+              <button type="button" class="comp-btn" data-step="1" aria-label="One more {{ $d['name'] }}">+</button>
+            </div>
+          </div>
+          @endforeach
+          @error('companions')<div style="font-size:12px;color:var(--red);margin-top:6px">{{ $message }}</div>@enderror
+        </div>
+        @endif
+
         <button type="submit" id="soloSubmit" class="btn btn-green" style="width:100%;margin-top:18px;justify-content:center">Register visitor</button>
       </form>
     </div>
@@ -466,7 +496,17 @@
 <style>
   /* Visitor-type picker: three big tap targets. */
   #fromLocal[hidden], #fromCity[hidden], #soloDiscount[hidden], #soloNames[hidden],
-  #expressBox[hidden], #expressCount[hidden] { display: none; }
+  #expressBox[hidden], #expressCount[hidden], #soloCompanions[hidden] { display: none; }
+  .comp-box { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; }
+  .comp-head strong { display: block; font-size: 13px; color: var(--text); }
+  .comp-head small { display: block; font-size: 12px; color: var(--text-3); margin: 2px 0 6px; }
+  .comp-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; border-top: 1px solid var(--border-light); }
+  .comp-label { font-size: 13px; font-weight: 600; color: var(--text); }
+  .comp-label small { display: block; font-size: 11px; font-weight: 400; color: var(--text-3); }
+  .comp-step { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .comp-btn { width: 32px; height: 32px; border: 1.5px solid var(--border); border-radius: 8px; background: var(--surface); font-size: 17px; line-height: 1; cursor: pointer; color: var(--text); }
+  .comp-btn:hover { border-color: var(--green-dark); color: var(--green-dark); }
+  .comp-n { width: 52px; text-align: center; padding: 6px 4px; border: 1.5px solid var(--border); border-radius: 8px; font: inherit; font-size: 14px; background: var(--surface); color: var(--text); }
   .express-box { margin-top: 12px; padding: 12px 14px; border: 1.5px dashed #86efac; border-radius: 10px; background: var(--green-pale); }
   .express-opt { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
   .express-opt input { margin-top: 3px; accent-color: var(--green-dark); }
@@ -625,6 +665,9 @@
         const on = !!free && xOn && xOn.checked;
         show(xCount, on);
         show(names, !on);
+        // An express entry is the free person themselves, with nobody to
+        // hang companions on.
+        show(document.getElementById('soloCompanions'), !on);
         if (submit) submit.textContent = on ? 'Count in — free entry' : 'Register visitor';
       }
       function swap() {
@@ -634,6 +677,13 @@
         show(disc, !local);
         express();
       }
+      // Companion steppers: clamp to 0..max, typing still works.
+      document.querySelectorAll('#soloCompanions .comp-btn').forEach(b => b.addEventListener('click', () => {
+        const n   = b.parentElement.querySelector('.comp-n');
+        const max = parseInt(n.max || '10', 10);
+        n.value = Math.min(max, Math.max(0, (parseInt(n.value || '0', 10) || 0) + parseInt(b.dataset.step, 10)));
+      }));
+
       radios.forEach(r => r.addEventListener('change', swap));
       if (pick) pick.addEventListener('change', express);
       if (xOn) xOn.addEventListener('change', express);

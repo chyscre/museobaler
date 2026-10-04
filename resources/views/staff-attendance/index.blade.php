@@ -7,6 +7,25 @@
     <h2>Staff Attendance</h2>
   </div>
   <div class="ph-right" style="display:flex;gap:8px;align-items:center">
+    {{-- Everyone at once, over any period: the summary sheet that goes on
+         top of the individual DTRs. Defaults to the month being looked at. --}}
+    <div style="position:relative;display:inline-block">
+      <button type="button" class="btn btn-green btn-sm" onclick="toggleReportMenu('allReportMenu')">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Print All Staff Attendance
+      </button>
+      <div id="allReportMenu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);width:270px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.14);z-index:900;padding:14px">
+        <label style="display:block;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">From</label>
+        <div style="margin-bottom:10px">
+          <x-date-field id="allFrom" :value="$date->copy()->startOfMonth()" block label="From" :max="today()->toDateString()" />
+        </div>
+        <label style="display:block;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">To</label>
+        <div style="margin-bottom:12px">
+          <x-date-field id="allTo" :value="$date->copy()->endOfMonth()->min(today())" block label="To" :max="today()->toDateString()" />
+        </div>
+        <button type="button" class="btn btn-green btn-sm" style="width:100%;justify-content:center" onclick="openAllAttendance()">Open printable summary</button>
+      </div>
+    </div>
     {{-- The DTR is per person per month, so it is picked here rather than
          living on a separate reports page. --}}
     <div style="position:relative;display:inline-block">
@@ -22,8 +41,9 @@
           @endforeach
         </select>
         <label style="display:block;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Month</label>
-        <input type="month" id="dtrMonth" value="{{ $date->format('Y-m') }}"
-               style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:var(--surface);margin-bottom:12px">
+        <div style="margin-bottom:12px">
+          <x-date-field type="month" id="dtrMonth" :value="$date" block label="Month" :max="today()->format('Y-m')" />
+        </div>
         <button type="button" class="btn btn-green btn-sm" style="width:100%;justify-content:center" onclick="openDtr()">Open printable DTR</button>
       </div>
     </div>
@@ -32,8 +52,7 @@
       Corrections @if($pendingCorrections)<span class="badge b-red" style="margin-left:4px">{{ $pendingCorrections }}</span>@endif
     </a>
     <form method="GET">
-      <input type="date" name="date" value="{{ $date->toDateString() }}" onchange="this.form.submit()"
-             style="padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:var(--surface)">
+      <x-date-field name="date" :value="$date" submit label="Day shown" :max="today()->toDateString()" />
     </form>
   </div>
 </div>
@@ -43,13 +62,13 @@
     <div class="stat-ico green">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
     </div>
-    <div><div class="stat-val">{{ $counts['present'] }}</div><div class="stat-lbl">Present</div></div>
+    <div><div class="stat-val">{{ $counts['present'] }}</div><div class="stat-lbl">Present @if($counts['present_rate'] !== null)· {{ $counts['present_rate'] }}% @endif</div></div>
   </div>
   <div class="stat">
     <div class="stat-ico red">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
     </div>
-    <div><div class="stat-val">{{ $counts['absent'] }}</div><div class="stat-lbl">Absent</div></div>
+    <div><div class="stat-val">{{ $counts['absent'] }}</div><div class="stat-lbl">Absent @if($counts['absent_rate'] !== null)· {{ $counts['absent_rate'] }}% @endif</div></div>
   </div>
 </div>
 
@@ -124,6 +143,13 @@
     var month = document.getElementById('dtrMonth').value;
     window.open('{{ url('/reports/dtr') }}/' + id + '?month=' + encodeURIComponent(month), '_blank');
     document.getElementById('dtrReportMenu').style.display = 'none';
+  }
+
+  function openAllAttendance() {
+    var from = document.getElementById('allFrom').value;
+    var to   = document.getElementById('allTo').value;
+    window.open('{{ route('reports.staff-attendance') }}?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to), '_blank');
+    document.getElementById('allReportMenu').style.display = 'none';
   }
 
   document.addEventListener('click', function (e) {

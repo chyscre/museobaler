@@ -100,6 +100,8 @@ Route::prefix('v1')->name('api.')->group(function () {
     Route::middleware('visitor.auth')->group(function () {
         Route::get('visitors/me', [VisitorController::class, 'status'])->name('visitors.me');
         Route::post('visitors/me/group', [VisitorController::class, 'joinGroup'])->name('visitors.join-group');
+        // Before the desk clears them: who they brought along free.
+        Route::put('visitors/me/companions', [VisitorController::class, 'companions'])->name('visitors.companions');
         // Not behind visitor.cleared: the password belongs to the account,
         // not to today's admission.
         Route::put('visitors/me/password', [PasswordController::class, 'change'])
