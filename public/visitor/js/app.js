@@ -284,7 +284,10 @@ document.addEventListener('DOMContentLoaded', () => {
   applyAllPreferences();
   startClock();
   registerServiceWorker();
-  setupInstallPrompt();
+  // Installing the app on a computer would only install the screen telling
+  // the visitor to use their phone.
+  if (!onDesktop()) setupInstallPrompt();
+  else setupDesktopGuide();
   // Preferences that reach past the DOM: the narration gate and the ambient track.
   applyNarrationUI();
   applyVolume();
@@ -305,7 +308,11 @@ document.addEventListener('DOMContentLoaded', () => {
    * walk past the admission gate — the gated endpoints would still refuse, but
    * the app would flash museum chrome it should never have shown.
    */
-  if (STATE.token) {
+  const googleReturn = readGoogleReturn();
+  if (googleReturn) {
+    // Back from Google's consent screen; this decides the screen instead.
+    handleGoogleReturn(googleReturn);
+  } else if (STATE.token) {
     setAuthMode('signin');
     showLoading(true);
     apiFetch(`${API_BASE}/visitors/me`)
@@ -329,7 +336,9 @@ document.addEventListener('DOMContentLoaded', () => {
       .finally(() => showLoading(false));
   } else {
     setAuthMode('signin');
-    showScreen('s-register');
+    // The museum rules come first, once per visit: until a button on that
+    // screen has been tapped, it is the way in rather than the sign-in form.
+    showScreen(rulesAcknowledged() ? 's-register' : 's-welcome');
   }
 
   // Geofence runs for everyone — registered or not. Config is fetched
@@ -337,7 +346,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // initGeofence() reads MUSEUM_LAT/MUSEUM_LNG/GEOFENCE_RADIUS; if it hasn't
   // resolved by then, the hardcoded defaults above are used instead.
   _loadMuseumConfig();
-  setTimeout(initGeofence, 3000);
+  // Except on a computer: the fence logs a museum entry, a laptop at home
+  // is not one, and the browser would open with a location prompt for it.
+  if (!onDesktop()) setTimeout(initGeofence, 3000);
 });
 
 // ── PERSIST ──────────────────────────────────────────────────
@@ -381,8 +392,26 @@ const GATED_SCREENS = [
   's-mode-choice', 's-home', 's-home-exhibits', 's-exhibit', 's-map',
   's-scan-storyline', 's-scan-free',
   's-profile', 's-profile-scanned', 's-profile-bookmarked', 's-profile-halls',
-  's-settings', 's-about',
+  's-settings', 's-change-password', 's-about',
 ];
+
+/* A computer rather than a phone or tablet: the main pointer is a mouse or a
+   trackpad. Keyed off the pointer, not the width, so a laptop window dragged
+   narrow is still a laptop, and a phone in landscape is still a phone.
+   (Device emulation in the browser's dev tools reports a touchscreen, so it
+   still previews the whole app.) */
+const DESKTOP_MQ = window.matchMedia ? window.matchMedia('(hover:hover) and (pointer:fine)') : null;
+function onDesktop() {
+  return !!(DESKTOP_MQ && DESKTOP_MQ.matches);
+}
+
+/** On a computer: draw the phone QR codes and fill in the museum details. */
+function setupDesktopGuide() {
+  document.querySelectorAll('img[data-app-qr]').forEach(img => {
+    img.src = `${API_BASE}/museum/app-qr`;
+  });
+  try { loadMuseumInfo(); } catch (e) {}
+}
 
 /** Signed in AND cleared by the desk: actually admitted, not merely known. */
 function inMuseum() {
@@ -399,8 +428,11 @@ function showScreen(id) {
     // Registered but not yet admitted: back to the waiting screen, repainted
     // and polling, rather than a bare screen swap that would leave it stale.
     if (STATE.token) { showPending(null); return; }
-    id = 's-register';
+    id = rulesAcknowledged() ? 's-register' : 's-welcome';
   }
+  // Admitted, but on a computer: the museum itself is for the phone in the
+  // visitor's hand. Signing up ahead of a visit is what a computer is for.
+  if (GATED_SCREENS.indexOf(id) !== -1 && onDesktop()) id = 's-desktop';
 
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const el = document.getElementById(id);
@@ -541,6 +573,23 @@ const ADMISSION_RULES = {
   Foreign: PAYING_RULE,
 };
 
+// ── Museum rules (first screen) ────────────────────────────────────────────
+// Kept outside STATE on purpose: doLogout rebuilds STATE from scratch, and the
+// acknowledgment has to be cleared by signing out and by nothing else — a
+// lapsed session should not make the visitor read the rules again.
+const RULES_ACK_KEY = 'mb_rules_ack';
+
+function rulesAcknowledged() {
+  try { return !!localStorage.getItem(RULES_ACK_KEY); } catch (e) { return false; }
+}
+
+/** Either button on the rules screen: remember it, then open that form. */
+function acknowledgeRules(mode) {
+  try { localStorage.setItem(RULES_ACK_KEY, String(Date.now())); } catch (e) {}
+  setAuthMode(mode === 'signup' ? 'signup' : 'signin');
+  showScreen('s-register');
+}
+
 // Which half of the welcome screen is showing.
 let authMode = 'signin';
 
@@ -553,6 +602,12 @@ let authMode = 'signin';
  * device. It lives only in memory and is wiped as soon as it has been sent.
  */
 let pendingSignup = null;
+
+// Continue with Google: whether the museum has it set up (GET /museum), and
+// the sign-up token a first-time Google visitor carries to the details form.
+// Memory only, like pendingSignup.
+let GOOGLE_AVAILABLE   = false;
+let googleSignupToken  = null;
 
 function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
@@ -620,14 +675,20 @@ function containsPersonalInfo(password, personal) {
 /**
  * The rule checklist, in the order it is shown under the password field.
  *
- * Three rules only — no "must contain a symbol". The trivial-repeat and
- * whole-sequence checks are folded into "not common" rather than listed, so
- * the visitor is not made to read about cases they will never hit.
+ * The trivial-repeat and whole-sequence checks are folded into "not common"
+ * rather than listed, so the visitor is not made to read about cases they
+ * will never hit.
  */
+const PASSWORD_MIN_LENGTH = 12;
+
 function checkPasswordRules(password, personal = []) {
   const lower = password.toLowerCase();
   return [
-    { label: 'At least 8 characters',             ok: password.length >= 8 },
+    { label: `At least ${PASSWORD_MIN_LENGTH} characters`, ok: [...password].length >= PASSWORD_MIN_LENGTH },
+    { label: 'An uppercase letter (A–Z)',         ok: /\p{Lu}/u.test(password) },
+    { label: 'A lowercase letter (a–z)',          ok: /\p{Ll}/u.test(password) },
+    { label: 'A number (0–9)',                    ok: /\p{N}/u.test(password) },
+    { label: 'A symbol, such as ! @ # $ or %',    ok: /[\p{P}\p{S}]/u.test(password) },
     { label: 'Not a common password',             ok: password.length > 0 && !looksCommon(password) && !isWholeSequence(lower) && !/^(.)\1+$/.test(password) },
     { label: 'Does not contain your name or email', ok: password.length > 0 && !containsPersonalInfo(password, personal) },
   ];
@@ -665,8 +726,8 @@ function onPasswordInput() {
   let tier, pct;
   if (!password)                 { tier = ['—', '#9ca3af'];          pct = 0;   }
   else if (!allOk)               { tier = ['Not yet', '#ef4444'];    pct = 25;  }
-  else if (password.length >= 14){ tier = ['Strong', '#16a34a'];     pct = 100; }
-  else if (password.length >= 11){ tier = ['Good', '#65a30d'];       pct = 75;  }
+  else if (password.length >= 18){ tier = ['Strong', '#16a34a'];     pct = 100; }
+  else if (password.length >= 15){ tier = ['Good', '#65a30d'];       pct = 75;  }
   else                           { tier = ['OK', '#d97706'];         pct = 50;  }
   bar.style.width      = pct + '%';
   bar.style.background = tier[1];
@@ -683,27 +744,37 @@ function togglePw(inputId, btn) {
 }
 
 // ── Welcome screen: sign in vs create account ──────────────────────────────
+// 'google' is sign-up after Google vouched for the address: the names to
+// check, no password, and the email fixed to the one Google confirmed.
 function setAuthMode(mode) {
   authMode = mode;
-  const signup = mode === 'signup';
+  const google = mode === 'google';
+  const signup = mode === 'signup' || google;
+  if (!google) googleSignupToken = null;
 
   document.getElementById('auth-tab-signin').classList.toggle('active', !signup);
   document.getElementById('auth-tab-signup').classList.toggle('active', signup);
   document.getElementById('signup-names').style.display = signup ? 'grid' : 'none';
-  document.getElementById('signup-password-extras').style.display = signup ? 'block' : 'none';
+  document.getElementById('password-field').style.display = google ? 'none' : 'block';
+  document.getElementById('signup-password-extras').style.display = mode === 'signup' ? 'block' : 'none';
+  document.getElementById('forgot-link-row').style.display = signup ? 'none' : 'block';
+  document.getElementById('reg-email').readOnly = google;
+  paintGoogleButton();
 
   document.getElementById('auth-heading').textContent =
-    signup ? 'Create your visitor account' : 'Welcome back';
+    google ? 'Finish signing up' : signup ? 'Create your visitor account' : 'Welcome back';
   document.getElementById('auth-subheading').textContent =
-    signup ? 'Register once, then use the same email on every visit'
-           : 'Sign in to continue your museum journey';
+    google ? 'Google has confirmed your email. Check your name, then continue.'
+    : signup ? 'Register once, then use the same email on every visit'
+             : 'Sign in to continue your museum journey';
   document.getElementById('auth-submit-label').textContent =
     signup ? 'Continue' : 'Sign In';
   document.querySelector('#auth-submit .material-icons-round').textContent =
     signup ? 'arrow_forward' : 'login';
   document.getElementById('auth-hint').innerHTML =
-    signup ? 'Already registered? Tap <strong>Sign In</strong> and use your email and password.'
-           : 'First time here? Tap <strong>Create Account</strong> to register for your visit.';
+    google ? 'Not you? Tap <strong>Sign In</strong> to use a different account.'
+    : signup ? 'Already registered? Tap <strong>Sign In</strong> and use your email and password.'
+             : 'First time here? Tap <strong>Create Account</strong> to register for your visit.';
 
   // Tell the password manager which kind of field this is.
   document.getElementById('reg-password').setAttribute(
@@ -713,11 +784,11 @@ function setAuthMode(mode) {
     signup ? 'Choose a strong password' : 'Enter your password';
 
   showRegError('');
-  if (signup) onPasswordInput();
+  if (mode === 'signup') onPasswordInput();
 }
 
 function submitAuth() {
-  return authMode === 'signup' ? startRegistration() : doSignIn();
+  return authMode === 'signin' ? doSignIn() : startRegistration();
 }
 
 // ── Sign in ────────────────────────────────────────────────────────────────
@@ -739,6 +810,12 @@ function doSignIn() {
       ? { error: 'rate_limited' }
       : r.json())
     .then(data => {
+      // Right password, but the sign-up code was never typed back.
+      if (data && data.error === 'email_unverified') {
+        document.getElementById('reg-password').value = '';
+        openVerifyEmail(data, 'signin');
+        return;
+      }
       if (!data || data.error) {
         showRegError(authErrorText(data && data.error));
         return;
@@ -758,23 +835,29 @@ function startRegistration() {
   const last      = document.getElementById('reg-last').value.trim();
   const password  = document.getElementById('reg-password').value;
   const password2 = document.getElementById('reg-password2').value;
+  const google    = authMode === 'google';
 
   if (!first || !last)      { showRegError('Please enter your first and last name.'); return; }
   if (!isValidEmail(email)) { showRegError('Please enter a valid email address.'); return; }
 
-  const failed = checkPasswordRules(password, personalValuesForPassword()).filter(r => !r.ok);
-  if (failed.length) { showRegError(failed[0].label + '.'); return; }
-  if (password !== password2) { showRegError('The two passwords do not match.'); return; }
+  if (!google) {
+    const failed = checkPasswordRules(password, personalValuesForPassword()).filter(r => !r.ok);
+    if (failed.length) { showRegError(failed[0].label + '.'); return; }
+    if (password !== password2) { showRegError('The two passwords do not match.'); return; }
+  }
   showRegError('');
 
-  // Held in memory only — see the note on pendingSignup.
-  pendingSignup = { email, first, last, password };
+  // Held in memory only — see the note on pendingSignup. A Google sign-up
+  // carries the token Google's answer was traded for, in place of a password.
+  pendingSignup = google
+    ? { email, first, last, googleSignup: googleSignupToken }
+    : { email, first, last, password };
 
   STATE.email     = email;
   STATE.firstName = first;
   STATE.lastName  = last;
   STATE.name      = `${first} ${last}`;
-  STATE.provider  = 'manual';
+  STATE.provider  = google ? 'google' : 'manual';
 
   goToDetailsForm();
 }
@@ -791,9 +874,391 @@ function authErrorText(code) {
   return {
     invalid_credentials: 'Incorrect email or password.',
     email_taken:         'That email is already registered. Tap Sign In instead.',
+    google_signup_expired: 'Your Google sign-in timed out. Please tap Continue with Google again.',
     rate_limited:        'Too many attempts. Please wait a minute and try again.',
     unauthenticated:     'Your session has expired. Please sign in again.',
   }[code] || registrationErrorText(code);
+}
+
+// ── Verify email: the 6-digit code from sign-up ────────────────────────────
+// No session exists until the code is typed back. Reached from sign-up, and
+// from Sign In on an account that never finished. A Google sign-in skips it.
+let veEmail   = '';
+let veContext = 'signup';   // 'signup' | 'signin' - where to go once verified
+let veTimer   = null;
+
+function openVerifyEmail(data, context) {
+  veEmail   = data.email || STATE.email || '';
+  veContext = context;
+  document.getElementById('ve-email-shown').textContent = veEmail;
+  document.getElementById('ve-minutes').textContent     = data.minutes || 15;
+  document.getElementById('ve-code').value = '';
+  // Neither sent now nor sent a moment ago: the mail server refused it.
+  showBoxError('ve-error', !data.code_sent && !data.resend_in
+    ? 'We could not send the email just now. Tap Resend Code in a moment, or ask at the front desk.'
+    : '');
+  startResendTimer(data.resend_in || 0);
+  showScreen('s-verify-email');
+  setTimeout(() => document.getElementById('ve-code').focus(), 60);
+}
+
+/** Count down to "Resend Code"; the server enforces the same wait. */
+function startResendTimer(seconds) {
+  clearInterval(veTimer);
+  const readyAt = Date.now() + seconds * 1000;
+  const btn = document.getElementById('ve-resend');
+  const tick = () => {
+    const left = Math.max(0, Math.ceil((readyAt - Date.now()) / 1000));
+    btn.disabled    = left > 0;
+    btn.textContent = left > 0
+      ? `Resend code in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`
+      : 'Resend Code';
+    if (!left) clearInterval(veTimer);
+  };
+  tick();
+  veTimer = setInterval(tick, 1000);
+}
+
+/** Digits only, and submit on the sixth - same as the reset code. */
+function veCodeInput(input) {
+  input.value = input.value.replace(/\D/g, '').slice(0, 6);
+  if (input.value.length === 6) verifyEmailCode();
+}
+
+function veCall(path, body) {
+  showLoading(true);
+  return apiFetch(`${API_BASE}/visitors/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+    .then(r => r.json().catch(() => null).then(data => ({ r, data })))
+    .catch(() => {
+      showBoxError('ve-error', 'Could not reach the museum. Check your connection, or try again in a moment.');
+      return null;
+    })
+    .finally(() => showLoading(false));
+}
+
+function verifyEmailCode() {
+  const code = document.getElementById('ve-code').value;
+  if (!/^\d{6}$/.test(code)) { showBoxError('ve-error', 'Enter the 6 digits from the email.'); return; }
+
+  veCall('verify-email', { email: veEmail, code }).then(res => {
+    if (!res) return;
+    if (!res.r.ok || !res.data || !res.data.token) {
+      showBoxError('ve-error', res.r.status === 429
+        ? 'Too many tries. Please wait a few minutes and try again.'
+        : ({
+            code_expired: 'That code has expired. Tap Resend Code for a new one.',
+            code_locked:  'Too many wrong codes. Tap Resend Code for a new one.',
+          }[res.data && res.data.error] || 'That code is not right. Check the latest email and try again.'));
+      document.getElementById('ve-code').value = '';
+      return;
+    }
+
+    clearInterval(veTimer);
+    applySession(res.data);
+    if (veContext === 'signup') {
+      // Attendance is arrival, not admission — recorded even while pending.
+      claimAttendance(STATE.visitorId, STATE.name);
+      finishRegistration();
+    } else {
+      routeAfterAuth(res.data, `Welcome, ${STATE.firstName}!`);
+    }
+  });
+}
+
+function resendVerifyCode() {
+  veCall('verify-email/resend', { email: veEmail }).then(res => {
+    if (!res) return;
+    if (res.r.status === 429) { showBoxError('ve-error', 'Too many codes asked for. Please wait a few minutes and try again.'); return; }
+    if (!res.r.ok) {
+      showBoxError('ve-error', (res.data && res.data.message) || 'Could not send a new code. Please try again.');
+      return;
+    }
+    showBoxError('ve-error', '');
+    startResendTimer(res.data.resend_in || 0);
+    if (res.data.code_sent) showToast('A new code is on its way.');
+  });
+}
+
+/** Leaving abandons nothing: Sign In with the same password brings them back here. */
+function veBack() {
+  clearInterval(veTimer);
+  setAuthMode('signin');
+  document.getElementById('reg-email').value = veEmail;
+  showScreen('s-register');
+}
+
+// ── Continue with Google ───────────────────────────────────────────────────
+// A full-page trip to Google and back (GoogleAuthController). The server
+// returns to this page with a one-time code in the URL fragment, which is
+// traded here for either a session or, for someone new, a sign-up token.
+function startGoogleSignIn() {
+  showLoading(true);
+  window.location.href = `${PUBLIC_BASE}/auth/google`;
+}
+
+function paintGoogleButton() {
+  const row = document.getElementById('google-signin-row');
+  if (row) row.style.display = GOOGLE_AVAILABLE && authMode !== 'google' ? 'block' : 'none';
+}
+
+/** The answer Google's round trip left in the fragment, removed from the address bar. */
+function readGoogleReturn() {
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const code  = params.get('google');
+  const error = params.get('google_error');
+  if (!code && !error) return null;
+  // Out of the address bar and the history at once: the code works once,
+  // but a reload should not try to spend it again.
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+  return { code, error };
+}
+
+function googleErrorText(code) {
+  return {
+    cancelled:        'Google sign-in was cancelled.',
+    email_unverified: 'Google has not confirmed that email address. Please sign in with your email and password instead.',
+    conflict:         'That email is already linked to a different Google account. Sign in with your password instead.',
+    unavailable:      'Google sign-in is not available right now. Please use your email and password.',
+  }[code] || 'Google sign-in did not work. Please try again.';
+}
+
+function handleGoogleReturn(ret) {
+  setAuthMode('signin');
+  showScreen('s-register');
+  if (ret.error) { showRegError(googleErrorText(ret.error)); return; }
+
+  showLoading(true);
+  apiFetch(`${API_BASE}/visitors/google`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: ret.code })
+  })
+    .then(r => r.json().catch(() => null).then(data => ({ r, data })))
+    .then(({ r, data }) => {
+      if (!r.ok || !data) { showRegError(googleErrorText('expired')); return; }
+
+      if (data.google_signup) {
+        // New to the museum: the welcome form, names filled in, then the
+        // same details form as any other sign-up.
+        document.getElementById('reg-email').value = data.email;
+        document.getElementById('reg-first').value = data.first_name || '';
+        document.getElementById('reg-last').value  = data.last_name  || '';
+        setAuthMode('google');
+        googleSignupToken = data.google_signup;
+        return;
+      }
+
+      applySession(data);
+      STATE.provider = 'google';
+      saveState();
+      routeAfterAuth(data, `Welcome back, ${STATE.firstName}!`);
+    })
+    .catch(() => showRegError('Could not reach the museum. Check your connection, or try again in a moment.'))
+    .finally(() => showLoading(false));
+}
+
+// ── Password rules, as a checklist under any new-password field ────────────
+function renderPwRules(listId, password, personal) {
+  const list = document.getElementById(listId);
+  if (!list) return;
+  list.innerHTML = password ? checkPasswordRules(password, personal).map(r =>
+    `<div class="pw-rule ${r.ok ? 'ok' : 'bad'}">
+       <span class="material-icons-round">${r.ok ? 'check_circle' : 'radio_button_unchecked'}</span>${r.label}
+     </div>`
+  ).join('') : '';
+}
+
+/** The first thing wrong with a new password and its confirmation, or ''. */
+function newPasswordProblem(password, password2, personal) {
+  const failed = checkPasswordRules(password, personal).filter(r => !r.ok);
+  if (failed.length)          return failed[0].label + '.';
+  if (password !== password2) return 'The two passwords do not match.';
+  return '';
+}
+
+function showBoxError(id, msg) {
+  const box = document.getElementById(id);
+  if (!box) return;
+  box.textContent = msg;
+  box.style.display = msg ? 'block' : 'none';
+}
+
+// ── Forgot password ────────────────────────────────────────────────────────
+// Email → 6-digit code by email → new password. Nobody at the museum is
+// involved. The reset token the server trades for a right code is held here
+// in memory only, for the same reason as pendingSignup: STATE is written to
+// localStorage, and this token can set the account's password.
+let fpEmail = '';
+let fpResetToken = null;
+
+function openForgot() {
+  fpResetToken = null;
+  document.getElementById('fp-email').value = document.getElementById('reg-email').value.trim();
+  fpShowStep('email');
+  showScreen('s-forgot');
+}
+
+function fpShowStep(step) {
+  ['email', 'code', 'new'].forEach(s => {
+    document.getElementById('fp-step-' + s).style.display = s === step ? 'block' : 'none';
+  });
+  showBoxError('fp-error', '');
+  if (step === 'code') document.getElementById('fp-code').value = '';
+  if (step === 'new') {
+    document.getElementById('fp-password').value  = '';
+    document.getElementById('fp-password2').value = '';
+    renderPwRules('fp-rules', '', []);
+  }
+}
+
+function fpBack() {
+  const onCode = document.getElementById('fp-step-code').style.display !== 'none';
+  if (onCode) { fpShowStep('email'); return; }
+  // From the new-password step there is no going back to the code - it has
+  // been spent - so leaving abandons the reset.
+  fpResetToken = null;
+  showScreen('s-register');
+}
+
+/** Digits only, so a code pasted as "123 456" or "Code: 123456" still fits. */
+function fpCodeInput(input) {
+  input.value = input.value.replace(/\D/g, '').slice(0, 6);
+  if (input.value.length === 6) fpVerify();
+}
+
+function fpPersonal() {
+  return [fpEmail.split('@')[0] || ''];
+}
+
+/** What went wrong, in words, for a reply from any of the three calls. */
+function fpErrorText(r, data) {
+  if (r.status === 429) return 'Too many tries. Please wait a few minutes and try again.';
+  const code = data && data.error;
+  return {
+    code_invalid:     'That code is not right. Check the latest email and try again.',
+    code_expired:     'That code has expired. Tap "send a new code" for another.',
+    code_locked:      'Too many wrong codes. Tap "send a new code" for another.',
+    reset_expired:    'This reset has expired. Please ask for a new code.',
+  }[code] || (data && data.message) || 'Something went wrong. Please try again.';
+}
+
+function fpCall(path, body) {
+  showLoading(true);
+  return apiFetch(`${API_BASE}/visitors/password/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+    .then(r => r.json().catch(() => null).then(data => ({ r, data })))
+    .catch(() => {
+      showBoxError('fp-error', 'Could not reach the museum. Check your connection, or try again in a moment.');
+      return null;
+    })
+    .finally(() => showLoading(false));
+}
+
+function fpSendCode(resend) {
+  const email = resend ? fpEmail : document.getElementById('fp-email').value.trim();
+  if (!isValidEmail(email)) { showBoxError('fp-error', 'Please enter a valid email address.'); return; }
+
+  fpCall('forgot', { email }).then(res => {
+    if (!res) return;
+    if (!res.r.ok) { showBoxError('fp-error', fpErrorText(res.r, res.data)); return; }
+    fpEmail = email;
+    document.getElementById('fp-email-shown').textContent = email;
+    fpShowStep('code');
+    if (resend) showToast('A new code is on its way.');
+    document.getElementById('fp-code').focus();
+  });
+}
+
+function fpVerify() {
+  const code = document.getElementById('fp-code').value;
+  if (!/^\d{6}$/.test(code)) { showBoxError('fp-error', 'Enter the 6 digits from the email.'); return; }
+
+  fpCall('verify', { email: fpEmail, code }).then(res => {
+    if (!res) return;
+    if (!res.r.ok || !res.data || !res.data.reset_token) {
+      showBoxError('fp-error', fpErrorText(res.r, res.data));
+      return;
+    }
+    fpResetToken = res.data.reset_token;
+    fpShowStep('new');
+  });
+}
+
+function fpSetPassword() {
+  const password  = document.getElementById('fp-password').value;
+  const password2 = document.getElementById('fp-password2').value;
+  const problem   = newPasswordProblem(password, password2, fpPersonal());
+  if (problem) { showBoxError('fp-error', problem); return; }
+  if (!fpResetToken) { showBoxError('fp-error', 'This reset has expired. Please ask for a new code.'); return; }
+
+  fpCall('reset', {
+    email: fpEmail, reset_token: fpResetToken,
+    password, password_confirmation: password2,
+  }).then(res => {
+    if (!res) return;
+    if (!res.r.ok) { showBoxError('fp-error', fpErrorText(res.r, res.data)); return; }
+
+    // SECURITY: wipe the new password and the token from memory.
+    fpResetToken = null;
+    document.getElementById('fp-password').value  = '';
+    document.getElementById('fp-password2').value = '';
+
+    setAuthMode('signin');
+    document.getElementById('reg-email').value = fpEmail;
+    document.getElementById('reg-password').value = '';
+    showScreen('s-register');
+    showToast('Password updated. Sign in with your new password.', 3500);
+  });
+}
+
+// ── Change password (Settings) ─────────────────────────────────────────────
+function openChangePassword() {
+  ['cp-current', 'cp-password', 'cp-password2'].forEach(id => document.getElementById(id).value = '');
+  renderPwRules('cp-rules', '', []);
+  showBoxError('cp-error', '');
+  showScreen('s-change-password');
+}
+
+function cpPersonal() {
+  return [STATE.firstName, STATE.lastName, (STATE.email || '').split('@')[0] || ''];
+}
+
+function submitChangePassword() {
+  const current   = document.getElementById('cp-current').value;
+  const password  = document.getElementById('cp-password').value;
+  const password2 = document.getElementById('cp-password2').value;
+
+  if (!current) { showBoxError('cp-error', 'Please enter your current password.'); return; }
+  const problem = newPasswordProblem(password, password2, cpPersonal());
+  if (problem) { showBoxError('cp-error', problem); return; }
+  if (password === current) { showBoxError('cp-error', 'Your new password must be different from the current one.'); return; }
+  showBoxError('cp-error', '');
+
+  showLoading(true);
+  apiFetch(`${API_BASE}/visitors/me/password`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ current_password: current, password, password_confirmation: password2 })
+  })
+    .then(r => r.json().catch(() => null).then(data => ({ r, data })))
+    .then(({ r, data }) => {
+      if (r.status === 401) return;   // apiFetch has already sent them to sign in
+      if (r.status === 429) { showBoxError('cp-error', 'Too many tries. Please wait a few minutes and try again.'); return; }
+      if (!r.ok) { showBoxError('cp-error', (data && data.message) || 'Could not change your password. Please try again.'); return; }
+
+      ['cp-current', 'cp-password', 'cp-password2'].forEach(id => document.getElementById(id).value = '');
+      showScreen('s-settings');
+      showToast('Password changed.');
+    })
+    .catch(() => showBoxError('cp-error', 'Could not reach the museum. Check your connection, or try again in a moment.'))
+    .finally(() => showLoading(false));
 }
 
 // ── Session handling ───────────────────────────────────────────────────────
@@ -1223,8 +1688,10 @@ function submitRegistration() {
       // Which category, never what it costs.
       discount_id:      discount ? discount.id : null,
       email:            pendingSignup.email,
-      password:              pendingSignup.password,
-      password_confirmation: pendingSignup.password,
+      // A Google sign-up proves the email with Google's token instead.
+      ...(pendingSignup.googleSignup
+        ? { google_signup: pendingSignup.googleSignup }
+        : { password: pendingSignup.password, password_confirmation: pendingSignup.password }),
       explore_mode:     STATE.mode === 'free' ? 'Free Roam' : 'Storyline',
       // Blank unless they are joining a party the desk signed in. The server
       // decides what the code is worth; the fee is never sent from here.
@@ -1241,18 +1708,26 @@ function submitRegistration() {
       // than leaving them stuck on the details form. The server names the
       // field that failed, so this does not have to guess from the code.
       if (data && (data.error === 'email_taken' || data.field === 'email' || data.field === 'password')) {
+        setAuthMode(data.error === 'email_taken' || data.error === 'google_signup_expired' ? 'signin' : 'signup');
         showRegError(message);
-        setAuthMode(data.error === 'email_taken' ? 'signin' : 'signup');
         showScreen('s-register');
       }
       return;
     }
 
-    applySession(data);
     // SECURITY: the password has been sent; wipe it from memory immediately.
     pendingSignup = null;
+    googleSignupToken = null;
     document.getElementById('reg-password').value  = '';
     document.getElementById('reg-password2').value = '';
+
+    // A password sign-up is not signed in yet: the emailed code comes first.
+    if (data.verification_required) {
+      openVerifyEmail(data, 'signup');
+      return;
+    }
+
+    applySession(data);
 
     // Attendance is arrival, not admission — recorded even while pending.
     claimAttendance(STATE.visitorId, STATE.name);
@@ -1678,8 +2153,25 @@ function filterCategory(cat) {
 // Router only. Everything that has to happen once the screen is up lives in
 // onScanScreenShown, which showScreen calls for us — so this stays safe to
 // call from anywhere without re-entering itself.
+//
+// Every Scan button lands here, so this is where the pre-scan reminder sits:
+// the camera only starts once the visitor taps Proceed on it. Code that moves
+// to a scan screen on its own (goToNext) goes straight to showScreen instead.
+let _scanCautionMode = null;
+
 function onScanEnter(forceMode) {
-  const mode = forceMode || STATE.mode;
+  _scanCautionMode = forceMode || STATE.mode;
+  document.getElementById('scan-caution-sheet').classList.add('open');
+}
+
+function closeScanCaution() {
+  document.getElementById('scan-caution-sheet').classList.remove('open');
+}
+
+function proceedToScan() {
+  const mode = _scanCautionMode || STATE.mode;
+  _scanCautionMode = null;
+  closeScanCaution();
   showScreen(mode === 'free' ? 's-scan-free' : 's-scan-storyline');
 }
 
@@ -2135,6 +2627,15 @@ const ImageSearchEngine = (() => {
         return;
       }
 
+      // Not admitted today: apiFetch is already putting up the waiting
+      // screen, so stop sampling frames the server will keep refusing.
+      if (res.status === 403) {
+        _busy = false;
+        stop();
+        showToast(SCAN_LOCKED_MESSAGE, 5000);
+        return;
+      }
+
       const data = res.ok ? await res.json() : null;
       _busy = false;
 
@@ -2331,6 +2832,14 @@ const ImageSearchEngine = (() => {
 // own scan row before responding — logging again here would double-count the
 // visit and, worse, file the second copy under 'qr'. The on-device model has
 // no server round trip, so it logs through the normal path like a QR scan.
+//
+// The lock itself is the server's: every exhibit, scan and photo match sits
+// behind EnsureVisitorCleared, which only lets through a visitor the front
+// desk cleared today. So a code typed at home, or a label someone
+// photographed, is refused there whatever this file does. This message is
+// only the explanation shown with that refusal.
+const SCAN_LOCKED_MESSAGE = 'You must be inside Museo de Baler to unlock exhibit content and AI guides.';
+
 function handleScan(code, scanType = 'qr', alreadyLogged = false) {
   stopScanner();
 
@@ -2351,6 +2860,7 @@ function handleScan(code, scanType = 'qr', alreadyLogged = false) {
   // Always fetch from API so admin changes (translations, audio) are reflected
   apiFetch(`${API_BASE}/exhibits/${encodeURIComponent(code)}?lang=${encodeURIComponent(STATE.lang)}`)
     .then(r => {
+      if (r.status === 403) showToast(SCAN_LOCKED_MESSAGE, 5000);
       if (r.status === 401 || r.status === 403) return null; // apiFetch has acted
       // A 404 is an answer, not a failure: the museum was reached and said
       // it has no such label. Let it through to the {error} branch below so
@@ -3661,8 +4171,6 @@ function timeAgo(ts) {
 function updateMap() {
   const isStoryline = STATE.mode === 'storyline';
   const header = document.getElementById('map-header');
-  const modeLabel = document.getElementById('map-mode-label');
-  const modeBadge = document.getElementById('map-mode-badge');
   const slBar = document.getElementById('map-storyline-bar');
   const infoText = document.getElementById('map-info-text');
   const legendSl = document.getElementById('map-legend-storyline');
@@ -3672,11 +4180,14 @@ function updateMap() {
   const freeNodes2nd = document.getElementById('map-free-nodes-2nd');
 
   if (header) header.style.background = isStoryline ? 'var(--gd)' : 'var(--bd)';
-  if (modeLabel) modeLabel.textContent = isStoryline ? 'Storyline' : 'Free Explore';
-  if (modeBadge) {
-    const icon = modeBadge.querySelector('.material-icons-round');
-    if (icon) icon.textContent = isStoryline ? 'route' : 'explore';
+  // The header switch; its thumb slides off data-mode in the stylesheet.
+  const modeSeg = document.getElementById('map-mode-toggle');
+  if (modeSeg) {
+    modeSeg.dataset.mode = isStoryline ? 'storyline' : 'free';
+    modeSeg.querySelectorAll('[data-m]').forEach(b =>
+      b.setAttribute('aria-checked', String(b.dataset.m === modeSeg.dataset.mode)));
   }
+  applyMapZoom();
   if (slBar) slBar.style.display = isStoryline ? 'block' : 'none';
   if (legendSl) legendSl.style.display = isStoryline ? 'flex' : 'none';
   if (pathOverlay) pathOverlay.style.display = isStoryline ? 'block' : 'none';
@@ -3749,6 +4260,73 @@ function switchMapFloor(floor) {
     sndTab.style.fontWeight = floor === 'second' ? '700' : '400';
   }
   showToast(floor === 'ground' ? 'Ground Floor' : '2nd Floor');
+}
+
+// The header switch. Same path as the Settings picker, so the choice is
+// saved and the theme, pins and path all redraw in place.
+function setMapMode(mode) {
+  if (STATE.mode !== mode) toggleExploreMode(mode);
+}
+
+// Zoom widens both floor plans inside #map-scroll, keeping whatever point
+// sat in the middle of the view in the middle afterwards.
+const MAP_ZOOMS = [1, 1.5, 2, 3];
+let mapZoomIdx = 0;
+
+function visibleMapSvg() {
+  const g = document.getElementById('map-svg-ground');
+  return g && g.style.display !== 'none' ? g : document.getElementById('map-svg-second');
+}
+
+function zoomMap(dir) {
+  const next = Math.max(0, Math.min(MAP_ZOOMS.length - 1, mapZoomIdx + dir));
+  if (next === mapZoomIdx) return;
+  const box = document.getElementById('map-scroll');
+  const svg = visibleMapSvg();
+  if (!box || !svg) return;
+  const cx = (box.scrollLeft + box.clientWidth / 2) / svg.clientWidth;
+  const cy = (box.scrollTop + box.clientHeight / 2) / svg.clientHeight;
+  mapZoomIdx = next;
+  applyMapZoom();
+  box.scrollLeft = cx * svg.clientWidth - box.clientWidth / 2;
+  box.scrollTop = cy * svg.clientHeight - box.clientHeight / 2;
+}
+
+function applyMapZoom() {
+  ['map-svg-ground', 'map-svg-second'].forEach(id => {
+    const svg = document.getElementById(id);
+    if (svg) svg.style.width = (MAP_ZOOMS[mapZoomIdx] * 100) + '%';
+  });
+  const zin = document.getElementById('map-zoom-in');
+  const zout = document.getElementById('map-zoom-out');
+  if (zin) zin.disabled = mapZoomIdx === MAP_ZOOMS.length - 1;
+  if (zout) zout.disabled = mapZoomIdx === 0;
+}
+
+// Storyline: bring the next stop into the middle, flipping floors if it is
+// upstairs. Free Explore (or a finished storyline): the middle of the plan.
+function recenterMap() {
+  const box = document.getElementById('map-scroll');
+  if (!box) return;
+  let target = null;
+  if (STATE.mode === 'storyline') {
+    const nodes = mapNodes();
+    const done = getScannedStorylineOrders(nodes.map(n => n.ex));
+    target = nodes.filter(n => n.ex.storyline > 0)
+      .sort((a, b) => a.ex.storyline - b.ex.storyline)
+      .find(n => !done.includes(n.ex.storyline)) || null;
+    if (target) switchVisFloor(target.floor === 'ground' ? 1 : 2);
+  }
+  const svg = target ? document.getElementById(target.svgId) : visibleMapSvg();
+  if (!svg) return;
+  const vb = svg.viewBox.baseVal;
+  const fx = target ? target.x / vb.width : 0.5;
+  const fy = target ? target.y / vb.height : 0.5;
+  box.scrollTo({
+    left: fx * svg.clientWidth - box.clientWidth / 2,
+    top: fy * svg.clientHeight - box.clientHeight / 2,
+    behavior: 'smooth',
+  });
 }
 
 function toggleMapPath() {
@@ -4492,7 +5070,9 @@ function doLogout() {
   showRegError('');
   setAuthMode('signin');
   document.getElementById('logout-sheet').classList.remove('open');
-  showScreen('s-register');
+  // The next person on this handset starts at the museum rules.
+  try { localStorage.removeItem(RULES_ACK_KEY); } catch (e) {}
+  showScreen('s-welcome');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4695,6 +5275,13 @@ function applyMuseumInfo(data) {
       set('about-phone',     info.phone);
       set('about-email',     info.email);
 
+      // The guide beside the phone frame on a computer.
+      set('dg-hours',        info.hours);
+      set('dg-closed',       info.closed_on);
+      set('dg-address',      info.address);
+      // One rule to a line: the generated sentence joins them with ' · '.
+      set('dg-admission',    info.admission && info.admission.split(' · ').join('\n'));
+
       // The same contact details on the privacy policy and terms pages, so
       // there is only one place to change the museum's phone or email.
       set('legal-phone-1',   info.phone);
@@ -4766,6 +5353,9 @@ function _loadMuseumConfig() {
       }
       // Who enters free and the discounts on offer - what the sign-up form asks.
       try { _applyAdmissionRules(info.admission_rules); } catch (e) {}
+      // Continue with Google, only once the museum has set it up.
+      GOOGLE_AVAILABLE = info.google_sign_in === true;
+      try { paintGoogleButton(); } catch (e) {}
       if (info.latitude != null && info.longitude != null) {
         MUSEUM_LAT = parseFloat(info.latitude);
         MUSEUM_LNG = parseFloat(info.longitude);

@@ -26,7 +26,7 @@ class PublicEndpointsTest extends TestCase
 
         $res->assertJsonPath('info.name', 'Museo de Baler')
             ->assertJsonPath('info.admission_fee', 75)
-            ->assertJsonPath('info.admission', 'Baler residents enter free with a valid ID · Visitors ₱75.00')
+            ->assertJsonPath('info.admission', 'Baler residents enter free with a valid ID · Senior citizen (60 and over): Free · PWD: Free · Child (7 and under): Free · Visitors ₱75.00')
             ->assertJsonPath('halls.0.name', 'Hall A')
             ->assertJsonPath('halls.1.name', 'Hall B');
     }
@@ -48,6 +48,16 @@ class PublicEndpointsTest extends TestCase
             ->assertOk()
             ->assertJsonPath('info.admission_fee', 50)
             ->assertJsonPath('halls', []);
+    }
+
+    public function test_the_desktop_qr_points_at_the_app_and_nowhere_else(): void
+    {
+        $res = $this->get('/api/v1/museum/app-qr?url=https://example.com')->assertOk();
+
+        $this->assertStringStartsWith('image/svg+xml', $res->headers->get('Content-Type'));
+        $this->assertStringContainsString('<svg', $res->getContent());
+        // The query string is ignored: the code is the same with or without it.
+        $this->assertSame($res->getContent(), $this->get('/api/v1/museum/app-qr')->getContent());
     }
 
     public function test_notifications_lists_active_notices_newest_first(): void

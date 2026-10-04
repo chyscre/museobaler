@@ -44,7 +44,7 @@ class Visitor extends Authenticatable
      * panel should ever read them back, and this stops one leaking through
      * a JSON response or a debug dump.
      */
-    protected $hidden = ['password', 'api_token', 'token_expires_at', 'remember_token'];
+    protected $hidden = ['password', 'api_token', 'token_expires_at', 'remember_token', 'google_id'];
 
     protected function casts(): array
     {
@@ -52,11 +52,40 @@ class Visitor extends Authenticatable
             'last_visit'       => 'datetime',
             'paid_at'          => 'datetime',
             'verified_at'      => 'datetime',
-            'token_expires_at' => 'datetime',
+            'token_expires_at'  => 'datetime',
+            'email_verified_at' => 'datetime',
             'id_verified'      => 'boolean',
             'admission_fee'    => 'decimal:2',
             'password'         => 'hashed',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        // Every change to today's visit is copied into its row in the visit
+        // history, from whichever path made it: desk, app, Records, group.
+        static::saved(function (Visitor $visitor) {
+            if ($visitor->wasRecentlyCreated || $visitor->wasChanged(Visit::TRACKED)) {
+                Visit::record($visitor);
+            }
+        });
+    }
+
+    // -- Email verification --------------------------------------------------
+
+    /** True once they have proved they own the inbox. No token is issued before. */
+    public function hasVerifiedEmail(): bool
+    {
+        return $this->email_verified_at !== null;
+    }
+
+    /** Stamp the proof, once; a later proof leaves the first date alone. */
+    public function markEmailVerified(): void
+    {
+        if ($this->email_verified_at === null) {
+            $this->forceFill(['email_verified_at' => now()])->save();
+        }
+        VisitorEmailVerification::where('visitor_id', $this->visitor_id)->delete();
     }
 
     // -- Session tokens ------------------------------------------------------
@@ -187,6 +216,12 @@ class Visitor extends Authenticatable
      */
     public function isWithGroupToday(): bool
     {
+        // A group loaded before group_id changed is the wrong party: joinGroup()
+        // saves - which writes today's visit row - before it reloads.
+        if ($this->relationLoaded('group') && (int) $this->group?->group_id !== (int) $this->group_id) {
+            $this->unsetRelation('group');
+        }
+
         return $this->group !== null && $this->group->visit_date->isToday();
     }
 
@@ -310,6 +345,13 @@ class Visitor extends Authenticatable
             $this->paid_at        = null;
         }
 
+        // The party they last came with is not here today, so they came on
+        // their own. group_id stays as history (see isWithGroupToday); the
+        // visit type was the party's and does not carry over.
+        if ($newDay && $this->group_id !== null && !$this->isWithGroupToday()) {
+            $this->visit_type = 'Walk-in';
+        }
+
         $this->last_visit = now();
         $this->save();
     }
@@ -413,6 +455,12 @@ class Visitor extends Authenticatable
             });
     }
 
+    /** Every day they came, newest first. See App\Models\Visit. */
+    public function visits()
+    {
+        return $this->hasMany(Visit::class, 'visitor_id', 'visitor_id')->orderByDesc('visit_date');
+    }
+
     public function scans()
     {
         return $this->hasMany(Scan::class, 'visitor_id', 'visitor_id');
@@ -445,7 +493,21 @@ class Visitor extends Authenticatable
 
     public function getFullNameAttribute(): string
     {
-        return trim("{$this->first_name} {$this->last_name}");
+        $name = trim("{$this->first_name} {$this->last_name}");
+        if ($name !== '') {
+            return $name;
+        }
+
+        // An express entry gives no name; say what they were counted as.
+        return $this->isExpress()
+            ? 'Express entry · ' . ($this->discount_name ?: $this->visitor_type)
+            : 'Visitor #' . $this->visitor_id;
+    }
+
+    /** Counted at the desk without a name: see DeskController::storeExpress(). */
+    public function isExpress(): bool
+    {
+        return $this->source === 'express';
     }
 
     /**

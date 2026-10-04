@@ -50,13 +50,6 @@
 </div>
 
 <div class="m-body">
-  @if(session('success'))
-    <div class="alert alert-success" style="margin-bottom:14px">{{ session('success') }}</div>
-  @endif
-  @if(session('error'))
-    <div class="alert alert-error" style="margin-bottom:14px">{{ session('error') }}</div>
-  @endif
-
   @yield('content')
 
   <p class="m-note">
@@ -66,10 +59,11 @@
       This is the phone view — checking in and out.<br>
     @endif
     The rest of the admin panel is on the office computer.<br>
-    <a href="{{ route('password.edit') }}">Change my password</a>
+    <a href="{{ route('password.edit') }}">My account and password</a>
   </p>
 </div>
 
+@include('partials.toasts')
 @stack('scripts')
 </body>
 </html>

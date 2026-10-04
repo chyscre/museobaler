@@ -8,6 +8,7 @@ use App\Http\Controllers\Auth\PasswordController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExhibitAiController;
 use App\Http\Controllers\ExhibitController;
+use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\RecognitionController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\VisitorController;
@@ -67,11 +68,26 @@ Route::get('/login', [LoginController::class, 'showLogin'])->name('login');
 Route::post('/login', [LoginController::class, 'login'])->name('login.post')->middleware('login.throttle');
 Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
+// ── Visitors: Continue with Google ────────────────────────────
+// Web routes, not API ones, because Socialite keeps its anti-forgery state
+// in the session. The callback hands back to the visitor app; staff never
+// sign in this way.
+Route::middleware('throttle:visitor-google')->group(function () {
+    Route::get('/auth/google', [GoogleAuthController::class, 'redirect'])->name('google.redirect');
+    Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback'])->name('google.callback');
+});
+
 // ── Exhibit image proxy (serves images from public/images/exhibits/) ──
-Route::get('/exhibit-image/{filename}', function (string $filename) {
+// ?v=thumb serves the ~400px WebP copy, for the panel's grids; without it,
+// the original. ExhibitImage falls back to the original when no thumbnail
+// has been built.
+Route::get('/exhibit-image/{filename}', function (\Illuminate\Http\Request $request, string $filename) {
     $filename = basename($filename);
     $path = public_path('images/exhibits/' . $filename);
     if (!file_exists($path)) abort(404);
+    if ($request->query('v') === \App\Support\ExhibitImage::THUMB) {
+        $path = public_path(\App\Support\ExhibitImage::variantPath($filename, \App\Support\ExhibitImage::THUMB));
+    }
     $mime = mime_content_type($path) ?: 'image/jpeg';
     return response()->file($path, ['Content-Type' => $mime]);
 })->name('exhibit.image')->middleware('auth');
@@ -189,6 +205,9 @@ Route::middleware(['auth', 'throttle:panel', 'password.rotate', 'desktop'])->gro
         // tourists and sighting a local's proof of residency.
         Route::post('/visitors/{visitor}/mark-paid', [VisitorController::class, 'markPaid'])->name('visitors.mark-paid');
         Route::post('/visitors/{visitor}/verify-id', [VisitorController::class, 'verifyId'])->name('visitors.verify-id');
+        // Takes back today's admission: back to waiting, signed out of the
+        // app, and a refund in the ledger if they had paid.
+        Route::post('/visitors/{visitor}/revoke',    [VisitorController::class, 'revoke'])->name('visitors.revoke');
 
         // Guided tours — occasional by design.
         Route::get('/tours',             [TourController::class, 'index'])->name('tours.index');
@@ -255,6 +274,7 @@ Route::middleware(['auth', 'throttle:panel', 'password.rotate', 'desktop'])->gro
         Route::get('/reports/logbook',     [ReportController::class, 'logbook'])->name('reports.logbook');
         Route::get('/reports/dtr/{staff}', [ReportController::class, 'dtr'])->name('reports.dtr');
         Route::get('/reports/visitors',    [ReportController::class, 'visitors'])->name('reports.visitors');
+        Route::get('/reports/earnings',    [ReportController::class, 'earnings'])->name('reports.earnings');
         Route::get('/reports/feedback',    [ReportController::class, 'feedback'])->name('reports.feedback');
         Route::get('/reports/exhibits',    [ReportController::class, 'exhibits'])->name('reports.exhibits');
 
@@ -269,16 +289,9 @@ Route::middleware(['auth', 'throttle:panel', 'password.rotate', 'desktop'])->gro
         // declared before that group and would win, quietly handing the
         // museum staff the log kept on them.
         Route::get('/reports/{report}/export/{format}', [ReportController::class, 'export'])
-            ->where('report', 'logbook|dtr|visitors|exhibits|feedback')
+            ->where('report', 'logbook|dtr|visitors|earnings|exhibits|feedback')
             ->where('format', 'csv|xlsx|docx|pdf')
             ->name('reports.export');
-
-        // What the chosen format will contain, before committing to a
-        // download. Same wall as the export above: no audit here either.
-        Route::get('/reports/{report}/preview/{format}', [ReportController::class, 'preview'])
-            ->where('report', 'logbook|dtr|visitors|exhibits|feedback')
-            ->where('format', 'csv|xlsx|docx|pdf')
-            ->name('reports.preview');
 
         // The CSV links that existed before the other formats did. They
         // still serve the file rather than redirecting: a bookmarked export
@@ -298,6 +311,13 @@ Route::middleware(['auth', 'throttle:panel', 'password.rotate', 'desktop'])->gro
     // manual attendance row needs a second signature from someone who was not
     // the one who asked for it.
     Route::middleware([$tourism])->group(function () {
+        // The printable master list of every account. Declared before the
+        // resource so "roster" is never read as a {staff} id.
+        Route::get('/staff/roster', [ReportController::class, 'roster'])->name('staff.roster');
+        Route::get('/staff/roster/export/{format}', [ReportController::class, 'exportRoster'])
+            ->where('format', 'csv|xlsx|pdf')
+            ->name('staff.roster.export');
+
         Route::resource('staff', StaffController::class)->except(['show', 'destroy']);
         Route::get('/staff/{staff}/edit-form', [StaffController::class, 'modalEdit'])->name('staff.modal.edit');
         Route::post('/staff/{staff}/toggle',   [StaffController::class, 'toggle'])->name('staff.toggle');
@@ -317,10 +337,6 @@ Route::middleware(['auth', 'throttle:panel', 'password.rotate', 'desktop'])->gro
         Route::get('/reports/audit/export/{format}', [ReportController::class, 'exportAudit'])
             ->where('format', 'csv|pdf')
             ->name('reports.audit.export');
-
-        Route::get('/reports/audit/preview/{format}', [ReportController::class, 'previewAudit'])
-            ->where('format', 'csv|pdf')
-            ->name('reports.audit.preview');
 
         Route::get('/reports/audit/csv', [ReportController::class, 'auditCsv'])->name('reports.audit.csv');
 

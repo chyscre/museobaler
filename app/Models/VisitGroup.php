@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Support\Admission;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class VisitGroup extends Model
 {
@@ -99,7 +100,15 @@ class VisitGroup extends Model
             $this->payment_status = $newFee > 0 ? 'Unpaid' : 'Free';
         }
 
-        $this->save();
+        // The new fee and the refund that settles it land together or not
+        // at all, so the ledger never disagrees with the group's row.
+        DB::transaction(function () use ($refund, $byStaffId) {
+            $this->save();
+
+            if ($refund > 0) {
+                AdmissionPayment::refundForGroup($this, $refund, $byStaffId);
+            }
+        });
 
         return [
             'was_fee' => $wasFee,

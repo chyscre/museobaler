@@ -12,10 +12,16 @@ namespace App\Support;
  *
  * So each original keeps a pair of derivatives beside it:
  *
- *   images/exhibits/<name>.jpg          the untouched original, kept as the
- *                                       archive copy and never served to the app
- *   images/exhibits/display/<name>.jpg  ~1280px, for the exhibit hero
- *   images/exhibits/thumb/<name>.jpg    ~400px,  for list rows and cards
+ *   images/exhibits/<name>.jpg           the untouched original, kept as the
+ *                                        archive copy and never served to the app
+ *   images/exhibits/display/<name>.webp  ~1280px, for the exhibit detail view
+ *   images/exhibits/thumb/<name>.webp    ~400px,  for list rows, cards and grids
+ *
+ * The derivatives are WebP: at the same visual quality a WebP photograph is
+ * roughly a third smaller than the JPEG this used to write, which over mobile
+ * data on a grid of forty cards is the difference a visitor feels. A GD built
+ * without WebP writes JPEG instead, and variantPath() accepts either, so the
+ * .jpg derivatives already on disk keep working until they are rebuilt.
  *
  * Both are derived, so they can be deleted and rebuilt at any time
  * (`php artisan exhibits:thumbs --force`). Anything that cannot be rebuilt —
@@ -29,7 +35,7 @@ class ExhibitImage
     public const DISPLAY = 'display';
     public const THUMB   = 'thumb';
 
-    /** Longest edge, in pixels, and JPEG quality for each variant. */
+    /** Longest edge, in pixels, and encoder quality for each variant. */
     private const SIZES = [
         self::DISPLAY => [1280, 78],
         self::THUMB   => [400, 74],
@@ -56,11 +62,14 @@ class ExhibitImage
             return null;
         }
 
-        $name    = basename($file);
-        $derived = self::DIR . '/' . $variant . '/' . static::derivedName($name);
+        $name = basename($file);
 
-        if (is_file(public_path($derived))) {
-            return $derived;
+        foreach (static::derivedNames($name) as $derivedName) {
+            $derived = self::DIR . '/' . $variant . '/' . $derivedName;
+
+            if (is_file(public_path($derived))) {
+                return $derived;
+            }
         }
 
         $original = self::DIR . '/' . $name;
@@ -68,10 +77,29 @@ class ExhibitImage
         return is_file(public_path($original)) ? $original : null;
     }
 
-    /** Derivatives are always JPEG — the originals are photographs. */
+    /**
+     * The name a derivative is written under: WebP where GD can encode it,
+     * JPEG otherwise. Never PNG - the originals are photographs.
+     */
     public static function derivedName(string $name): string
     {
-        return pathinfo($name, PATHINFO_FILENAME) . '.jpg';
+        return pathinfo($name, PATHINFO_FILENAME) . (static::webpAvailable() ? '.webp' : '.jpg');
+    }
+
+    /**
+     * Every name a derivative may be on disk under, preferred first. The
+     * .jpg is what this wrote before the switch to WebP.
+     */
+    public static function derivedNames(string $name): array
+    {
+        $base = pathinfo($name, PATHINFO_FILENAME);
+
+        return [$base . '.webp', $base . '.jpg'];
+    }
+
+    public static function webpAvailable(): bool
+    {
+        return function_exists('imagewebp');
     }
 
     /**
@@ -118,10 +146,18 @@ class ExhibitImage
             // otherwise come out with a black background as a JPEG.
             imagefilledrectangle($dst, 0, 0, $nw, $nh, imagecolorallocate($dst, 255, 255, 255));
             imagecopyresampled($dst, $im, 0, 0, 0, 0, $nw, $nh, $w, $h);
-            imagejpeg($dst, $out, $quality);
+            if (static::webpAvailable()) {
+                imagewebp($dst, $out, $quality);
+            } else {
+                imagejpeg($dst, $out, $quality);
+            }
 
             imagedestroy($dst);
             imagedestroy($im);
+            // The .jpg an earlier build wrote is left where it is: the live
+            // release keeps serving it while a deploy builds these, and
+            // rollback.sh returns to code that knows only .jpg. forget()
+            // removes both when the exhibit goes.
             $made = true;
         }
 
@@ -135,9 +171,11 @@ class ExhibitImage
             return;
         }
         foreach (array_keys(self::SIZES) as $variant) {
-            $p = public_path(self::DIR . '/' . $variant . '/' . static::derivedName(basename($name)));
-            if (is_file($p)) {
-                @unlink($p);
+            foreach (static::derivedNames(basename($name)) as $derived) {
+                $p = public_path(self::DIR . '/' . $variant . '/' . $derived);
+                if (is_file($p)) {
+                    @unlink($p);
+                }
             }
         }
     }

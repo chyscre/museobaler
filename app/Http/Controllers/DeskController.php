@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AdmissionPayment;
 use App\Models\Log;
 use App\Models\Staff;
 use App\Models\Visitor;
@@ -76,9 +77,19 @@ class DeskController extends Controller
 
     public function store(Request $request)
     {
-        $data = $request->validate(self::REQUIRED_RULES + self::OPTIONAL_RULES + [
-            'visit_type' => 'nullable|in:Solo,Group,School,Family,Walk-in',
-        ]);
+        $data = $request->validate(array_merge(self::REQUIRED_RULES, self::OPTIONAL_RULES, [
+            'visit_type'    => 'nullable|in:Solo,Group,School,Family,Walk-in',
+            // An express entry has no name; see storeExpress().
+            'first_name'    => 'exclude_if:express,1|required|string|max:100',
+            'last_name'     => 'exclude_if:express,1|required|string|max:100',
+            'express'       => 'nullable|boolean',
+            'express_count' => 'nullable|integer|min:1|max:30',
+        ]));
+
+        if (!empty($data['express'])) {
+            return $this->storeExpress($data);
+        }
+        unset($data['express'], $data['express_count']);
 
         $discount = null;
         if ($data['visitor_type'] !== 'Local' && !empty($data['discount_id'])) {
@@ -96,6 +107,56 @@ class DeskController extends Controller
 
         return redirect()->route('desk.register')
             ->with('success', "{$visitor->full_name} registered." . $this->feeHint($visitor));
+    }
+
+    /**
+     * Express entry: a senior, a PWD or a small child counted in without a
+     * name.
+     *
+     * They owe nothing and have no account to sign in to, so a name buys
+     * nothing and costs the queue the most time. What the museum does need
+     * is the count and who they were - category, type, age, sex, where from
+     * - and each is still a visitors row, so every report counts them.
+     *
+     * Only for a category that is free. A partial discount means money
+     * changing hands, and a payment needs somebody to be recorded against.
+     *
+     * The desk is looking at the person and their ID while it does this, so
+     * the ID check is done on the spot rather than left waiting in Records.
+     * An age is optional for the same reason - several grandchildren of
+     * different ages can be counted at once - but one that is given has to
+     * fit the category.
+     */
+    private function storeExpress(array $data)
+    {
+        $discount = $data['visitor_type'] === 'Local' ? null : Admission::discount($data['discount_id'] ?? null);
+
+        if ($discount === null || !$discount->isFree()) {
+            return back()->withInput()->withErrors(['discount_id' =>
+                'Express entry is only for a category that enters free. Pick one, or register them by name.']);
+        }
+        if (!empty($data['age']) && !$discount->fitsAge((int) $data['age'])) {
+            return back()->withInput()->withErrors(['discount_id' => "{$discount->name} is for ages {$discount->age_range}."]);
+        }
+
+        $count = (int) ($data['express_count'] ?? 1);
+        $data  = Arr::except($data, ['express', 'express_count', 'first_name', 'last_name', 'middle_name', 'email']);
+
+        DB::transaction(function () use ($data, $discount, $count) {
+            for ($i = 0; $i < $count; $i++) {
+                $this->createVisitor($data, $discount, 'express', auth()->id(), [
+                    'id_verified' => true,
+                    'verified_at' => now(),
+                    'verified_by' => auth()->id(),
+                ]);
+            }
+        });
+
+        $this->log('Express Entry', "Counted {$count} × {$discount->name} ({$data['visitor_type']}"
+            . (!empty($data['age']) ? ", age {$data['age']}" : '') . ') at the desk, free');
+
+        return redirect()->route('desk.register')
+            ->with('success', "{$count} × {$discount->name} counted in — free entry, ID checked.");
     }
 
     /**
@@ -261,12 +322,21 @@ class DeskController extends Controller
             return back()->with('error', 'That group is already marked paid.');
         }
 
-        $group->update(['payment_status' => 'Paid', 'paid_at' => now()]);
+        $payment = DB::transaction(function () use ($group) {
+            $group->update(['payment_status' => 'Paid', 'paid_at' => now()]);
 
+            return AdmissionPayment::forGroup($group, auth()->id());
+        });
+
+        // What changed hands now, which after an upward correction is only
+        // the difference, not the whole fee.
         $this->log('Group Payment',
-            "Collected PHP " . number_format((float) $group->total_fee, 2) . " from group '{$group->contact_name}'");
+            "Collected PHP " . number_format((float) ($payment?->amount ?? 0), 2) . " from group '{$group->contact_name}'"
+            . ($payment ? " ({$payment->reference})" : ''));
 
-        return back()->with('success', 'Payment recorded.');
+        return back()->with('success', $payment
+            ? "Payment recorded — transaction {$payment->reference}."
+            : 'Payment recorded.');
     }
 
     /**
@@ -308,7 +378,7 @@ class DeskController extends Controller
      * member's details here would make them a second, separately-charged
      * visitor - the exact double count the join code exists to prevent.
      */
-    private function createVisitor(array $data, ?AdmissionDiscount $discount, string $source, ?int $staffId): Visitor
+    private function createVisitor(array $data, ?AdmissionDiscount $discount, string $source, ?int $staffId, array $overrides = []): Visitor
     {
         $fee = Visitor::feeFor($data['visitor_type'], $discount);
         unset($data['discount_id']);
@@ -327,7 +397,7 @@ class DeskController extends Controller
             unset($data['barangay']);
         }
 
-        return DB::transaction(fn () => Visitor::create($data + Visitor::discountColumns($discount) + [
+        return DB::transaction(fn () => Visitor::create($overrides + $data + Visitor::discountColumns($discount) + [
             'visit_type'    => $data['visit_type'] ?? 'Walk-in',
             'country'       => $data['country'] ?? 'Philippines',
             'auth_provider' => 'manual',

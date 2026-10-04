@@ -190,14 +190,14 @@
         <label for="email">Email</label>
         <div class="control">
           <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-          <input type="email" id="email" name="email" value="{{ old('email') }}" placeholder="admin@museobaler.ph" required autofocus autocomplete="email">
+          <input type="email" id="email" name="email" value="{{ old('email') }}" placeholder="Enter email..." required autofocus autocomplete="email">
         </div>
       </div>
       <div class="fg">
         <label for="password">Password</label>
         <div class="control">
           <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          <input type="password" id="password" name="password" placeholder="••••••••" required autocomplete="current-password">
+          <input type="password" id="password" name="password" placeholder="Enter password..." required autocomplete="current-password">
           <button type="button" class="pw-toggle" onclick="togglePw()" id="pwToggle" aria-label="Show password">
             <svg id="pwEye" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
           </button>

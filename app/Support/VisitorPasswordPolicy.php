@@ -10,24 +10,29 @@ namespace App\Support;
  * admin login. The app mirrors these rules for instant feedback, but the
  * check that matters is this one, on the server.
  *
- * Deliberately NOT the staff policy (PasswordPolicy): no character-class
- * rules, no breach lookup. NIST SP 800-63B dropped "must contain a symbol"
- * because it makes passwords harder to remember without making them harder
- * to guess - "P@ssw0rd1" satisfies every such rule and is in every cracking
- * list - and a visitor is typing this at an entrance queue on a phone.
- * Length and a blocklist do the real work:
+ * The length and character classes match the staff policy (PasswordPolicy)
+ * so there is one password standard across the system. There is no breach
+ * lookup here, because a visitor signing up at the entrance should not
+ * depend on a call to an outside service. The character classes alone do
+ * not make a password safe: "P@ssw0rd1234" passes them and is in every
+ * cracking list, so the blocklist below still matters most.
  *
- *  1. LENGTH - at least 8 characters, at most 100.
- *  2. NO COMMON PASSWORDS - the overwhelming majority of real compromises
+ *  1. LENGTH - at least 12 characters, at most 100.
+ *  2. CHARACTER CLASSES - an uppercase letter, a lowercase letter, a
+ *     number and a symbol.
+ *  3. NO COMMON PASSWORDS - the overwhelming majority of real compromises
  *     are credential stuffing and dictionary attacks, not brute force.
- *  3. NO PERSONAL INFORMATION - a password built from the visitor's own
+ *  4. NO PERSONAL INFORMATION - a password built from the visitor's own
  *     name or email is guessable by anyone who watched them register.
- *  4. Quietly: one character repeated, or one unbroken run ("12345678").
+ *  5. Quietly: one character repeated, or one unbroken run ("12345678").
  *
- * Ported from public/api/_password_policy.php, rule for rule.
+ * Originally ported from public/api/_password_policy.php; the length and
+ * character-class rules have since been raised to match the staff policy.
  */
 class VisitorPasswordPolicy
 {
+    public const MIN_LENGTH = PasswordPolicy::MIN_LENGTH;
+
     /**
      * Drawn from the leaked-credential lists that stuffing tools actually
      * use. Compared case-insensitively after stripping the decoration
@@ -57,9 +62,16 @@ class VisitorPasswordPolicy
     public static function check(string $password, array $personal = []): ?string
     {
         // mb_strlen, so accented or non-Latin characters count as characters.
-        if (mb_strlen($password) < 8)      return 'password_too_short';
+        if (mb_strlen($password) < self::MIN_LENGTH) return 'password_too_short';
         if (mb_strlen($password) > 100)    return 'password_too_long';
         if (trim($password) !== $password) return 'password_has_edge_spaces';
+
+        // "Symbol" means punctuation or a symbol character, the same set
+        // Laravel's Password::symbols() accepts for staff passwords.
+        if (!preg_match('/\p{Lu}/u', $password))       return 'password_needs_upper';
+        if (!preg_match('/\p{Ll}/u', $password))       return 'password_needs_lower';
+        if (!preg_match('/\p{N}/u', $password))        return 'password_needs_number';
+        if (!preg_match('/[\p{P}\p{S}]/u', $password)) return 'password_needs_symbol';
 
         $lower = mb_strtolower($password);
 
@@ -116,7 +128,11 @@ class VisitorPasswordPolicy
     public static function message(string $code): string
     {
         return [
-            'password_too_short'         => 'Password must be at least 8 characters.',
+            'password_too_short'         => 'Password must be at least ' . self::MIN_LENGTH . ' characters.',
+            'password_needs_upper'       => 'Password must include an uppercase letter.',
+            'password_needs_lower'       => 'Password must include a lowercase letter.',
+            'password_needs_number'      => 'Password must include a number.',
+            'password_needs_symbol'      => 'Password must include a symbol, such as ! @ # $ or %.',
             'password_too_long'          => 'Password must be 100 characters or fewer.',
             'password_has_edge_spaces'   => 'Password cannot start or end with a space.',
             'password_too_common'        => 'That password is too common — please choose something less predictable.',

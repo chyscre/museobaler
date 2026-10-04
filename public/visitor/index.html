@@ -28,7 +28,7 @@
      which overrides the icon size. -->
 <link rel="preload" href="./fonts/material-icons-round.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="./css/fonts.css?v=21">
-<link rel="stylesheet" href="./css/app.css?v=21">
+<link rel="stylesheet" href="./css/app.css?v=24">
 <!-- Device fit: real viewport height, safe areas, soft keyboard. Runs before
      anything else measures the layout. -->
 <script src="./js/viewport.js?v=21"></script>
@@ -45,9 +45,45 @@
 <div id="app">
 
 <!-- ══════════════════════════════════════════
+     SCREEN 0 · MUSEUM RULES (first open)
+     The house rules, read once before the way in. Either button records that
+     they were seen (mb_rules_ack) and opens the matching half of the sign-in
+     screen; signing out clears it, so the next visitor on a shared handset
+     reads them too. Not a gated screen: it comes before any account.
+══════════════════════════════════════════ -->
+<div id="s-welcome" class="screen active">
+  <div class="welcome">
+    <div class="sb" style="color:white;">
+      <span class="sb-time" style="color:white;" id="time-welcome">9:41</span>
+      <div class="sb-icons" style="color:white;"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div>
+    </div>
+    <div class="welcome-body sbody">
+      <div class="welcome-brand">
+        <img class="welcome-seal" src="./img/seal.png" alt="Seal of the Municipality of Baler, Aurora">
+        <img class="welcome-wordmark" src="./img/wordmark.png" alt="Museo de Baler">
+      </div>
+      <div class="welcome-copy">
+        <h1 class="welcome-title">Before You Explore</h1>
+        <p class="welcome-sub">Help us keep Baler's history safe for every visitor. Please follow these rules in the galleries.</p>
+        <ul class="welcome-rules">
+          <li><span class="material-icons-round">do_not_touch</span><span>Do not touch the exhibits and artifacts.</span></li>
+          <li><span class="material-icons-round">videocam_off</span><span>Video recording inside gallery spaces is strictly prohibited.</span></li>
+          <li><span class="material-icons-round">no_flash</span><span>No flash photography inside the galleries.</span></li>
+          <li><span class="material-icons-round">headphones</span><span>Keep noise to a minimum; use earphones for audio guides.</span></li>
+          <li><span class="material-icons-round">no_food</span><span>No food or drinks near exhibit areas.</span></li>
+        </ul>
+        <button type="button" class="welcome-cta" onclick="acknowledgeRules('signup')">Get Started</button>
+        <button type="button" class="welcome-alt" onclick="acknowledgeRules('signin')">I already have an account &middot; <strong>Sign In</strong></button>
+        <div class="welcome-legal">By continuing, you agree to our <span onclick="openLegal('s-terms')">Terms of Service</span> and <span onclick="openLegal('s-privacy')">Privacy Policy</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
      SCREEN 1 · REGISTER
 ══════════════════════════════════════════ -->
-<div id="s-register" class="screen active">
+<div id="s-register" class="screen">
   <div class="landing" style="height:100%;display:flex;flex-direction:column;">
     <div class="sb" style="color:white;">
       <span class="sb-time" style="color:white;" id="time-register">9:41</span>
@@ -85,13 +121,16 @@
         </div>
       </div>
 
-      <div class="fg">
+      <div id="password-field" class="fg">
         <label class="fl">Password <span style="color:#ef4444;">*</span></label>
         <div class="pw-wrap">
           <input id="reg-password" class="fi" type="password" autocomplete="current-password" placeholder="Enter your password" oninput="onPasswordInput()">
           <button type="button" class="pw-toggle" onclick="togglePw('reg-password', this)" aria-label="Show password">
             <span class="material-icons-round">visibility</span>
           </button>
+        </div>
+        <div id="forgot-link-row" style="text-align:right;margin-top:7px;">
+          <button type="button" class="link-btn" onclick="openForgot()">Forgot password?</button>
         </div>
       </div>
 
@@ -115,7 +154,7 @@
             <div id="pw-strength-bar" style="height:100%;width:0;border-radius:4px;background:#ef4444;transition:width .2s,background .2s;"></div>
           </div>
           <div id="pw-rules" style="display:flex;flex-direction:column;gap:5px;"></div>
-          <div style="font-size:11px;color:var(--tl);line-height:1.5;margin-top:9px;padding-top:8px;border-top:1px solid rgba(0,0,0,.06);">Tip: a few words you'll remember, like <em>blue kayak tuesday</em>, is easier to type and stronger than symbols.</div>
+          <div style="font-size:11px;color:var(--tl);line-height:1.5;margin-top:9px;padding-top:8px;border-top:1px solid rgba(0,0,0,.06);">Tip: a few words you'll remember, joined with a symbol and a number, like <em>Blue-kayak-tuesday-4</em>, are easy to type and hard to guess.</div>
         </div>
       </div>
 
@@ -125,11 +164,126 @@
         <span class="material-icons-round">login</span><span id="auth-submit-label">Sign In</span>
       </button>
 
+      <!-- Shown once GET /api/v1/museum says the museum has set up Google sign-in. -->
+      <div id="google-signin-row" style="display:none;">
+        <div class="auth-or"><span>or</span></div>
+        <button type="button" class="btn btn-google btn-full" onclick="startGoogleSignIn()">
+          <svg aria-hidden="true" viewBox="0 0 48 48" width="18" height="18"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+          <span>Continue with Google</span>
+        </button>
+      </div>
+
       <div style="display:flex;gap:8px;align-items:flex-start;background:var(--ew);border-radius:10px;padding:10px 12px;margin-bottom:8px;">
         <span class="material-icons-round" style="font-size:16px;color:var(--tl);flex-shrink:0;margin-top:1px;">info_outline</span>
         <p id="auth-hint" style="font-size:calc(11.5px * var(--fs));color:var(--tm);line-height:1.5;">First time here? Tap <strong>Create Account</strong> to register for your visit.</p>
       </div>
       <div style="font-size:calc(11px * var(--fs));color:var(--tl);text-align:center;line-height:1.6;margin-top:8px;">By continuing, you agree to our <span style="color:var(--accent-text);font-weight:600;cursor:pointer;" onclick="openLegal('s-terms')">Terms of Service</span> and <span style="color:var(--accent-text);font-weight:600;cursor:pointer;" onclick="openLegal('s-privacy')">Privacy Policy</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 1A · FORGOT PASSWORD
+     Three steps on one screen: the email, the 6-digit code from it, and the
+     new password. Reached from Sign In, before any account is signed in, so
+     it is deliberately not one of the gated screens.
+══════════════════════════════════════════ -->
+<div id="s-forgot" class="screen">
+  <div style="height:100%;background:var(--ec);display:flex;flex-direction:column;">
+    <div style="background:linear-gradient(160deg,var(--mode-primary),var(--mode-secondary));flex-shrink:0;">
+      <div class="sb"><span class="sb-time" style="color:white;" id="time-forgot">9:41</span><div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div></div>
+      <div style="display:flex;align-items:center;gap:12px;padding:6px 20px 16px;">
+        <button class="icon-btn" onclick="fpBack()" aria-label="Back"><span class="material-icons-round">arrow_back</span></button>
+        <div style="font-family:'Young Serif',serif;font-size:calc(18px * var(--fs));color:white;">Reset Password</div>
+      </div>
+    </div>
+    <div class="sbody" style="flex:1;padding:18px 16px 40px;">
+      <div style="background:var(--w);border-radius:14px;padding:18px 16px;box-shadow:var(--sh);">
+
+        <!-- Step 1 · which account -->
+        <div id="fp-step-email" class="fp-step">
+          <div class="fp-title">Forgot your password?</div>
+          <p class="fp-text">Enter the email you registered with. We'll send a 6-digit code to it.</p>
+          <div class="fg">
+            <label class="fl" for="fp-email">Email Address</label>
+            <input id="fp-email" class="fi" type="email" inputmode="email" autocomplete="email" placeholder="e.g. pedroacosta@gmail.com">
+          </div>
+          <button class="btn btn-green btn-full" onclick="fpSendCode()"><span class="material-icons-round">mail</span>Send Code</button>
+        </div>
+
+        <!-- Step 2 · the code from the email -->
+        <div id="fp-step-code" class="fp-step" style="display:none;">
+          <div class="fp-title">Check your email</div>
+          <p class="fp-text">If <strong id="fp-email-shown"></strong> has an account, a 6-digit code is on its way. It works for 15 minutes.</p>
+          <div class="fg">
+            <label class="fl" for="fp-code">6-digit code</label>
+            <input id="fp-code" class="fi fp-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" oninput="fpCodeInput(this)">
+          </div>
+          <button class="btn btn-green btn-full" onclick="fpVerify()"><span class="material-icons-round">verified</span>Verify Code</button>
+          <div style="text-align:center;margin-top:12px;font-size:calc(12px * var(--fs));color:var(--tl);">
+            No email? Check your spam folder, or <button type="button" class="link-btn" onclick="fpSendCode(true)">send a new code</button>.
+          </div>
+        </div>
+
+        <!-- Step 3 · the new password -->
+        <div id="fp-step-new" class="fp-step" style="display:none;">
+          <div class="fp-title">Set a new password</div>
+          <p class="fp-text">Choose a password you have not used here before.</p>
+          <div class="fg">
+            <label class="fl" for="fp-password">New Password</label>
+            <div class="pw-wrap">
+              <input id="fp-password" class="fi" type="password" autocomplete="new-password" placeholder="Choose a strong password" oninput="renderPwRules('fp-rules', this.value, fpPersonal())">
+              <button type="button" class="pw-toggle" onclick="togglePw('fp-password', this)" aria-label="Show password"><span class="material-icons-round">visibility</span></button>
+            </div>
+          </div>
+          <div class="fg">
+            <label class="fl" for="fp-password2">Confirm New Password</label>
+            <div class="pw-wrap">
+              <input id="fp-password2" class="fi" type="password" autocomplete="new-password" placeholder="Re-enter the new password">
+              <button type="button" class="pw-toggle" onclick="togglePw('fp-password2', this)" aria-label="Show password"><span class="material-icons-round">visibility</span></button>
+            </div>
+          </div>
+          <div id="fp-rules" class="pw-rules-box"></div>
+          <button class="btn btn-green btn-full" onclick="fpSetPassword()"><span class="material-icons-round">lock_reset</span>Save New Password</button>
+        </div>
+
+        <div id="fp-error" class="form-error" style="display:none;margin-top:12px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 1AA · VERIFY EMAIL
+     The 6-digit code sent when an account is created with a password, or
+     when one that never finished is signed in to. No session exists until
+     it is typed back, so like Forgot Password it is not a gated screen.
+     A Google sign-in never comes here.
+══════════════════════════════════════════ -->
+<div id="s-verify-email" class="screen">
+  <div style="height:100%;background:var(--ec);display:flex;flex-direction:column;">
+    <div style="background:linear-gradient(160deg,var(--mode-primary),var(--mode-secondary));flex-shrink:0;">
+      <div class="sb"><span class="sb-time" style="color:white;" id="time-verify">9:41</span><div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div></div>
+      <div style="display:flex;align-items:center;gap:12px;padding:6px 20px 16px;">
+        <button class="icon-btn" onclick="veBack()" aria-label="Back"><span class="material-icons-round">arrow_back</span></button>
+        <div style="font-family:'Young Serif',serif;font-size:calc(18px * var(--fs));color:white;">Verify Your Email</div>
+      </div>
+    </div>
+    <div class="sbody" style="flex:1;padding:18px 16px 40px;">
+      <div style="background:var(--w);border-radius:14px;padding:18px 16px;box-shadow:var(--sh);">
+        <div class="fp-title">Check your email</div>
+        <p class="fp-text">We sent a 6-digit code to <strong id="ve-email-shown"></strong>. It works for <span id="ve-minutes">15</span> minutes.</p>
+        <div class="fg">
+          <label class="fl" for="ve-code">6-digit code</label>
+          <input id="ve-code" class="fi fp-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" oninput="veCodeInput(this)">
+        </div>
+        <button class="btn btn-green btn-full" onclick="verifyEmailCode()"><span class="material-icons-round">verified</span>Verify</button>
+        <div style="text-align:center;margin-top:14px;font-size:calc(12px * var(--fs));color:var(--tl);">
+          No email? Check your spam folder.<br>
+          <button type="button" id="ve-resend" class="link-btn" style="margin-top:6px;" onclick="resendVerifyCode()" disabled>Resend Code</button>
+        </div>
+        <div id="ve-error" class="form-error" style="display:none;margin-top:12px;"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -502,6 +656,33 @@
     </div>
   </div>
 </div>
+<!-- ══════════════════════════════════════════
+     SCREEN 1G · CONTINUE ON YOUR PHONE
+     What a computer sees in place of the museum itself. Signing up ahead
+     of a visit works anywhere; the exhibits, the map and the scanner are
+     for the phone in the visitor's hand. showScreen() sends every gated
+     screen here when the device has a mouse rather than a touchscreen.
+══════════════════════════════════════════ -->
+<div id="s-desktop" class="screen">
+  <div style="height:100%;background:linear-gradient(160deg,var(--gd) 0%,var(--gm) 45%,var(--gl) 100%);display:flex;flex-direction:column;">
+    <div class="sb" style="color:white;">
+      <span class="sb-time" style="color:white;" id="time-desktop">9:41</span>
+      <div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div>
+    </div>
+    <div class="sbody" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px 28px 32px;">
+      <div style="width:74px;height:74px;border-radius:50%;background:rgba(255,255,255,0.18);border:2px solid rgba(255,255,255,0.4);display:flex;align-items:center;justify-content:center;margin-bottom:14px;flex-shrink:0;">
+        <span class="material-icons-round" style="font-size:38px;color:white;">smartphone</span>
+      </div>
+      <div style="font-family:'Young Serif',serif;font-size:calc(23px * var(--fs));color:white;line-height:1.2;margin-bottom:8px;">Continue on your phone</div>
+      <p style="font-size:calc(13px * var(--fs));color:rgba(255,255,255,0.85);line-height:1.6;margin-bottom:20px;">The exhibits, the map and the scanner work with your phone in hand at the museum. Scan this code and sign in there with the same email.</p>
+      <div class="desk-qr-tile"><img data-app-qr width="168" height="168" alt="QR code that opens Museo de Baler on your phone"></div>
+      <button class="btn btn-outline btn-full" style="margin-top:24px;font-size:calc(14px * var(--fs));padding:12px;" onclick="confirmLogout()">
+        <span class="material-icons-round">logout</span>Sign out
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════════════════════════════════
      SCREEN 2 · MODE CHOICE
 ══════════════════════════════════════════ -->
@@ -1005,9 +1186,10 @@
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 20px 14px;">
         <div style="font-family:'Young Serif',serif;font-size:calc(18px * var(--fs));color:white;">Museum Map</div>
-        <div id="map-mode-badge" style="background:rgba(255,255,255,0.2);border-radius:20px;padding:4px 12px;display:flex;align-items:center;gap:6px;">
-          <span class="material-icons-round" style="font-size:14px;color:white;">route</span>
-          <span id="map-mode-label" style="font-size:calc(11px * var(--fs));font-weight:700;color:white;">Storyline</span>
+        <div id="map-mode-toggle" class="mode-seg" role="radiogroup" aria-label="Explore mode" data-mode="storyline">
+          <span class="mode-seg-thumb" aria-hidden="true"></span>
+          <button type="button" role="radio" aria-checked="true" data-m="storyline" onclick="setMapMode('storyline')"><span class="material-icons-round">route</span>Storyline</button>
+          <button type="button" role="radio" aria-checked="false" data-m="free" onclick="setMapMode('free')"><span class="material-icons-round">explore</span>Free</button>
         </div>
       </div>
     </div>
@@ -1031,7 +1213,14 @@
       </div>
     </div>
     <div style="flex:1;overflow:hidden;background:#F0EBE0;position:relative;display:flex;flex-direction:column;">
-      <div style="flex:1;overflow:auto">
+      <!-- Map controls float over the plan as bare glyphs; they sit outside
+           the scroller so they stay put while the plan pans underneath. -->
+      <div class="map-ctl map-ctl-zoom" role="group" aria-label="Map view">
+        <button type="button" id="map-zoom-in" class="map-ico" onclick="zoomMap(1)" aria-label="Zoom in" title="Zoom in"><span class="material-icons-round">add</span></button>
+        <button type="button" id="map-zoom-out" class="map-ico" onclick="zoomMap(-1)" aria-label="Zoom out" title="Zoom out"><span class="material-icons-round">remove</span></button>
+        <button type="button" class="map-ico map-ico-center" onclick="recenterMap()" aria-label="Re-center map" title="Re-center"><span class="material-icons-round">my_location</span></button>
+      </div>
+      <div id="map-scroll" style="flex:1;overflow:auto">
       <!-- Floor plans are the same drawing as the admin Museum Map; pins are
            placed by JS from each exhibit's saved map_x/map_y. -->
       <svg id="map-svg-ground" data-floor="ground" viewBox="0 0 1660 1000" width="100%" style="display:block;background:#E8D9B8;font-family:sans-serif">
@@ -1469,6 +1658,14 @@
           </div>
         </div>
       </div>
+      <div style="font-size:calc(11px * var(--fs));font-weight:700;color:var(--tl);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;padding-left:4px;">Account</div>
+      <div style="background:var(--w);border-radius:14px;margin-bottom:14px;box-shadow:var(--sh);overflow:hidden;">
+        <div onclick="openChangePassword()" style="display:flex;align-items:center;gap:10px;padding:14px;cursor:pointer;">
+          <span class="material-icons-round" style="font-size:20px;color:var(--accent-text);">lock</span>
+          <div style="flex:1;"><div style="font-size:calc(14px * var(--fs));color:var(--td);">Change Password</div><div style="font-size:calc(11px * var(--fs));color:var(--tl);">You'll need your current password</div></div>
+          <span class="material-icons-round" style="font-size:18px;color:var(--tl);">chevron_right</span>
+        </div>
+      </div>
       <div style="font-size:calc(11px * var(--fs));font-weight:700;color:var(--tl);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;padding-left:4px;">About</div>
       <div style="background:var(--w);border-radius:14px;margin-bottom:14px;box-shadow:var(--sh);overflow:hidden;">
         <div onclick="showScreen('s-about');loadMuseumInfo();" style="display:flex;align-items:center;gap:10px;padding:14px;border-bottom:1px solid var(--es);cursor:pointer;">
@@ -1500,6 +1697,52 @@
       <div class="ni" onclick="showScreen('s-map')"><span class="material-icons-round">map</span><span class="nl">Map</span></div>
       <div class="ni" onclick="showScreen('s-profile')"><span class="material-icons-round">person</span><span class="nl">Profile</span></div>
     </nav>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 8A · CHANGE PASSWORD (from Settings)
+══════════════════════════════════════════ -->
+<div id="s-change-password" class="screen">
+  <div style="height:100%;background:var(--ec);display:flex;flex-direction:column;">
+    <div style="background:linear-gradient(160deg,var(--mode-primary),var(--mode-secondary));flex-shrink:0;">
+      <div class="sb"><span class="sb-time" style="color:white;" id="time-change-password">9:41</span><div class="sb-icons"><span class="material-icons-round" style="color:white;">signal_cellular_alt</span><span class="material-icons-round" style="color:white;">wifi</span><span class="material-icons-round" style="color:white;">battery_full</span></div></div>
+      <div style="display:flex;align-items:center;gap:12px;padding:6px 20px 16px;">
+        <button class="icon-btn" onclick="showScreen('s-settings')" aria-label="Back"><span class="material-icons-round">arrow_back</span></button>
+        <div style="font-family:'Young Serif',serif;font-size:calc(18px * var(--fs));color:white;">Change Password</div>
+      </div>
+    </div>
+    <div class="sbody" style="flex:1;padding:18px 16px 40px;">
+      <div style="background:var(--w);border-radius:14px;padding:18px 16px;box-shadow:var(--sh);">
+        <div class="fg">
+          <label class="fl" for="cp-current">Current Password</label>
+          <div class="pw-wrap">
+            <input id="cp-current" class="fi" type="password" autocomplete="current-password" placeholder="Enter your current password">
+            <button type="button" class="pw-toggle" onclick="togglePw('cp-current', this)" aria-label="Show password"><span class="material-icons-round">visibility</span></button>
+          </div>
+        </div>
+        <div class="fg">
+          <label class="fl" for="cp-password">New Password</label>
+          <div class="pw-wrap">
+            <input id="cp-password" class="fi" type="password" autocomplete="new-password" placeholder="Choose a strong password" oninput="renderPwRules('cp-rules', this.value, cpPersonal())">
+            <button type="button" class="pw-toggle" onclick="togglePw('cp-password', this)" aria-label="Show password"><span class="material-icons-round">visibility</span></button>
+          </div>
+        </div>
+        <div class="fg">
+          <label class="fl" for="cp-password2">Confirm New Password</label>
+          <div class="pw-wrap">
+            <input id="cp-password2" class="fi" type="password" autocomplete="new-password" placeholder="Re-enter the new password">
+            <button type="button" class="pw-toggle" onclick="togglePw('cp-password2', this)" aria-label="Show password"><span class="material-icons-round">visibility</span></button>
+          </div>
+        </div>
+        <div id="cp-rules" class="pw-rules-box"></div>
+        <div id="cp-error" class="form-error" style="display:none;margin-bottom:12px;"></div>
+        <button class="btn btn-green btn-full" onclick="submitChangePassword()"><span class="material-icons-round">lock</span>Save New Password</button>
+        <div style="text-align:center;margin-top:12px;font-size:calc(12px * var(--fs));color:var(--tl);">
+          Forgot your current one? Sign out, then tap <strong>Forgot password?</strong> on the sign-in screen.
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1885,6 +2128,27 @@
 </div>
 
 <!-- ══════════════════════════════════════════
+     PRE-SCAN REMINDER
+     Shown each time a Scan button is tapped, before the camera starts.
+     Tapping outside closes it without opening the scanner.
+══════════════════════════════════════════ -->
+<div id="scan-caution-sheet" class="sheet-overlay" onclick="if(event.target===this)closeScanCaution()">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="scan-caution-title">
+    <div class="sheet-handle"></div>
+    <div class="scan-caution-icons" aria-hidden="true">
+      <span class="material-icons-round">do_not_step</span>
+      <span class="material-icons-round">do_not_touch</span>
+      <span class="material-icons-round">videocam_off</span>
+    </div>
+    <div id="scan-caution-title" style="font-family:'Young Serif',serif;font-size:calc(18px * var(--fs));color:var(--td);text-align:center;margin-bottom:8px;">A quick reminder</div>
+    <div style="font-size:calc(13.5px * var(--fs));color:var(--tm);text-align:center;line-height:1.6;margin-bottom:20px;">Stay behind safety barriers, do not touch exhibits, and refrain from video recording while exploring.</div>
+    <button class="btn btn-green btn-full" style="font-size:calc(15px * var(--fs));padding:14px;" onclick="proceedToScan()">
+      <span class="material-icons-round">qr_code_scanner</span>Proceed to Camera
+    </button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
      LOGOUT CONFIRM SHEET
 ══════════════════════════════════════════ -->
 <div id="logout-sheet" class="sheet-overlay">
@@ -1951,11 +2215,30 @@
 
 </div><!-- #app -->
 
+<!-- Beside the phone frame on a computer only (css: DESKTOP GUIDE). Hidden
+     everywhere else, and its QR is not even requested until js/app.js has
+     decided this is a computer. The museum details are filled in from
+     GET /api/v1/museum by applyMuseumInfo(); a row with nothing in it stays
+     hidden rather than showing a placeholder. -->
+<aside id="desk-guide" aria-label="Open Museo de Baler on your phone">
+  <img class="dg-wordmark" src="./img/wordmark.png" alt="Museo de Baler">
+  <h2 class="dg-title">Best on your phone</h2>
+  <p class="dg-lead">For the best experience, scan the QR code with your mobile device to open Museo de Baler on your phone.</p>
+  <div class="desk-qr-tile"><img data-app-qr width="168" height="168" alt="QR code that opens Museo de Baler on your phone"></div>
+  <p class="dg-note">On this computer you can create your account ahead of your visit. The exhibits, the museum map and scanning open on your phone once you are at the museum.</p>
+  <dl class="dg-info">
+    <div><dt>Hours</dt><dd id="dg-hours"></dd></div>
+    <div><dt>Closed</dt><dd id="dg-closed"></dd></div>
+    <div><dt>Address</dt><dd id="dg-address"></dd></div>
+    <div><dt>Admission</dt><dd id="dg-admission"></dd></div>
+  </dl>
+</aside>
+
 <!-- The .radio-pill / .toggle / scanLine rules that used to be inlined here
      are all in css/app.css. Inlined after the stylesheet they also outranked
      its dark-mode overrides, which is why the pills stayed light in dark mode. -->
 
-<script src="./js/app.js?v=22"></script>
+<script src="./js/app.js?v=26"></script>
 
 <!-- Did the app actually start?
 

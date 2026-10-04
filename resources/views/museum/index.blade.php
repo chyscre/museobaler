@@ -4,15 +4,20 @@
 @push('styles')
 <style>
 .info-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow-sm);margin-bottom:10px;overflow:hidden}
-.info-hd{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;cursor:pointer;user-select:none;transition:background .12s}
-.info-hd:hover{background:#f9fafb}
-.info-hd.open{background:var(--green-pale)}
+.info-hd{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:#fafafa}
 .info-hd-left{display:flex;align-items:center;gap:10px}
 .info-hd-title{font-size:13px;font-weight:700;color:var(--text)}
 .info-hd-sub{font-size:11px;color:var(--text-3);margin-top:1px}
-.info-body{display:none;padding:16px 18px;border-top:1px solid var(--border)}
-.info-body.open{display:block}
-.info-chevron{width:14px;height:14px;color:var(--text-3);transition:transform .2s;flex-shrink:0}
+.info-body{padding:16px 18px;border-top:1px solid var(--border)}
+
+/* Tabs and the save bar */
+.settings-tabs{overflow-x:auto;scrollbar-width:none}
+/* The five tabs share the full width equally. */
+.settings-tabs .tab-btn{flex:1 1 0;min-width:max-content;text-align:center;white-space:nowrap;position:relative}
+.tab-err{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-left:6px;vertical-align:middle}
+.settings-save{position:sticky;bottom:0;z-index:5;display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:14px;padding:12px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:0 -4px 16px rgba(0,0,0,.06)}
+.settings-save-note{font-size:12px;color:var(--text-3);margin-right:auto}
+.settings-save-note.dirty{color:var(--gold-dark);font-weight:600}
 
 /* Hall rows */
 .hall-row{background:var(--border-light);border:1px solid var(--border);border-radius:var(--r-sm);margin-bottom:8px;overflow:hidden}
@@ -55,12 +60,6 @@
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
       Floor Map
     </a>
-    {{-- requestSubmit(), not submit(): only the former runs the form's submit
-         handler, which is what writes the halls and discounts into it. --}}
-    <button class="btn btn-green btn-sm" onclick="document.getElementById('museumForm').requestSubmit()">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-      Save All Changes
-    </button>
   </div>
 </div>
 
@@ -75,12 +74,40 @@
   </div>
 </div>
 
-<form id="museumForm" method="POST" action="{{ route('museum.update') }}" enctype="multipart/form-data">
+{{-- One form, five tabs. The tabs only decide what is on screen: every field
+     stays in the form, so Save at the bottom saves all of them, whichever tab
+     it is pressed on. A save that bounces opens on the tab with the problem. --}}
+@php
+  $tabs = [
+    'general'   => ['General',           ['name', 'tagline', 'story', 'story2', 'address', 'hours', 'closed_on', 'phone', 'email']],
+    'admission' => ['Admission',         ['admission_fee', 'resident_scope', 'discounts']],
+    'halls'     => ['Halls',             ['halls']],
+    'location'  => ['Check-in Location', ['latitude', 'longitude', 'geofence_radius_m']],
+    'branding'  => ['Report Branding',   ['report_logo', 'report_header_image']],
+  ];
+  $errTab = collect($tabs)->search(fn ($t) => $errors->hasAny($t[1]));
+@endphp
+
+<div class="tab-bar settings-tabs" role="tablist" aria-label="Museum settings">
+  @foreach($tabs as $key => [$label, $fields])
+    <button type="button" class="tab-btn {{ ($errTab ?: 'general') === $key ? 'active' : '' }}" role="tab"
+            id="tab-{{ $key }}" data-tab="{{ $key }}" aria-controls="pane-{{ $key }}"
+            aria-selected="{{ ($errTab ?: 'general') === $key ? 'true' : 'false' }}">
+      {{ $label }}
+      @if($errors->hasAny($fields))<span class="tab-err" title="Needs attention"></span>@endif
+    </button>
+  @endforeach
+</div>
+
+<form id="museumForm" method="POST" action="{{ route('museum.update') }}" enctype="multipart/form-data"
+      data-error-tab="{{ $errTab ?: '' }}">
   @csrf
 
-  {{-- ── Section 1: Basic Information ── --}}
+  <div class="inner-panel" role="tabpanel" id="pane-general" aria-labelledby="tab-general" data-pane="general">
+
+  {{-- ── Basic Information ── --}}
   <div class="info-section">
-    <div class="info-hd open" onclick="toggleSection(this)">
+    <div class="info-hd">
       <div class="info-hd-left">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--green-dark)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         <div>
@@ -88,9 +115,8 @@
           <div class="info-hd-sub">Name, tagline, and story</div>
         </div>
       </div>
-      <svg class="info-chevron" style="transform:rotate(180deg)" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
     </div>
-    <div class="info-body open">
+    <div class="info-body">
       <div class="fi-row">
         <div class="fg"><label class="fl">Museum Name</label><input class="fi" name="name" value="{{ $info->name }}" oninput="document.getElementById('preview-name').textContent=this.value"></div>
         <div class="fg"><label class="fl">Tagline / Location</label><input class="fi" name="tagline" value="{{ $info->tagline }}" oninput="document.getElementById('preview-tagline').textContent=this.value"></div>
@@ -102,7 +128,7 @@
 
   {{-- ── Section 2: Contact & Hours ── --}}
   <div class="info-section">
-    <div class="info-hd" onclick="toggleSection(this)">
+    <div class="info-hd">
       <div class="info-hd-left">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--green-dark)"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.4 2 2 0 0 1 3.6 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6.13 6.13l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         <div>
@@ -110,7 +136,6 @@
           <div class="info-hd-sub">Address, schedule, and contact details</div>
         </div>
       </div>
-      <svg class="info-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
     </div>
     <div class="info-body">
       <div class="fg"><label class="fl">Address</label><input class="fi" name="address" value="{{ $info->address }}"></div>
@@ -125,17 +150,18 @@
     </div>
   </div>
 
-  {{-- ── Section: Admission ──
+  </div>{{-- /general --}}
+
+  {{-- ── Admission ──
        Everything that decides what someone pays at the door: the fee, which
        residents enter free, and the discount categories. The desk, the
-       poster and the visitor app all price from these (App\Support\Admission).
-       Opened by itself when a save bounced on one of its fields. --}}
+       poster and the visitor app all price from these (App\Support\Admission). --}}
   @php
-    $admErr = $errors->hasAny(['admission_fee', 'resident_scope', 'discounts']);
     $scope  = old('resident_scope', $info->resident_scope ?: \App\Support\Admission::DEFAULT_SCOPE);
   @endphp
+  <div class="inner-panel" role="tabpanel" id="pane-admission" aria-labelledby="tab-admission" data-pane="admission">
   <div class="info-section">
-    <div class="info-hd {{ $admErr ? 'open' : '' }}" onclick="toggleSection(this)">
+    <div class="info-hd">
       <div class="info-hd-left">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--green-dark)"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
         <div>
@@ -143,9 +169,8 @@
           <div class="info-hd-sub">Fee, free entry for residents, and discounts</div>
         </div>
       </div>
-      <svg class="info-chevron" @if($admErr) style="transform:rotate(180deg)" @endif xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
     </div>
-    <div class="info-body {{ $admErr ? 'open' : '' }}">
+    <div class="info-body">
       <div class="fi-row">
         <div class="fg">
           <label class="fl">Admission Fee (PHP, per visitor)</label>
@@ -218,10 +243,13 @@
     </div>
   </div>
 
-  {{-- ── Section: Report Branding ── --}}
+  </div>{{-- /admission --}}
+
+  {{-- ── Report Branding ── --}}
   @php $brand = \App\Models\MuseumInfo::branding(); @endphp
+  <div class="inner-panel" role="tabpanel" id="pane-branding" aria-labelledby="tab-branding" data-pane="branding">
   <div class="info-section">
-    <div class="info-hd" onclick="toggleSection(this)">
+    <div class="info-hd">
       <div class="info-hd-left">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--green-dark)"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
         <div>
@@ -229,7 +257,6 @@
           <div class="info-hd-sub">The letterhead printed at the top of every report</div>
         </div>
       </div>
-      <svg class="info-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
     </div>
     <div class="info-body">
       {{-- The uploaded letterhead. When one is set it REPLACES the composed
@@ -288,9 +315,12 @@
     </div>
   </div>
 
-  {{-- ── Section 3: Geofencing (auto attendance) ── --}}
+  </div>{{-- /branding --}}
+
+  {{-- ── Geofencing (auto attendance) ── --}}
+  <div class="inner-panel" role="tabpanel" id="pane-location" aria-labelledby="tab-location" data-pane="location">
   <div class="info-section">
-    <div class="info-hd" onclick="toggleSection(this)">
+    <div class="info-hd">
       <div class="info-hd-left">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--green-dark)"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
         <div>
@@ -298,7 +328,6 @@
           <div class="info-hd-sub">GPS anchor point the visitor app uses for auto check-in</div>
         </div>
       </div>
-      <svg class="info-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
     </div>
     <div class="info-body">
       <div style="font-size:11.5px;color:var(--text-3);margin-bottom:10px">
@@ -330,9 +359,12 @@
     </div>
   </div>
 
-  {{-- ── Section 4: Museum Halls ── --}}
+  </div>{{-- /location --}}
+
+  {{-- ── Museum Halls ── --}}
+  <div class="inner-panel" role="tabpanel" id="pane-halls" aria-labelledby="tab-halls" data-pane="halls">
   <div class="info-section">
-    <div class="info-hd" onclick="toggleSection(this)">
+    <div class="info-hd">
       <div class="info-hd-left">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--green-dark)"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         <div>
@@ -340,7 +372,6 @@
           <div class="info-hd-sub">{{ $halls->count() }} hall{{ $halls->count() !== 1 ? 's' : '' }} configured</div>
         </div>
       </div>
-      <svg class="info-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
     </div>
     <div class="info-body">
       <div id="hallsList">
@@ -398,6 +429,17 @@
       </button>
       <input type="hidden" name="halls" id="hallsInput">
     </div>
+  </div>
+  </div>{{-- /halls --}}
+
+  {{-- Pinned to the bottom of the screen while the form is longer than it,
+       so Save is always in reach without scrolling back up. --}}
+  <div class="settings-save">
+    <span class="settings-save-note" id="saveNote">Saves every tab at once.</span>
+    <button type="submit" class="btn btn-green">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      Save Changes
+    </button>
   </div>
 
 </form>
@@ -583,15 +625,59 @@ document.getElementById('museumForm').addEventListener('submit', function(){
   document.getElementById('hallsInput').value = JSON.stringify(halls);
 });
 
-// ── Toggle info section ───────────────────────────────────────
-function toggleSection(hd){
-  const body = hd.nextElementSibling;
-  const chevron = hd.querySelector('.info-chevron');
-  const isOpen = body.classList.contains('open');
-  body.classList.toggle('open', !isOpen);
-  hd.classList.toggle('open', !isOpen);
-  chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
-}
+// ── Tabs ──────────────────────────────────────────────────────
+(function () {
+  const form = document.getElementById('museumForm');
+  const btns = Array.from(document.querySelectorAll('.settings-tabs .tab-btn'));
+  const note = document.getElementById('saveNote');
+  const base = form.getAttribute('action').split('#')[0];
+
+  function show(key, focus) {
+    const btn = btns.find(b => b.dataset.tab === key) || btns[0];
+    key = btn.dataset.tab;
+    btns.forEach(b => {
+      const on = b === btn;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+    });
+    document.querySelectorAll('[data-pane]').forEach(p => p.classList.toggle('active', p.dataset.pane === key));
+    // The fragment rides along on Save, and the browser keeps it through the
+    // redirect, so the page comes back on the tab it was saved from.
+    form.action = base + '#' + key;
+    history.replaceState(null, '', '#' + key);
+    if (focus) btn.focus();
+  }
+
+  btns.forEach(b => b.addEventListener('click', () => show(b.dataset.tab)));
+  document.querySelector('.settings-tabs').addEventListener('keydown', e => {
+    const i = btns.indexOf(document.activeElement);
+    if (i < 0 || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft')) return;
+    e.preventDefault();
+    show(btns[(i + (e.key === 'ArrowRight' ? 1 : btns.length - 1)) % btns.length].dataset.tab, true);
+  });
+
+  // A save the server refused opens on the tab with the problem; otherwise
+  // the one in the address, otherwise the first.
+  show(form.dataset.errorTab || location.hash.slice(1) || 'general');
+
+  // The browser cannot point at a required field on a hidden tab - it just
+  // refuses to submit, silently. Bring that tab forward first.
+  // Each bad field fires its own event; the browser reports the first.
+  let jumped = false;
+  form.addEventListener('invalid', e => {
+    if (jumped) return;
+    jumped = true;
+    setTimeout(() => { jumped = false; }, 0);
+    const pane = e.target.closest('[data-pane]');
+    if (pane && !pane.classList.contains('active')) show(pane.dataset.pane);
+  }, true);
+
+  form.addEventListener('input', () => {
+    note.textContent = 'Unsaved changes. Saving keeps every tab.';
+    note.classList.add('dirty');
+  });
+})();
 
 // ── Toggle hall ───────────────────────────────────────────────
 function toggleHall(hd){

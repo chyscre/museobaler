@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\AdmissionPayment;
+use App\Models\Log;
 use App\Models\MuseumInfo;
 use App\Models\Staff;
 use App\Models\Visitor;
@@ -245,5 +247,106 @@ class FrontDeskTest extends TestCase
         ])->assertRedirect('/login');
 
         $this->assertDatabaseCount('visitors', 0);
+    }
+
+    // -- Add Visitor ---------------------------------------------------------
+
+    public function test_the_desk_registers_arrivals_from_one_add_visitor_modal(): void
+    {
+        $this->actingAs(Staff::factory()->administrator()->create())->get('/desk')
+            ->assertOk()
+            ->assertSee('id="avOpen"', false)
+            ->assertSee('Single visitor')
+            ->assertSee('Group / Family')
+            ->assertSee(route('desk.visitors.store'), false)
+            ->assertSee(route('desk.groups.store'), false)
+            ->assertDontSee('<details class="fold" >', false);
+    }
+
+    public function test_a_refused_group_save_reopens_the_modal_on_the_group_form(): void
+    {
+        $desk = Staff::factory()->administrator()->create();
+
+        $this->actingAs($desk)->from('/desk')->followingRedirects()
+            ->post('/desk/groups', ['headcount' => 0])
+            ->assertOk()
+            ->assertSee('data-start="group"', false);
+    }
+
+    // -- Revoking an entry ----------------------------------------------------
+
+    public function test_revoking_a_paid_entry_refunds_it_and_signs_the_visitor_out(): void
+    {
+        $desk    = Staff::factory()->administrator()->create();
+        $visitor = Visitor::factory()->create(['last_visit' => now()]);
+        $visitor->issueToken();
+
+        $this->actingAs($desk)->post("/visitors/{$visitor->visitor_id}/mark-paid")->assertSessionHas('success');
+        $this->assertSame('cleared', $visitor->fresh()->clearance());
+
+        $this->actingAs($desk)->get('/records?tab=visitors')
+            ->assertSee(route('visitors.revoke', $visitor), false);
+
+        $this->actingAs($desk)->post("/visitors/{$visitor->visitor_id}/revoke", ['reason' => 'Marked on the wrong row'])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $visitor->refresh();
+        $this->assertSame('pending_payment', $visitor->clearance());
+        $this->assertNull($visitor->api_token);
+
+        $refund = AdmissionPayment::where('visitor_id', $visitor->visitor_id)->where('kind', AdmissionPayment::REFUND)->sole();
+        $this->assertEquals((float) $visitor->admission_fee, (float) $refund->amount);
+        $this->assertEquals(0.0, AdmissionPayment::netForVisitorOn($visitor, today()));
+
+        $log = Log::where('action', 'Admission Revoked')->sole();
+        $this->assertStringContainsString($refund->reference, $log->details);
+        $this->assertStringContainsString('Marked on the wrong row', $log->details);
+
+        // And they can be let in again, as a fresh payment.
+        $this->actingAs($desk)->post("/visitors/{$visitor->visitor_id}/mark-paid")->assertSessionHas('success');
+        $this->assertSame('cleared', $visitor->fresh()->clearance());
+        $this->assertEquals((float) $visitor->admission_fee, AdmissionPayment::netForVisitorOn($visitor, today()));
+    }
+
+    public function test_revoking_an_id_check_needs_the_id_sighted_again_and_moves_no_money(): void
+    {
+        $desk    = Staff::factory()->administrator()->create();
+        $visitor = Visitor::factory()->local(true)->create(['verified_at' => now(), 'last_visit' => now()]);
+
+        $this->actingAs($desk)->post("/visitors/{$visitor->visitor_id}/revoke")->assertSessionHas('success');
+
+        $this->assertSame('pending_id', $visitor->fresh()->clearance());
+        $this->assertDatabaseCount('admission_payments', 0);
+    }
+
+    public function test_only_todays_own_entry_can_be_revoked(): void
+    {
+        $desk = Staff::factory()->administrator()->create();
+
+        $waiting = Visitor::factory()->create(['last_visit' => now()]);
+        $this->actingAs($desk)->post("/visitors/{$waiting->visitor_id}/revoke")->assertSessionHas('error');
+
+        // A Local party, so it clears its members without a payment.
+        $this->actingAs($desk)->post('/desk/groups', [
+            'contact_name' => 'Maria Santos', 'group_type' => 'Family', 'visitor_type' => 'Local', 'headcount' => 3,
+        ]);
+        $group  = VisitGroup::latest('group_id')->firstOrFail();
+        $member = Visitor::factory()->create(['group_id' => $group->group_id, 'payment_status' => 'Free', 'admission_fee' => 0]);
+        $this->assertSame('cleared', $member->clearance());
+
+        $this->actingAs($desk)->post("/visitors/{$member->visitor_id}/revoke")->assertSessionHas('error');
+        $this->assertSame('cleared', $member->fresh()->clearance());
+    }
+
+    public function test_the_tourism_office_cannot_revoke_an_entry(): void
+    {
+        $visitor = Visitor::factory()->paid()->create();
+
+        $this->actingAs(Staff::factory()->tourismHead()->create())
+            ->post("/visitors/{$visitor->visitor_id}/revoke")
+            ->assertForbidden();
+
+        $this->assertSame('cleared', $visitor->fresh()->clearance());
     }
 }

@@ -109,6 +109,13 @@ php artisan db:backup
 log "Running migrations"
 php artisan migrate --force
 
+# Web-sized copies of the exhibit pictures. Uploads build their own; this
+# catches pictures already in shared/ and rebuilds any whose format changed.
+# It skips the ones already up to date, so a routine deploy costs seconds.
+# A failure here only means slower pictures, so it must not stop the deploy.
+log "Building exhibit thumbnails"
+php artisan exhibits:thumbs || true
+
 # ── 5. Smoke test the new release before anyone sees it ────────────────────
 # Boot it on a throwaway port and ask the health endpoint. If this fails
 # the old release is still live and nothing has changed for anyone.

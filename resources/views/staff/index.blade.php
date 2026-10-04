@@ -7,10 +7,13 @@
     <h2>Staff</h2>
   </div>
   <div class="ph-right">
-    <button class="btn btn-outline btn-sm" onclick="window.print()">
+    {{-- The roster is its own sheet with the letterhead, not a print of
+         this screen: the panel chrome and the action buttons are not
+         something to file. --}}
+    <a class="btn btn-outline btn-sm" href="{{ route('staff.roster') }}" target="_blank">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-      Print Report
-    </button>
+      Print All Employees
+    </a>
     <button class="btn btn-green btn-sm" onclick="document.getElementById('addModal').classList.add('open')">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
       Add Staff
@@ -264,9 +267,9 @@ function openStaffEditModal(id){
   body.innerHTML='<div class="spinner"></div>';
   overlay.classList.add('open');
   fetch('{{ url('/') }}/staff/'+id+'/edit-form')
-    .then(r=>r.text())
+    .then(r=>{ if(!r.ok) throw r; return r.text(); })
     .then(html=>{ body.innerHTML=html; })
-    .catch(()=>{ body.innerHTML='<p style="color:var(--red);padding:20px">Failed to load form.</p>'; });
+    .catch(e=>{ body.innerHTML='<p style="color:var(--red);padding:20px">'+friendlyError(e)+'</p>'; });
 }
 function closeStaffEditModal(){
   document.getElementById('staffEditModal').classList.remove('open');

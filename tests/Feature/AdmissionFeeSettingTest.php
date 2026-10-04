@@ -53,7 +53,7 @@ class AdmissionFeeSettingTest extends TestCase
     {
         $this->setFee(80);
         $this->assertSame(
-            'Baler residents enter free with a valid ID · Visitors ₱80.00',
+            'Baler residents enter free with a valid ID · Senior citizen (60 and over): Free · PWD: Free · Child (7 and under): Free · Visitors ₱80.00',
             MuseumInfo::first()->admission
         );
 

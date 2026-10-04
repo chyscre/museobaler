@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Attendance;
 use App\Models\Feedback;
 use App\Models\Scan;
+use App\Models\Visit;
 use App\Models\VisitGroup;
 use App\Models\Visitor;
 use Illuminate\Database\Eloquent\Builder;
@@ -86,6 +87,7 @@ class NotificationController extends Controller
         $registrations = $window(Visitor::query(), 'created_at')
             ->orderByDesc('created_at')->get()->map(fn ($v) => [
                 'id'      => 'vis_' . $v->visitor_id,
+                'visitor_id' => $v->visitor_id,
                 'type'    => 'visitor',
                 'message' => $v->full_name . ' registered'
                     . ($v->visitor_type ? ' (' . $v->visitor_type . ')' : ''),
@@ -149,7 +151,28 @@ class NotificationController extends Controller
                     : $records('scans'),
             ]);
 
-        return $checkIns->concat($registrations)->concat($groups)
+        // A returning visitor's first arrival of the day: signing in to the
+        // app on a later day than they registered. It opens a visit row, and
+        // on a paying type puts a fee due - which used to light the bell with
+        // no word of who had just walked in. Same-day sign-ins add no row,
+        // and a registration's own first row is left to "registered" above.
+        $returns = $window(Visit::query(), 'created_at')
+            ->with('visitor')
+            ->orderByDesc('created_at')->get()
+            ->filter(fn ($visit) => $visit->visitor
+                && $visit->visitor->created_at?->toDateString() < $visit->visit_date->toDateString())
+            ->map(fn ($visit) => [
+                'id'         => 'back_' . $visit->visit_id,
+                'visitor_id' => $visit->visitor_id,
+                'type'       => 'visitor',
+                'message'    => $visit->visitor->full_name . ' is back for another visit'
+                    . ($visit->visitor_type ? ' (' . $visit->visitor_type . ')' : ''),
+                'time'       => $visit->created_at?->format('h:i A') ?? '',
+                'at'         => $visit->created_at?->timestamp ?? 0,
+                'url'        => $records('visitors'),
+            ]);
+
+        return $checkIns->concat($registrations)->concat($returns)->concat($groups)
             ->concat($payments)->concat($idChecks)->concat($feedback)->concat($exhibitScans)
             ->sortByDesc('at')
             ->values();

@@ -61,7 +61,7 @@ class ReportExportTest extends TestCase
         $staff = Staff::factory()->administrator()->create();
 
         foreach (ReportBuilder::FORMATS as $report => $formats) {
-            if ($report === 'audit') {
+            if (in_array($report, ['audit', 'roster'], true)) {
                 continue; // Tourism-only; covered separately below.
             }
 
@@ -199,74 +199,67 @@ class ReportExportTest extends TestCase
         @rmdir($dir);
     }
 
-    // -- Preview before saving ---------------------------------------------
+    // -- Save downloads straight away ---------------------------------------
 
-    public function test_every_format_can_be_previewed_before_saving(): void
+    public function test_there_is_no_preview_step_between_the_page_and_the_file(): void
     {
-        $staff = Staff::factory()->administrator()->create();
+        // The preview rendered a whole PDF on every page load and on every
+        // change of the dropdown, then rendered it again when Save was
+        // clicked. It was removed for that cost, so it must not come back
+        // in any form: no pane, no frame, no route.
+        $html = $this->admin()->get(route('reports.visitors'))->getContent();
 
-        foreach (ReportBuilder::FORMATS as $report => $formats) {
-            if ($report === 'audit') {
-                continue; // Tourism-only; covered below.
-            }
+        $this->assertStringNotContainsString('id="prevBody"', $html);
+        $this->assertStringNotContainsString('<iframe', $html);
+        $this->assertStringNotContainsString('/preview/', $html);
+        $this->assertFalse(\Illuminate\Support\Facades\Route::has('reports.preview'));
+        $this->assertFalse(\Illuminate\Support\Facades\Route::has('reports.audit.preview'));
 
-            foreach ($formats as $format) {
-                $query = $report === 'dtr' ? ['staff' => $staff->staff_id] : [];
-
-                $res = $this->admin()->get(route('reports.preview', ['report' => $report, 'format' => $format] + $query));
-                $res->assertOk();
-
-                if ($format === 'pdf') {
-                    // A real PDF, but inline - an attachment would download
-                    // rather than render in the preview frame.
-                    $this->assertStringContainsString('application/pdf', (string) $res->headers->get('Content-Type'));
-                    $this->assertStringStartsWith('inline', (string) $res->headers->get('Content-Disposition'));
-                    $this->assertStringStartsWith('%PDF', (string) $res->getContent());
-                } else {
-                    $this->assertStringContainsString('text/html', (string) $res->headers->get('Content-Type'));
-                }
-            }
-        }
+        $this->admin()->get('/reports/visitors/preview/pdf')->assertNotFound();
+        $this->tourism()->get('/reports/audit/preview/pdf')->assertNotFound();
     }
 
-    public function test_the_preview_shows_the_same_columns_the_file_will_have(): void
+    public function test_save_points_at_the_real_file_before_any_script_runs(): void
     {
-        // The point of a preview is that it is not a second opinion. Both
-        // sides come off the same ReportDataset, and this pins that.
-        $html = $this->admin()->get(route('reports.preview', ['report' => 'visitors', 'format' => 'xlsx']))->getContent();
-        $csv  = ltrim($this->download('visitors', 'csv'), "\xEF\xBB\xBF");
+        // The href is rendered on the server, so Save downloads the first
+        // format even if the toolbar script never runs.
+        $html = $this->admin()->get(route('reports.visitors', ['from' => '2026-09-01', 'to' => '2026-09-30']))->getContent();
 
-        foreach (str_getcsv(explode("\n", trim($csv))[0]) as $column) {
-            $this->assertStringContainsString($column, $html, "the preview is missing the {$column} column");
-        }
+        $first = route('reports.export', ['report' => 'visitors', 'format' => 'pdf', 'from' => '2026-09-01', 'to' => '2026-09-30']);
+        $this->assertMatchesRegularExpression(
+            '/<a id="saveBtn" class="go" href="' . preg_quote(e($first), '/') . '" download>/',
+            $html
+        );
     }
 
-    public function test_only_the_pdf_preview_may_be_framed_and_only_by_us(): void
+    public function test_the_pdf_comes_back_as_a_download_not_inline(): void
     {
-        // The preview pane is an <iframe>, and the panel's blanket
-        // frame-ancestors 'none' would leave it blank. The exemption has to
-        // stay exactly this narrow.
-        $pdf = $this->admin()->get(route('reports.preview', ['report' => 'visitors', 'format' => 'pdf']));
-        $pdf->assertHeader('X-Frame-Options', 'SAMEORIGIN');
-        $this->assertStringContainsString("frame-ancestors 'self'", (string) $pdf->headers->get('Content-Security-Policy'));
+        $res = $this->admin()->get(route('reports.export', ['report' => 'visitors', 'format' => 'pdf']));
 
-        // The HTML preview fragment carries markup built from stored data,
-        // so it stays unframable even though it is the same route.
-        $html = $this->admin()->get(route('reports.preview', ['report' => 'visitors', 'format' => 'csv']));
-        $html->assertHeader('X-Frame-Options', 'DENY');
-        $this->assertStringContainsString("frame-ancestors 'none'", (string) $html->headers->get('Content-Security-Policy'));
+        $res->assertOk();
+        $this->assertStringStartsWith('attachment', (string) $res->headers->get('Content-Disposition'));
+        $this->assertStringStartsWith('%PDF', $res->streamedContent());
+    }
 
-        // And nothing else in the panel became framable.
-        $page = $this->admin()->get(route('reports.visitors'));
-        $page->assertHeader('X-Frame-Options', 'DENY');
+    public function test_nothing_in_the_panel_can_be_framed(): void
+    {
+        // The PDF preview was the one response allowed in a frame. With it
+        // gone, a report download is as unframable as every other page.
+        foreach ([
+            route('reports.visitors'),
+            route('reports.export', ['report' => 'visitors', 'format' => 'pdf']),
+        ] as $url) {
+            $res = $this->admin()->get($url);
+            $res->assertHeader('X-Frame-Options', 'DENY');
+            $this->assertStringContainsString("frame-ancestors 'none'", (string) $res->headers->get('Content-Security-Policy'));
+        }
     }
 
     public function test_the_toolbar_is_save_print_and_one_dropdown(): void
     {
         $html = $this->admin()->get(route('reports.visitors'))->getContent();
 
-        // A dropdown, not a row of pills, and no Preview button: picking a
-        // format previews it, so having to ask was the hassle.
+        // A dropdown, not a row of pills, and no Preview button.
         $this->assertStringContainsString('id="fmtPick"', $html);
         $this->assertStringContainsString('id="saveBtn"', $html);
         $this->assertStringContainsString('class="print"', $html);
@@ -278,41 +271,6 @@ class ReportExportTest extends TestCase
             count(ReportBuilder::FORMATS['visitors']),
             preg_match_all('/<option value="/', $html)
         );
-
-        // The preview pane is on the page from the start, ready to be filled.
-        $this->assertStringContainsString('id="prevBody"', $html);
-    }
-
-    public function test_the_toolbar_script_waits_for_the_preview_pane(): void
-    {
-        // The controls are yielded into the toolbar; the pane they write
-        // into is further down the page. So the script cannot touch those
-        // elements as it parses - it has to wait for the document.
-        //
-        // This is the one bug in this feature that shipped: every assertion
-        // about the markup passed while the script threw on load and the
-        // pane stayed empty. There is no browser in this suite, so the
-        // check is structural: if a target is declared after the script,
-        // the script must be deferred.
-        $html = $this->admin()->get(route('reports.visitors'))->getContent();
-
-        $script = strpos($html, '<script>');
-        $this->assertNotFalse($script);
-
-        $late = false;
-        foreach (['id="prevBody"', 'id="prevWhat"', 'id="fmtPick"', 'id="saveBtn"'] as $target) {
-            $at = strpos($html, $target);
-            $this->assertNotFalse($at, "{$target} is missing from the page");
-            $late = $late || $at > $script;
-        }
-
-        if ($late) {
-            $this->assertStringContainsString(
-                'DOMContentLoaded',
-                $html,
-                'the script reads elements declared after it but never waits for the document'
-            );
-        }
     }
 
     public function test_the_poster_is_a_standalone_sheet_not_a_report(): void
@@ -329,12 +287,6 @@ class ReportExportTest extends TestCase
         $poster->assertDontSee('class="sheet"', false);    // not the report layout
     }
 
-    public function test_a_report_cannot_be_previewed_in_a_format_it_does_not_offer(): void
-    {
-        $this->admin()->get('/reports/exhibits/preview/xlsx')->assertNotFound();
-        $this->admin()->get('/reports/logbook/preview/docx')->assertNotFound();
-    }
-
     // -- The wall the audit trail sits behind ------------------------------
 
     public function test_the_audit_trail_stays_behind_the_tourism_wall(): void
@@ -347,12 +299,6 @@ class ReportExportTest extends TestCase
 
         $this->tourism()->get('/reports/audit/export/csv')->assertOk();
         $this->tourism()->get('/reports/audit/export/pdf')->assertOk();
-
-        // The preview is the same data behind the same wall.
-        $this->admin()->get('/reports/audit/preview/csv')->assertForbidden();
-        $this->admin()->get('/reports/audit/preview/pdf')->assertForbidden();
-        $this->tourism()->get('/reports/audit/preview/csv')->assertOk();
-        $this->tourism()->get('/reports/audit/preview/pdf')->assertOk();
     }
 
     public function test_the_old_csv_links_still_serve_the_file(): void

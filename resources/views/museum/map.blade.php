@@ -465,14 +465,18 @@ async function saveLayout() {
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF },
       body: JSON.stringify({ positions: PINS.map(p => ({ id: p.id, x: p.x, y: p.y })) }),
     });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!res.ok) {
+      btn.disabled = false;
+      setStatus('Not saved. ' + friendlyError(res));
+      return;
+    }
     PINS.forEach(p => { saved[p.id] = { x: p.x, y: p.y }; });
     placedFromDefault.clear();
     stopEditing('Layout saved.');
     render();
   } catch (e) {
     btn.disabled = false;
-    setStatus('Save failed — ' + e.message);
+    setStatus('Not saved. ' + friendlyError());
   }
 }
 

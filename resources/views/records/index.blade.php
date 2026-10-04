@@ -1,6 +1,16 @@
 @extends('layouts.admin')
 @section('title','Records — Museo de Baler')
 
+@push('styles')
+<style>
+  .visit-history { margin-top: 3px; font-weight: 400; }
+  .visit-history summary { cursor: pointer; font-size: 11px; color: var(--green-dark); font-weight: 600; }
+  .visit-history ul { margin: 6px 0 2px; padding-left: 16px; font-size: 11px; color: var(--text-2); line-height: 1.7; white-space: normal; }
+  .visit-history .vh-date { font-weight: 600; color: var(--text); }
+  .visit-history .vh-ref { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>
+@endpush
+
 @section('content')
 <div class="ph">
   <div class="ph-left">
@@ -13,13 +23,14 @@
       'reports' => [
         ['label' => 'Daily logbook',        'note' => 'Who came in, hour by hour',        'url' => route('reports.logbook'), 'csv' => route('reports.logbook.csv')],
         ['label' => 'Visitors & admission', 'note' => 'Headcount and fees collected',     'url' => route('reports.visitors')],
+        ['label' => 'Earnings & revenue',   'note' => 'Individual vs group, by date',     'url' => route('reports.earnings')],
         ['label' => 'Exhibit engagement',   'note' => 'Which exhibits were scanned most', 'url' => route('reports.exhibits')],
       ],
     ])
   </div>
 </div>
 
-<div class="tab-bar">
+<div class="tab-bar tab-bar-fill">
   <button class="tab-btn {{ $activeTab === 'visitors' ? 'active' : '' }}" onclick="switchTab('visitors',this)">
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;display:inline;vertical-align:middle;margin-right:5px"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
     Visitor Records
@@ -156,7 +167,27 @@
       <tbody>
       @forelse($visitors as $v)
       <tr>
-        <td style="white-space:nowrap;font-weight:600">{{ $v->full_name }}</td>
+        <td style="white-space:nowrap;font-weight:600">
+          {{ $v->full_name }}
+          {{-- Every day they came, kept apart from the row above, which only
+               describes the latest visit. A first-timer has nothing to show. --}}
+          @if($v->visits->count() > 1)
+            <details class="visit-history">
+              <summary>{{ $v->visits->count() }} visits</summary>
+              <ul>
+                @foreach($v->visits as $visit)
+                  <li>
+                    <span class="vh-date">{{ $visit->visit_date->format('M j, Y') }}</span>
+                    {{ $visit->summary }}
+                    @if($visit->payment)
+                      · <span class="vh-ref">{{ $visit->payment->reference }}</span>
+                    @endif
+                  </li>
+                @endforeach
+              </ul>
+            </details>
+          @endif
+        </td>
         <td>{{ $v->age ?? '—' }}</td>
         <td>{{ $v->sex ?? '—' }}</td>
         <td><span class="badge b-blue">{{ $v->visit_type }}</span></td>
@@ -220,6 +251,13 @@
             @csrf
             <button type="submit" class="btn btn-outline btn-xs">Verify ID</button>
           </form>
+          @elseif($state === 'cleared' && !$v->isWithGroupToday())
+          {{-- Let in today on their own: the desk can take it back. A group
+               member's entry is the party's, so it is corrected on the group. --}}
+          <button type="button" class="btn btn-outline btn-xs revoke-btn" style="color:var(--red)"
+                  data-action="{{ route('visitors.revoke', $v) }}"
+                  data-name="{{ $v->full_name }}"
+                  data-refund="{{ $v->needsIdCheck() ? '' : number_format((float) $v->admission_fee, 2) }}">Revoke</button>
           @else
             <span style="color:var(--text-4);font-size:12px">—</span>
           @endif
@@ -278,18 +316,29 @@
     <table>
       <thead>
         <tr>
-          <th>Date</th><th>Group</th><th>Signed in by</th><th>Type</th><th>People</th><th>Joined in app</th><th>Code</th><th>Fee</th><th>Payment</th><th>Registered by</th><th></th>
+          {{-- Eight columns, not eleven: the signer, the app joins and the fee
+               used to have columns of their own, which pushed the table past
+               the width of a 1366px laptop and into a sideways scroll. Each now
+               rides under the column it belongs with. --}}
+          <th>Date</th><th>Group</th><th>Type</th><th>People</th><th>Code</th><th>Payment</th><th>Registered by</th><th></th>
         </tr>
       </thead>
       <tbody>
       @forelse($groups as $g)
       <tr>
         <td style="white-space:nowrap">{{ $g->visit_date->format('M j, Y') }}<div style="font-size:11px;color:var(--text-3)">{{ $g->created_at->format('g:i A') }}</div></td>
-        <td style="font-weight:600;white-space:nowrap">{{ $g->label }}<div style="font-size:11px;font-weight:500;color:var(--text-3)">{{ $g->group_type }}{{ $g->city ? ' · ' . $g->city : '' }}</div></td>
-        <td>{{ $g->contact_name }}@if($g->contact_phone)<div style="font-size:11px;color:var(--text-3)">{{ $g->contact_phone }}</div>@endif</td>
+        <td style="font-weight:600">
+          {{ $g->label }}
+          <div style="font-size:11px;font-weight:500;color:var(--text-3)">{{ $g->group_type }}{{ $g->city ? ' · ' . $g->city : '' }}</div>
+          {{-- An unnamed group is already labelled with whoever signed it in. --}}
+          @if($g->group_name || $g->contact_phone)
+            <div style="font-size:11px;font-weight:500;color:var(--text-3)">{{ collect([$g->group_name ? 'by ' . $g->contact_name : null, $g->contact_phone])->filter()->implode(' · ') }}</div>
+          @endif
+        </td>
         <td><span class="badge {{ $g->visitor_type==='Local'?'b-green':($g->visitor_type==='Tourist'?'b-gold':'b-purple') }}">{{ $g->visitor_type }}</span></td>
         <td>
           {{ $g->headcount }}
+          <div style="font-size:11px;color:var(--text-3)" title="Members who entered the group code in the visitor app">{{ $g->visitors_count }} in app</div>
           {{-- "local" rather than "from Baler": which towns count as local is
                a setting, and this row may predate the current one. --}}
           @if($g->visitor_type !== 'Local' && ($g->local_count > 0 || $g->discount_summary))
@@ -302,7 +351,6 @@
             <div style="margin-top:3px;font-size:11px;font-weight:600;color:#b45309" title="Joined in the app as Local but the group is paying for them">{{ $unaccounted }} {{ $unaccounted === 1 ? 'local' : 'locals' }} being charged</div>
           @endif
         </td>
-        <td title="Members who entered the group code in the visitor app">{{ $g->visitors_count }} / {{ $g->headcount }}</td>
         <td>
           @if($g->visit_date->isToday() && $g->join_code)
             <code style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;font-weight:700;letter-spacing:.1em;background:var(--border-light);border-radius:6px;padding:2px 7px;user-select:all">{{ $g->join_code }}</code>
@@ -311,14 +359,14 @@
           @endif
         </td>
         <td style="white-space:nowrap">
-          {{ $g->total_fee > 0 ? '₱' . number_format((float) $g->total_fee, 2) : '—' }}
+          <span class="badge {{ $g->payment_status==='Paid'?'b-green':($g->payment_status==='Unpaid'?'b-red':'b-gray') }}">{{ $g->payment_status }}</span>
+          @if($g->total_fee > 0)
+            <span style="font-weight:600;margin-left:4px">₱{{ number_format((float) $g->total_fee, 2) }}</span>
+          @endif
+          @if($g->paid_at)<div style="font-size:11px;color:var(--text-3);margin-top:3px">{{ $g->paid_at->format('g:i A') }}</div>@endif
           @if((float) $g->refunded_amount > 0)
             <div style="font-size:11px;color:var(--text-3)" title="Handed back after a correction{{ $g->refunded_at ? ' at ' . $g->refunded_at->format('g:i A') : '' }}">₱{{ number_format((float) $g->refunded_amount, 2) }} refunded</div>
           @endif
-        </td>
-        <td style="white-space:nowrap">
-          <span class="badge {{ $g->payment_status==='Paid'?'b-green':($g->payment_status==='Unpaid'?'b-red':'b-gray') }}">{{ $g->payment_status }}</span>
-          @if($g->paid_at)<div style="font-size:11px;color:var(--text-3);margin-top:3px">{{ $g->paid_at->format('g:i A') }}</div>@endif
         </td>
         <td style="font-size:12px;color:var(--text-3)">{{ $g->registeredBy?->name ?? '—' }}</td>
         <td style="white-space:nowrap">
@@ -349,7 +397,7 @@
         </td>
       </tr>
       @empty
-      <tr><td colspan="11" style="text-align:center;padding:32px;color:var(--text-3)">No groups registered{{ request()->hasAny(['gdate','gpay']) ? ' for that filter' : ' yet' }}.</td></tr>
+      <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-3)">No groups registered{{ request()->hasAny(['gdate','gpay']) ? ' for that filter' : ' yet' }}.</td></tr>
       @endforelse
       </tbody>
     </table>
@@ -481,10 +529,49 @@
     @endif
   </div>
 </div>
+
+{{-- One confirmation for every Revoke button; the row fills in who and how much. --}}
+<div class="overlay" id="revokeModal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-hd">
+      <h3>Revoke entry</h3>
+      <button type="button" class="modal-close" onclick="closeRevoke()">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <form method="POST" id="revokeForm">
+      @csrf
+      <p style="font-size:13.5px;color:var(--text-2);line-height:1.6;margin:0 0 12px">
+        <strong id="revokeName"></strong> will be signed out of the visitor app and go back to
+        waiting at the desk. <span id="revokeRefund"></span>
+      </p>
+      <label class="fl" for="revokeReason">Reason <span style="font-weight:400;text-transform:none">(optional, kept in the audit log)</span></label>
+      <input class="fi" id="revokeReason" name="reason" maxlength="200" autocomplete="off" placeholder="Marked paid on the wrong row, ID did not match…">
+      <div class="modal-ft">
+        <button type="button" class="btn btn-outline" onclick="closeRevoke()">Cancel</button>
+        <button type="submit" class="btn btn-red">Revoke entry</button>
+      </div>
+    </form>
+  </div>
+</div>
 @endsection
 
 @push('scripts')
 <script>
+document.querySelectorAll('.revoke-btn').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    document.getElementById('revokeForm').action = btn.dataset.action;
+    document.getElementById('revokeName').textContent = btn.dataset.name;
+    document.getElementById('revokeRefund').textContent = btn.dataset.refund
+      ? 'Their PHP ' + btn.dataset.refund + ' is recorded as a refund — hand it back.'
+      : 'Their ID check is cleared and will need to be done again.';
+    document.getElementById('revokeReason').value = '';
+    document.getElementById('revokeModal').classList.add('open');
+    document.getElementById('revokeReason').focus();
+  });
+});
+function closeRevoke() { document.getElementById('revokeModal').classList.remove('open'); }
+
 function switchTab(tab, btn){
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.inner-panel').forEach(p=>p.classList.remove('active'));

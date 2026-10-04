@@ -214,7 +214,11 @@
           for (var i = 0; i < batch.length; i++) fd.append('photos[]', await shrink(batch[i]));
           var res = await fetch(form.action, { method: 'POST', body: fd, headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
           var data = await res.json().catch(function () { return {}; });
-          if (!res.ok || !data.ok) throw new Error(data.message || (data.errors && Object.values(data.errors)[0][0]) || 'The server refused the upload.');
+          // A 422 names the problem with the photo; anything else gets a
+          // plain sentence instead of whatever the server said.
+          if (!res.ok || !data.ok) throw new Error(res.status === 422 && (data.errors || data.message)
+            ? ((data.errors && Object.values(data.errors)[0][0]) || data.message)
+            : friendlyError(res));
           data.photos.forEach(addThumb);
           added += data.photos.length;
           count = data.count;
@@ -223,7 +227,9 @@
         }
         status('Added ' + added + ' photo' + (added === 1 ? '' : 's') + '. This set now has ' + count + '.', 'ok');
       } catch (e) {
-        status('Added ' + added + ' of ' + total + ', then stopped: ' + e.message + ' Try the rest again.', 'error');
+        // A failed fetch throws a TypeError whose text is the browser's.
+        var why = e instanceof TypeError ? friendlyError() : e.message;
+        status('Added ' + added + ' of ' + total + ', then stopped. ' + why, 'error');
       }
     });
   });
@@ -264,7 +270,7 @@
     status('Removing ' + what + '…');
     var res = await fetch(removeUrl, { method: 'POST', body: fd, headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
     var data = await res.json().catch(function () { return {}; });
-    if (!res.ok || !data.ok) { status(data.message || 'Could not remove. Nothing was changed.', 'error'); return; }
+    if (!res.ok || !data.ok) { status('Nothing was removed. ' + (res.status === 422 && data.message ? data.message : friendlyError(res)), 'error'); return; }
     if (body.all) grid.querySelectorAll('.rp-thumb').forEach(function (t) { t.remove(); });
     else body.ids.forEach(function (id) { var t = grid.querySelector('.rp-thumb[data-photo-id="' + id + '"]'); if (t) t.remove(); });
     setCount(data.count);
@@ -310,7 +316,7 @@
       setCount(left);
       status('Removed 1 photo. This set now has ' + left + '.', 'ok');
     } else {
-      status('Could not remove that photo. Nothing was changed.', 'error');
+      status('Nothing was removed. ' + friendlyError(res), 'error');
     }
   });
 })();

@@ -224,6 +224,7 @@ class ExhibitController extends Controller
             'scans_count'     => $exhibit->scans_count,
             'category'        => $exhibit->category?->name,
             'image'           => $exhibit->image,
+            'image_url'       => $exhibit->image_url,
             'source_language' => $exhibit->source_language,
             'qr_url'          => ExhibitQr::path($exhibit) ? route('exhibits.qr.single', $exhibit) : null,
             'scan_url'        => ExhibitQr::scanUrl($exhibit),

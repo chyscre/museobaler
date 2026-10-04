@@ -42,12 +42,6 @@ class PdfExporter
         file_put_contents($path, $this->render($data, $view, $viewData));
     }
 
-    /** The PDF bytes, for a caller that will not be sending them as a download. */
-    public function raw(ReportDataset $data, string $view, array $viewData): string
-    {
-        return $this->render($data, $view, $viewData);
-    }
-
     private function render(ReportDataset $data, string $view, array $viewData): string
     {
         $brand = MuseumInfo::branding();

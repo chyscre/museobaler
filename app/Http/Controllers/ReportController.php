@@ -13,6 +13,7 @@ use App\Services\AttendanceStatusService;
 use App\Support\CsmReport;
 use App\Support\Reports\CsvExporter;
 use App\Support\Reports\DocxExporter;
+use App\Support\Reports\Earnings;
 use App\Support\Reports\PdfExporter;
 use App\Support\Reports\ReportBuilder;
 use App\Support\Reports\XlsxExporter;
@@ -178,6 +179,44 @@ class ReportController extends Controller
         ];
     }
 
+    // -- Earnings ----------------------------------------------------------
+
+    public function earnings(Request $request)
+    {
+        [$from, $to] = $this->range($request);
+
+        return view('reports.earnings', Earnings::build($from, $to));
+    }
+
+    // -- Employee roster ---------------------------------------------------
+
+    /**
+     * Every registered staff account, for printing or filing.
+     *
+     * Reached from the Staff page, which is Tourism's; the route sits behind
+     * the same wall.
+     */
+    public function roster()
+    {
+        return view('reports.roster', $this->rosterData());
+    }
+
+    public function exportRoster(Request $request, string $format)
+    {
+        return $this->export($request, 'roster', $format);
+    }
+
+    private function rosterData(): array
+    {
+        $staff = Staff::orderBy('role')->orderBy('name')->get();
+
+        return [
+            'staff'  => $staff,
+            'active' => $staff->where('status', true)->count(),
+            'byRole' => $staff->groupBy('role_label')->map->count(),
+        ];
+    }
+
     // -- Feedback ----------------------------------------------------------
 
     public function feedback(Request $request)
@@ -283,67 +322,6 @@ class ReportController extends Controller
     }
 
     /**
-     * What the chosen format will contain, before committing to a download.
-     *
-     * A PDF is handed back as a PDF, inline rather than as an attachment,
-     * because the browser renders it and nothing beats seeing the real
-     * thing. XLSX and DOCX are container formats no browser can display,
-     * and CSV would download rather than render, so those come back as an
-     * HTML stand-in built from the same ReportDataset the writer uses -
-     * meaning the rows shown are the rows in the file, and only the styling
-     * is an approximation. The view says as much.
-     */
-    public function preview(Request $request, string $report, string $format)
-    {
-        abort_unless(ReportBuilder::supports($report, $format), 404);
-
-        $builder = app(ReportBuilder::class);
-
-        [$dataset, $view, $viewData] = $this->resolve($request, $report, $builder);
-
-        if ($format === 'pdf') {
-            return response(app(PdfExporter::class)->raw($dataset, $view, $viewData), 200, [
-                'Content-Type'        => 'application/pdf',
-                'Content-Disposition' => 'inline; filename="' . $dataset->filenameFor('pdf') . '"',
-            ]);
-        }
-
-        if ($format === 'csv') {
-            $section = $dataset->primarySection();
-            $rows    = array_slice($section->rows, 0, self::PREVIEW_ROWS);
-
-            $handle = fopen('php://temp', 'r+');
-            fputcsv($handle, $section->columns);
-            foreach ($rows as $row) {
-                fputcsv($handle, array_map(fn ($c) => $c === null ? '' : $c, $row));
-            }
-            rewind($handle);
-            $csv = stream_get_contents($handle);
-            fclose($handle);
-
-            return view('reports.partials.preview', [
-                'format'    => 'csv',
-                'csv'       => $csv,
-                'truncated' => count($section->rows) > self::PREVIEW_ROWS,
-                'remaining' => max(0, count($section->rows) - self::PREVIEW_ROWS),
-                'sections'  => [],
-            ]);
-        }
-
-        return view('reports.partials.preview', [
-            'format'    => $format,
-            'csv'       => '',
-            'truncated' => false,
-            'remaining' => 0,
-            'sections'  => array_map(fn ($s) => [
-                'heading' => $s->heading,
-                'columns' => $s->columns,
-                'rows'    => $s->rows,
-            ], $dataset->sections),
-        ]);
-    }
-
-    /**
      * The audit trail, in its own action.
      *
      * Not a `->defaults('report', 'audit')` on the shared route: Laravel
@@ -356,11 +334,6 @@ class ReportController extends Controller
     public function exportAudit(Request $request, string $format)
     {
         return $this->export($request, 'audit', $format);
-    }
-
-    public function previewAudit(Request $request, string $format)
-    {
-        return $this->preview($request, 'audit', $format);
     }
 
     /**
@@ -389,10 +362,6 @@ class ReportController extends Controller
     /**
      * One report's dataset, plus the view and view-data a PDF needs.
      *
-     * Shared by the download and the preview so that what is previewed is
-     * built the same way as what is saved - the point of a preview being
-     * that it is not a second opinion.
-     *
      * @return array{0: \App\Support\Reports\ReportDataset, 1: string, 2: array}
      */
     private function resolve(Request $request, string $report, ReportBuilder $builder): array
@@ -403,9 +372,11 @@ class ReportController extends Controller
             'logbook'  => $this->forLogbook($request, $builder),
             'dtr'      => $this->forDtr($request, $builder),
             'visitors' => $this->forVisitors($request, $builder),
+            'earnings' => $this->forEarnings($request, $builder),
             'exhibits' => $this->forExhibits($request, $builder),
             'feedback' => $this->forFeedback($request, $builder),
             'audit'    => $this->forAudit($request, $builder),
+            'roster'   => [$builder->roster(), 'reports.roster', $this->rosterData()],
         };
     }
 
@@ -433,6 +404,13 @@ class ReportController extends Controller
         [$from, $to] = $this->range($request);
 
         return [$builder->visitors($from, $to), 'reports.visitors', $this->visitorsData($from, $to)];
+    }
+
+    private function forEarnings(Request $request, ReportBuilder $builder): array
+    {
+        [$from, $to] = $this->range($request);
+
+        return [$builder->earnings($from, $to), 'reports.earnings', Earnings::build($from, $to)];
     }
 
     private function forExhibits(Request $request, ReportBuilder $builder): array
@@ -474,9 +452,6 @@ class ReportController extends Controller
 
     /** How many audit lines a printed trail will carry before it gives up. */
     private const AUDIT_PRINT_LIMIT = 2000;
-
-    /** How many rows a CSV preview shows before saying "and more". */
-    private const PREVIEW_ROWS = 40;
 
     private function range(Request $request): array
     {

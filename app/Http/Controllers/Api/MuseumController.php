@@ -6,8 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\MuseumHall;
 use App\Models\MuseumInfo;
 use App\Services\GeofenceService;
+use App\Services\Qr;
 use App\Support\Admission;
+use App\Support\GoogleSignIn;
+use chillerlan\QRCode\Common\EccLevel;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Response;
 
 /**
  * GET /api/v1/museum - the About screen and the app's own settings.
@@ -37,6 +41,26 @@ class MuseumController extends Controller
         // a production server reached by its LAN address is still production.
         $info['geofence_enforced'] = app(GeofenceService::class)->visitorEnforced();
 
+        // Whether to offer "Continue with Google" at all.
+        $info['google_sign_in'] = GoogleSignIn::configured();
+
         return response()->json(['info' => $info, 'halls' => $halls]);
+    }
+
+    /**
+     * GET /api/v1/museum/app-qr - the code the app shows when it is opened on
+     * a computer, so the visitor can carry on on their phone.
+     *
+     * Always the app's own address, built from this request like the entrance
+     * poster's (DeskController::poster), so it holds on localhost, the LAN IP
+     * and a tunnel. It takes no input on purpose: an endpoint that encoded
+     * whatever it was handed would draw codes for any link under the museum's
+     * name.
+     */
+    public function appQr(): Response
+    {
+        return response(Qr::svg(url('/visitor/index.html'), 200, EccLevel::M), 200, [
+            'Content-Type' => 'image/svg+xml',
+        ]);
     }
 }

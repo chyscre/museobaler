@@ -155,7 +155,7 @@
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:12px" data-gallery>
             @foreach($exhibit->images as $img)
             <div style="position:relative;border-radius:var(--r-sm);overflow:hidden;background:var(--border-light)" data-gallery-item>
-              <img src="{{ $img->url }}" style="width:100%;height:80px;object-fit:cover;display:block;transition:opacity .15s" alt="{{ $img->caption }}">
+              <img src="{{ $img->thumb_url }}" loading="lazy" style="width:100%;height:80px;object-fit:cover;display:block;transition:opacity .15s" alt="{{ $img->caption }}">
               <input type="checkbox" name="remove_images[]" value="{{ $img->image_id }}" style="display:none">
               <button type="button" data-gallery-remove title="Remove" style="position:absolute;top:3px;right:3px;background:rgba(220,38,38,.85);border:none;border-radius:50%;width:20px;height:20px;color:white;cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center">×</button>
             </div>

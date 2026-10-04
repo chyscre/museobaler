@@ -21,26 +21,6 @@ class SecurityHeaders
     {
         $response = $next($request);
 
-        // SECURITY: the one response this panel allows to be framed.
-        //
-        // The report screens preview a PDF in an <iframe> before anyone
-        // commits to downloading it, and `frame-ancestors 'none'` forbids
-        // that even from this same origin - so without this the preview pane
-        // is a blank box.
-        //
-        // The exemption is deliberately two conditions, not one. It is only
-        // the preview routes, and only when what came back is actually a
-        // PDF, so an HTML preview fragment - which could carry markup built
-        // from stored data - is still unframable. And it relaxes to 'self'
-        // rather than removing the restriction: another site still cannot
-        // frame it.
-        //
-        // A rendered PDF is not a clickjacking target in the way an admin
-        // page is: clickjacking needs the framed page to perform a
-        // privileged action on a click, and a PDF viewer performs none.
-        $framable = $request->routeIs('reports.preview', 'reports.audit.preview')
-            && str_starts_with((string) $response->headers->get('Content-Type'), 'application/pdf');
-
         // SECURITY: Content-Security-Policy
         // Restricts which sources the browser may load scripts, styles, images, etc. from.
         // 'self' means only from the same origin. This is the primary XSS mitigation at the HTTP layer.
@@ -82,18 +62,17 @@ class SecurityHeaders
             // browser resolving "localhost" means the visitor's own machine,
             // never ours.
             "connect-src 'self' https://unpkg.com https://cdn.jsdelivr.net https://storage.googleapis.com; " .
-            "frame-ancestors " . ($framable ? "'self'" : "'none'") . ';'
+            // Nothing in the panel is framed, not even by this origin. The
+            // report PDF preview was the one exception, and it went with
+            // the preview.
+            "frame-ancestors 'none';"
         );
 
         // SECURITY: X-Frame-Options
         // Prevents the admin panel from being embedded in an <iframe> on another site.
         // This stops clickjacking attacks where an attacker overlays a transparent iframe
         // over a legitimate page to trick users into clicking malicious elements.
-        //
-        // The report preview is the one exception, and it is narrow: SAMEORIGIN,
-        // not ALLOWALL. See $framable above for why a PDF preview is not a
-        // clickjacking target.
-        $response->headers->set('X-Frame-Options', $framable ? 'SAMEORIGIN' : 'DENY');
+        $response->headers->set('X-Frame-Options', 'DENY');
 
         // SECURITY: X-Content-Type-Options
         // Prevents the browser from MIME-sniffing a response away from the declared Content-Type.
