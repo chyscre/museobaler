@@ -12,6 +12,7 @@ use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\RecognitionController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\VisitorController;
+use App\Http\Controllers\RecordDetailsController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\LogController;
@@ -254,6 +255,10 @@ Route::middleware(['auth', 'throttle:panel', 'password.rotate', 'desktop'])->gro
     Route::middleware([$shared])->group(function () {
 
         Route::get('/records', [VisitorController::class, 'index'])->name('records.index');
+        // The View Details window: a day's visit, a party, an attendance row.
+        Route::get('/records/visitors/{visitor}/details',      [RecordDetailsController::class, 'visitor'])->name('records.details.visitor');
+        Route::get('/records/groups/{group}/details',          [RecordDetailsController::class, 'group'])->name('records.details.group');
+        Route::get('/records/attendance/{attendance}/details', [RecordDetailsController::class, 'attendance'])->name('records.details.attendance');
 
         Route::get('/feedback',                  [FeedbackController::class, 'index'])->name('feedback.index');
         Route::get('/feedback/{feedback}',       [FeedbackController::class, 'show'])->name('feedback.show');
@@ -273,6 +278,7 @@ Route::middleware(['auth', 'throttle:panel', 'password.rotate', 'desktop'])->gro
         // to — the logbook from Records, the DTR from Staff Attendance.
         Route::get('/reports/logbook',     [ReportController::class, 'logbook'])->name('reports.logbook');
         Route::get('/reports/dtr/{staff}', [ReportController::class, 'dtr'])->name('reports.dtr');
+        Route::get('/reports/staff-attendance', [ReportController::class, 'staffAttendance'])->name('reports.staff-attendance');
         Route::get('/reports/visitors',    [ReportController::class, 'visitors'])->name('reports.visitors');
         Route::get('/reports/earnings',    [ReportController::class, 'earnings'])->name('reports.earnings');
         Route::get('/reports/feedback',    [ReportController::class, 'feedback'])->name('reports.feedback');
@@ -289,7 +295,7 @@ Route::middleware(['auth', 'throttle:panel', 'password.rotate', 'desktop'])->gro
         // declared before that group and would win, quietly handing the
         // museum staff the log kept on them.
         Route::get('/reports/{report}/export/{format}', [ReportController::class, 'export'])
-            ->where('report', 'logbook|dtr|visitors|earnings|exhibits|feedback')
+            ->where('report', 'logbook|dtr|staff-attendance|visitors|earnings|exhibits|feedback')
             ->where('format', 'csv|xlsx|docx|pdf')
             ->name('reports.export');
 

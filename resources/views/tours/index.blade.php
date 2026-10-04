@@ -12,9 +12,9 @@
       Front Desk
     </a>
     <form method="GET" style="display:flex;gap:8px;align-items:center">
-      <input type="date" name="from" value="{{ $from->toDateString() }}" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:var(--surface)">
+      <x-date-field name="from" :value="$from" label="From" />
       <span style="font-size:12px;color:var(--text-3)">to</span>
-      <input type="date" name="to" value="{{ $to->toDateString() }}" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:var(--surface)">
+      <x-date-field name="to" :value="$to" label="To" />
       <button class="btn btn-outline btn-sm">Show</button>
     </form>
   </div>

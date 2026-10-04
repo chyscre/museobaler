@@ -1003,3 +1003,18 @@ body.kb-open #toast{bottom:16px}
 .mode-seg button:focus-visible{outline:2px solid #fff;outline-offset:1px;border-radius:999px}
 @media (hover:hover){.mode-seg button[aria-checked="false"]:hover{color:#fff}}
 @media (prefers-reduced-motion:reduce){.mode-seg-thumb{transition:none}}
+
+/* Free companions on the waiting screen, and the itemised admission lines
+   shared by it and the entry pass on Profile. */
+.adm-lines{margin-top:10px}
+.adm-line{display:flex;justify-content:space-between;gap:10px;font-size:calc(12px * var(--fs));line-height:1.5;padding:2px 0}
+.adm-line span:last-child{white-space:nowrap;font-variant-numeric:tabular-nums}
+#pending-companions .comp-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(0,0,0,0.06)}
+#pending-companions .comp-label{font-size:calc(12.5px * var(--fs));font-weight:600;color:var(--td);min-width:0}
+#pending-companions .comp-age{font-weight:400;color:var(--tl)}
+#pending-companions .comp-label small{display:block;font-size:calc(10.5px * var(--fs));font-weight:400;color:var(--tl);margin-top:1px}
+#pending-companions .comp-step{display:flex;align-items:center;gap:8px;flex-shrink:0}
+#pending-companions .comp-btn{width:34px;height:34px;border-radius:50%;border:1.5px solid var(--mode-primary);background:var(--w);color:var(--mode-primary);font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+#pending-companions .comp-btn:active{transform:scale(0.94)}
+#pending-companions .comp-n{min-width:22px;text-align:center;font-weight:700;font-size:calc(15px * var(--fs));color:var(--td);font-variant-numeric:tabular-nums}
+#profile-pass .pass-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:700;letter-spacing:0.14em}

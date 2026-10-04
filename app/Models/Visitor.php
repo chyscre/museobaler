@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Support\Admission;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 /**
@@ -27,12 +28,18 @@ class Visitor extends Authenticatable
      */
     public const TOKEN_TTL_SECONDS = 86400;
 
+    /**
+     * The most free companions one visitor can bring. A family's worth;
+     * more than this is a party, and the desk registers it as a group.
+     */
+    public const MAX_COMPANIONS = 10;
+
     protected $fillable = [
         'first_name', 'last_name', 'middle_name',
         'age', 'sex', 'visitor_type', 'visit_type',
         'city', 'barangay', 'province', 'country', 'email', 'password', 'auth_provider',
         'explore_mode',
-        'group_id', 'source', 'registered_by',
+        'group_id', 'companion_of', 'source', 'registered_by',
         'admission_fee', 'discount_id', 'discount_name', 'discount_percent',
         'payment_status', 'paid_at',
         'id_verified', 'verified_at', 'verified_by',
@@ -258,14 +265,24 @@ class Visitor extends Authenticatable
         // so asking the date here closes that without depending on which
         // path the app took to get here.
         if ($this->needsIdCheck()) {
-            return $this->id_verified && $this->verified_at?->isToday()
+            $own = $this->id_verified && $this->verified_at?->isToday()
                 ? 'cleared'
                 : 'pending_id';
+        } else {
+            $own = $this->payment_status === 'Paid' && $this->paid_at?->isToday()
+                ? 'cleared'
+                : 'pending_payment';
         }
 
-        return $this->payment_status === 'Paid' && $this->paid_at?->isToday()
-            ? 'cleared'
-            : 'pending_payment';
+        // Companions enter free on a document, like a free visitor does. The
+        // desk action that clears the holder checks theirs too (verifyId,
+        // markPaid), so this only holds a holder back if companions were
+        // somehow added after that - their IDs have not been seen.
+        if ($own === 'cleared' && $this->hasUncheckedCompanions()) {
+            return 'pending_id';
+        }
+
+        return $own;
     }
 
     /**
@@ -274,7 +291,8 @@ class Visitor extends Authenticatable
      */
     public function clearancePayload(): array
     {
-        $state = $this->clearance();
+        $state      = $this->clearance();
+        $companions = $this->companionSummary();
 
         return [
             'visitor_id'     => (int) $this->visitor_id,
@@ -305,12 +323,191 @@ class Visitor extends Authenticatable
             'cleared'        => $state === 'cleared',
             // Who they came with, so the app can say "you're with Maria's
             // group" and explain that the group's payment is what they wait on.
+            // The code is shown so a member can pass it to the rest of the
+            // party; it only works today and only up to the headcount
+            // (VisitGroup::joinable), the same as reading it off the desk.
             'group'          => $this->isWithGroupToday() ? [
                 'label'          => $this->group->label,
                 'headcount'      => (int) $this->group->headcount,
                 'payment_status' => $this->group->payment_status,
+                'join_code'      => $this->group->join_code,
+                'signed_in_by'   => $this->group->contact_name,
+                'reference'      => AdmissionPayment::referenceFor($this->group),
+                'joined'         => $this->group->visitors()->count(),
             ] : null,
+            // The free people they brought today, and today's admission as a
+            // receipt: their own line, a ₱0.00 line per category of
+            // companion, and the transaction number once the desk has one.
+            'companions'     => array_map(fn ($c) => ['id' => $c['id'], 'name' => $c['name'], 'count' => $c['count']], $companions),
+            'headcount'      => 1 + array_sum(array_column($companions, 'count')),
+            'admission'      => $this->isWithGroupToday() ? null : $this->admissionToday($companions),
         ];
+    }
+
+    /**
+     * Today's admission, itemised. Before the desk has acted this is what
+     * the app shows as the amount due; afterwards it is the ledger entry,
+     * with its MDB number, exactly as recorded.
+     *
+     * @param  list<array{name: string, count: int}>  $companions
+     */
+    public function admissionToday(array $companions): array
+    {
+        $entry = AdmissionPayment::where('visitor_id', $this->visitor_id)
+            ->where('payer', AdmissionPayment::INDIVIDUAL)
+            ->where('kind', AdmissionPayment::PAYMENT)
+            ->whereDate('recorded_at', today())
+            ->latest('recorded_at')->latest('payment_id')
+            ->first();
+
+        if ($entry && !empty($entry->breakdown['lines'])) {
+            return [
+                'reference' => $entry->reference,
+                'lines'     => $entry->breakdown['lines'],
+                'total'     => (float) $entry->amount,
+            ];
+        }
+
+        $fee = (float) $this->admission_fee;
+
+        return [
+            'reference' => null,
+            'lines'     => array_merge(
+                Admission::visitorLines($this->visitor_type, $fee, $this->discount_name, $this->discount_percent),
+                Admission::companionLines($companions),
+            ),
+            'total'     => $fee,
+        ];
+    }
+
+    // -- Companions ----------------------------------------------------------
+
+    /**
+     * Today's companions: the free people this visitor brought along. See
+     * the add_companions migration.
+     */
+    public function companionsToday()
+    {
+        return $this->companions()->whereDate('last_visit', today());
+    }
+
+    /**
+     * Today's companions by category, in the same shape as a group's
+     * discount snapshot.
+     *
+     * @return list<array{id: int, name: string, percent_off: int, count: int}>
+     */
+    public function companionSummary(): array
+    {
+        if ($this->companion_of !== null || !$this->exists) {
+            return [];
+        }
+
+        return $this->companionsToday()
+            ->selectRaw('discount_id, discount_name, discount_percent, COUNT(*) as heads')
+            ->groupBy('discount_id', 'discount_name', 'discount_percent')
+            ->orderBy('discount_id')
+            ->get()
+            ->map(fn ($c) => [
+                'id'          => (int) $c->discount_id,
+                'name'        => (string) $c->discount_name,
+                'percent_off' => (int) $c->discount_percent,
+                'count'       => (int) $c->heads,
+            ])->all();
+    }
+
+    /** Companions here today whose documents the desk has not seen. */
+    public function hasUncheckedCompanions(): bool
+    {
+        if ($this->companion_of !== null || !$this->exists) {
+            return false;
+        }
+
+        return $this->companionsToday()
+            ->where(fn ($q) => $q->where('id_verified', false)->orWhereNull('verified_at')
+                ->orWhereDate('verified_at', '<', today()))
+            ->exists();
+    }
+
+    /**
+     * Replace today's companions with these counts (category id => heads).
+     *
+     * Each one is a nameless visitors row, like an express entry, so the
+     * reports count them. They take the holder's type and where they are
+     * from - a grandmother travelling with a family from Manila is a tourist
+     * from Manila too - and only a free category.
+     *
+     * With a staff id the desk is looking at them and their documents, so
+     * they are checked on the spot; from the app they wait for the desk.
+     *
+     * Rows being replaced are deleted, with their visit rows: they were
+     * counted minutes ago on this visitor's say-so and nobody has seen them.
+     * The caller refuses the change once they have been (see the API).
+     *
+     * @param  array<int|string, int|string|null>  $counts
+     * @return list<array{id: int, name: string, percent_off: int, count: int}>  what was recorded
+     */
+    public function setCompanions(array $counts, ?int $byStaffId = null): array
+    {
+        $wanted = Admission::companionCounts($counts);
+
+        DB::transaction(function () use ($wanted, $byStaffId) {
+            $old = $this->companionsToday()->pluck('visitor_id');
+            Visit::whereIn('visitor_id', $old)->delete();
+            self::whereIn('visitor_id', $old)->delete();
+
+            $checked = $byStaffId !== null
+                ? ['id_verified' => true, 'verified_at' => now(), 'verified_by' => $byStaffId]
+                : ['id_verified' => false];
+
+            foreach ($wanted as $c) {
+                $discount = Admission::discount($c['id']);
+                for ($i = 0; $i < $c['count']; $i++) {
+                    self::create($checked + self::discountColumns($discount) + [
+                        'companion_of'   => $this->visitor_id,
+                        'visitor_type'   => $this->visitor_type,
+                        'visit_type'     => $this->visit_type,
+                        'city'           => $this->city,
+                        'barangay'       => $this->barangay,
+                        'province'       => $this->province,
+                        'country'        => $this->country,
+                        'auth_provider'  => 'manual',
+                        'source'         => 'express',
+                        'registered_by'  => $byStaffId,
+                        'admission_fee'  => 0.00,
+                        'payment_status' => 'Free',
+                        'last_visit'     => now(),
+                    ]);
+                }
+            }
+
+            Visit::record($this);
+        });
+
+        return $wanted;
+    }
+
+    /**
+     * The desk has seen today's companions' documents. One at a time rather
+     * than one UPDATE, so each companion's own visit row records it too.
+     */
+    public function checkCompanions(int $byStaffId): int
+    {
+        $rows = $this->companionsToday()
+            ->where(fn ($q) => $q->where('id_verified', false)->orWhereNull('verified_at')
+                ->orWhereDate('verified_at', '<', today()))
+            ->get();
+
+        $rows->each->update(['id_verified' => true, 'verified_at' => now(), 'verified_by' => $byStaffId]);
+
+        return $rows->count();
+    }
+
+    /** Today's entry was taken back, so theirs goes with it. */
+    public function uncheckCompanions(): void
+    {
+        $this->companionsToday()->get()
+            ->each->update(['id_verified' => false, 'verified_at' => null, 'verified_by' => null]);
     }
 
     /**
@@ -377,6 +574,13 @@ class Visitor extends Authenticatable
 
         $this->unsetRelation('group');
         $this->load('group');
+
+        // The group's headcount is the whole party, so anyone they had
+        // declared bringing along is in it already. Keeping them as well
+        // would count them twice.
+        if ($this->companionsToday()->exists()) {
+            $this->setCompanions([]);
+        }
     }
 
 
@@ -440,6 +644,8 @@ class Visitor extends Authenticatable
             // everyone whose last visit has gone stale.
             ->whereDate('last_visit', today())
             ->whereNull('group_id')
+            // Companions likewise: the holder's Verify or Mark Paid checks them.
+            ->whereNull('companion_of')
             ->where(function ($q) {
                 $q->where(function ($local) {
                     $local->awaitsIdCheck()
@@ -481,6 +687,18 @@ class Visitor extends Authenticatable
         return $this->belongsTo(VisitGroup::class, 'group_id', 'group_id');
     }
 
+    /** Every free companion they have brought, on any day. See companionsToday(). */
+    public function companions()
+    {
+        return $this->hasMany(self::class, 'companion_of', 'visitor_id');
+    }
+
+    /** For a companion: whose visit they came on. */
+    public function holder()
+    {
+        return $this->belongsTo(self::class, 'companion_of', 'visitor_id');
+    }
+
     public function registeredBy()
     {
         return $this->belongsTo(Staff::class, 'registered_by', 'staff_id');
@@ -496,6 +714,11 @@ class Visitor extends Authenticatable
         $name = trim("{$this->first_name} {$this->last_name}");
         if ($name !== '') {
             return $name;
+        }
+
+        // A companion is known by whose visit they came on.
+        if ($this->companion_of !== null) {
+            return ($this->discount_name ?: 'Companion') . ' · with ' . ($this->holder?->full_name ?? 'a visitor');
         }
 
         // An express entry gives no name; say what they were counted as.

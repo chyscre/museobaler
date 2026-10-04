@@ -45,13 +45,13 @@
 
       @if($period->period === 'week')
       <label class="dash-period-lbl" for="dpWeek">Week of</label>
-      <input id="dpWeek" type="date" class="date-in" name="week" value="{{ $period->from->toDateString() }}" onchange="this.form.submit()">
+      <x-date-field id="dpWeek" name="week" :value="$period->from" submit />
       @endif
 
       @if($period->period === 'range')
-      <input id="dpFrom" type="date" class="date-in" name="from" value="{{ $period->from->toDateString() }}" onchange="this.form.submit()" aria-label="From">
+      <x-date-field id="dpFrom" name="from" :value="$period->from" submit label="From" />
       <label class="dash-period-lbl" for="dpTo">to</label>
-      <input id="dpTo" type="date" class="date-in" name="to" value="{{ $period->to->toDateString() }}" onchange="this.form.submit()">
+      <x-date-field id="dpTo" name="to" :value="$period->to" submit />
       @endif
 
       <noscript><button class="btn btn-outline btn-sm">Apply</button></noscript>

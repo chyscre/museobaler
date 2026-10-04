@@ -132,9 +132,16 @@ class AdmissionPayment extends Model
 
     // -- Writing the ledger ------------------------------------------------
 
+    /**
+     * A visitor's admission for today: what they paid, plus a ₱0.00 line per
+     * category of free companion they brought (Visitor::setCompanions), all
+     * under the one transaction number.
+     */
     public static function forVisitor(Visitor $visitor, ?int $byStaffId): self
     {
-        $at = $visitor->paid_at ?? now();
+        $at         = $visitor->payment_status === 'Paid' ? ($visitor->paid_at ?? now()) : now();
+        $companions = $visitor->companionSummary();
+        $fee        = $visitor->payment_status === 'Paid' ? (float) $visitor->admission_fee : 0.00;
 
         return self::record([
             'kind'         => self::PAYMENT,
@@ -144,17 +151,45 @@ class AdmissionPayment extends Model
                                   ->whereDate('visit_date', $at)->value('visit_id'),
             'payer_name'   => $visitor->full_name,
             'visitor_type' => $visitor->visitor_type,
-            'headcount'    => 1,
-            'visitor_ids'  => [(int) $visitor->visitor_id],
-            'amount'       => (float) $visitor->admission_fee,
+            'headcount'    => 1 + array_sum(array_column($companions, 'count')),
+            'visitor_ids'  => $visitor->companionsToday()->orderBy('visitor_id')->pluck('visitor_id')
+                                  ->map(fn ($id) => (int) $id)->prepend((int) $visitor->visitor_id)->all(),
+            'amount'       => $fee,
             'breakdown'    => [
-                'lines' => Admission::visitorLines($visitor->visitor_type, (float) $visitor->admission_fee,
-                    $visitor->discount_name, $visitor->discount_percent),
-                'total' => (float) $visitor->admission_fee,
+                'lines' => array_merge(
+                    Admission::visitorLines($visitor->visitor_type, $fee, $visitor->discount_name, $visitor->discount_percent),
+                    Admission::companionLines($companions),
+                ),
+                'total' => $fee,
             ],
             'recorded_at'  => $at,
             'recorded_by'  => $byStaffId,
         ]);
+    }
+
+    /**
+     * A ₱0.00 entry for a visit nobody paid for but that brought free
+     * companions - a local with their grandchildren - so the visit still has
+     * an MDB number to read off and its companions are itemised in the
+     * ledger. Once per visitor per day: an entry revoked and verified again
+     * keeps the number it was given.
+     *
+     * Earnings counts it as a transaction and its heads in the headcount;
+     * it adds nothing to the takings.
+     */
+    public static function forFreeVisit(Visitor $visitor, ?int $byStaffId): ?self
+    {
+        if ($visitor->companionSummary() === []) {
+            return null;
+        }
+
+        $already = self::where('visitor_id', $visitor->visitor_id)
+            ->where('payer', self::INDIVIDUAL)
+            ->where('kind', self::PAYMENT)
+            ->whereDate('recorded_at', today())
+            ->exists();
+
+        return $already ? null : self::forVisitor($visitor, $byStaffId);
     }
 
     /**
@@ -224,6 +259,36 @@ class AdmissionPayment extends Model
             'recorded_at' => $group->paid_at ?? now(),
             'recorded_by' => $byStaffId,
         ]);
+    }
+
+    /**
+     * A ₱0.00 entry for a party that owes nothing - a Local family, or every
+     * head a local or in a free category - so it has an MDB number like a
+     * paying one, for the desk and for its members' passes. The same rule
+     * as forFreeVisit() for one visitor. Once per group.
+     */
+    public static function forFreeGroup(VisitGroup $group, ?int $byStaffId): ?self
+    {
+        if ((float) $group->total_fee > 0 || self::where('group_id', $group->group_id)->exists()) {
+            return null;
+        }
+
+        return self::record(self::groupColumns($group) + [
+            'kind'        => self::PAYMENT,
+            'amount'      => 0.00,
+            'breakdown'   => self::groupBreakdown($group),
+            'recorded_at' => now(),
+            'recorded_by' => $byStaffId,
+        ]);
+    }
+
+    /** The group's latest transaction number, or null before it has one. */
+    public static function referenceFor(VisitGroup $group): ?string
+    {
+        return self::where('group_id', $group->group_id)
+            ->where('kind', self::PAYMENT)
+            ->latest('recorded_at')->latest('payment_id')
+            ->value('reference');
     }
 
     public static function refundForGroup(VisitGroup $group, float $amount, ?int $byStaffId): self

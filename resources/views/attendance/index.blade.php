@@ -8,9 +8,7 @@
   </div>
   <div class="ph-right">
     <form method="GET" style="display:flex;gap:8px;align-items:center;">
-      <input type="date" name="date" value="{{ $date }}"
-             style="padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:var(--surface);"
-             onchange="this.form.submit()">
+      <x-date-field name="date" :value="$date" submit label="Date" />
     </form>
   </div>
 </div>
@@ -55,6 +53,7 @@
         <th style="padding:10px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;text-align:left">Method</th>
         <th style="padding:10px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;text-align:left">Accuracy</th>
         <th style="padding:10px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;text-align:left">Time</th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -89,10 +88,13 @@
         <td style="padding:10px;font-size:13px;color:var(--text-3)">
           {{ $a->created_at->format('h:i A') }}
         </td>
+        <td style="padding:10px;text-align:right">
+          <button type="button" class="btn btn-outline btn-xs" data-details="{{ route('records.details.attendance', $a) }}" data-title="Visit details">View Details</button>
+        </td>
       </tr>
     @empty
       <tr>
-        <td colspan="5" style="padding:32px;text-align:center;color:var(--text-3);font-size:13px">
+        <td colspan="6" style="padding:32px;text-align:center;color:var(--text-3);font-size:13px">
           No attendance records for this date.
         </td>
       </tr>
@@ -104,6 +106,8 @@
   <div style="margin-top:16px">{{ $attendances->links() }}</div>
   @endif
 </div>
+
+@include('records.partials.details-modal')
 @endsection
 
 @push('scripts')

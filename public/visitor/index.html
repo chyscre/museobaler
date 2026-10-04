@@ -28,7 +28,7 @@
      which overrides the icon size. -->
 <link rel="preload" href="./fonts/material-icons-round.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="./css/fonts.css?v=21">
-<link rel="stylesheet" href="./css/app.css?v=24">
+<link rel="stylesheet" href="./css/app.css?v=26">
 <!-- Device fit: real viewport height, safe areas, soft keyboard. Runs before
      anything else measures the layout. -->
 <script src="./js/viewport.js?v=21"></script>
@@ -608,6 +608,9 @@
           <div id="pending-action-title" style="font-size:calc(14px * var(--fs));font-weight:700;">Pay at the entrance counter</div>
         </div>
         <p id="pending-action-text" style="font-size:calc(12.5px * var(--fs));line-height:1.55;"></p>
+        <!-- Itemised once they bring companions: their own line, then a
+             ₱0.00 line per category. Filled by renderAdmissionLines(). -->
+        <div id="pending-lines" class="adm-lines" style="display:none;"></div>
         <div id="pending-fee-row" style="display:flex;align-items:baseline;justify-content:space-between;margin-top:12px;padding-top:11px;border-top:1px dashed currentColor;">
           <span style="font-size:calc(11px * var(--fs));font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Amount due</span>
           <span id="pending-fee" style="font-family:'Young Serif',serif;font-size:calc(20px * var(--fs));">—</span>
@@ -623,6 +626,18 @@
           <div id="pending-name" style="font-size:calc(13.5px * var(--fs));font-weight:700;color:var(--td);">—</div>
           <div id="pending-meta" style="font-size:calc(11.5px * var(--fs));color:var(--tl);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">—</div>
         </div>
+      </div>
+
+      <!-- Free companions: a senior, a PWD, a small child who came with
+           them. Counted on this visitor's entry and checked by the desk with
+           their own ID. Only the free categories are offered; the server
+           decides which those are (Admission::companionCategories). Hidden
+           for a group member - the group's headcount covers the party. -->
+      <div id="pending-companions" style="display:none;background:var(--ew);border-radius:12px;padding:12px 13px;margin-bottom:16px;">
+        <div style="font-size:calc(12.5px * var(--fs));font-weight:700;color:var(--td);margin-bottom:3px;">Accompanying free visitors</div>
+        <div style="font-size:calc(11.5px * var(--fs));color:var(--tl);line-height:1.5;margin-bottom:6px;">Anyone with you who enters free? Add them here. Staff will check their IDs when they check yours.</div>
+        <div id="pending-companion-rows"></div>
+        <div id="pending-companion-status" style="font-size:calc(11px * var(--fs));color:var(--tl);margin-top:6px;min-height:1em;"></div>
       </div>
 
       <!-- With a group? Someone who registered before the desk signed the
@@ -1464,6 +1479,19 @@
           <span class="stat-l">Halls done</span>
         </button>
       </div>
+      <!-- Today's entry: the desk's transaction number and what it covered,
+           companions at ₱0.00 included. Shown once the desk has one. -->
+      <div id="profile-pass" style="display:none;background:var(--w);border-radius:14px;padding:14px;margin-bottom:18px;box-shadow:var(--sh);">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px;">
+          <span style="font-size:calc(13px * var(--fs));font-weight:700;color:var(--td);">Today's entry pass</span>
+          <span id="profile-pass-ref" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:calc(12px * var(--fs));font-weight:700;color:var(--accent-text);"></span>
+        </div>
+        <div id="profile-pass-lines" class="adm-lines"></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;padding-top:8px;border-top:1px dashed var(--tl);">
+          <span style="font-size:calc(11px * var(--fs));font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--tl);"><span id="profile-pass-heads"></span></span>
+          <span id="profile-pass-total" style="font-family:'Young Serif',serif;font-size:calc(17px * var(--fs));color:var(--td);"></span>
+        </div>
+      </div>
       <div style="background:var(--w);border-radius:14px;padding:14px;margin-bottom:18px;box-shadow:var(--sh);">
         <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
           <span style="font-size:calc(13px * var(--fs));font-weight:700;color:var(--td);">Museum Progress</span>
@@ -2238,7 +2266,7 @@
      are all in css/app.css. Inlined after the stylesheet they also outranked
      its dark-mode overrides, which is why the pills stayed light in dark mode. -->
 
-<script src="./js/app.js?v=26"></script>
+<script src="./js/app.js?v=28"></script>
 
 <!-- Did the app actually start?
 

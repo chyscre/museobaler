@@ -16,7 +16,9 @@ use Illuminate\Support\Collection;
  * the current visit and are reset when a visitor comes back, so totals
  * built on them lose every earlier payment by a returning visitor.
  *
- * "Transactions" counts payments. Refunds are counted and totalled on their
+ * "Transactions" counts payments, including the ₱0.00 entries that give a
+ * free visit with companions its number (AdmissionPayment::forFreeVisit).
+ * Refunds are counted and totalled on their
  * own, and net is collected minus refunded: what the cash drawer should
  * hold.
  */

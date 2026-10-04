@@ -214,6 +214,16 @@
               {{ $v->payment_status }} · ₱{{ number_format((float) $v->admission_fee, 2) }}{{ $v->discount_name ? ' · ' . $v->discount_name . ' ' . $v->discount_percent . '% off' : '' }}
             @endif
           </div>
+          {{-- The free companions on their latest visit. Verify ID or Mark
+               Paid on this row checks their documents too. --}}
+          @php
+            $latestVisit = $v->visits->first();
+          @endphp
+          @if($latestVisit && $latestVisit->companions && $v->last_visit && $latestVisit->visit_date->isSameDay($v->last_visit))
+            <div style="font-size:11px;color:var(--green-dark);margin-top:2px">
+              +{{ collect($latestVisit->companions)->map(fn ($c) => $c['count'] . ' ' . $c['name'])->implode(', ') }} · free
+            </div>
+          @endif
         </td>
         <td style="white-space:nowrap">
           {{-- Collecting a fee and sighting an ID happen at the counter. The
@@ -232,8 +242,16 @@
           @php
             $state = $v->clearance();
           @endphp
+          {{-- Every row, everyone who can see Records: read-only. For the day
+               this page shows, not the visitor's latest visit. --}}
+          <button type="button" class="btn btn-outline btn-xs" style="margin-right:4px"
+                  data-details="{{ route('records.details.visitor', ['visitor' => $v, 'date' => $visitorDay->date?->toDateString()]) }}"
+                  data-title="Visit details">View Details</button>
           @if(auth()->user()->isTourismHead())
-            <span style="color:var(--text-4);font-size:12px">—</span>
+            {{-- View Details only. --}}
+          @elseif($v->companion_of)
+          {{-- A companion is checked and let in on the holder's entry. --}}
+            <span style="color:var(--text-3);font-size:12px">On {{ $v->holder?->full_name ?? 'their' }}'s entry</span>
           @elseif($state === 'pending_group')
           {{-- A group member's fee is the party's fee, so Mark Paid here
                settles the group — and unlocks every member at once. --}}
@@ -258,8 +276,6 @@
                   data-action="{{ route('visitors.revoke', $v) }}"
                   data-name="{{ $v->full_name }}"
                   data-refund="{{ $v->needsIdCheck() ? '' : number_format((float) $v->admission_fee, 2) }}">Revoke</button>
-          @else
-            <span style="color:var(--text-4);font-size:12px">—</span>
           @endif
         </td>
       </tr>
@@ -300,7 +316,7 @@
 
   <form method="GET" action="{{ route('records.index') }}" class="fbar">
     <input type="hidden" name="tab" value="groups">
-    <input type="date" class="fsel" name="gdate" value="{{ $gdate ?? '' }}" onchange="this.form.submit()">
+    <x-date-field name="gdate" :value="$gdate ?? null" submit label="Group date" />
     <select class="fsel" name="gpay" onchange="this.form.submit()">
       <option value="">All payments</option>
       <option value="unpaid" {{ request('gpay') === 'unpaid' ? 'selected' : '' }}>Unpaid</option>
@@ -370,6 +386,9 @@
         </td>
         <td style="font-size:12px;color:var(--text-3)">{{ $g->registeredBy?->name ?? '—' }}</td>
         <td style="white-space:nowrap">
+          <button type="button" class="btn btn-outline btn-xs" style="margin-right:4px"
+                  data-details="{{ route('records.details.group', $g) }}"
+                  data-title="Group breakdown">View Breakdown</button>
           {{-- Collecting money is desk work; the Tourism office reads this
                tab but does not stand at the counter. Same rule as the
                individual Mark Paid, whose route is museum-only too. --}}
@@ -390,9 +409,6 @@
                 <button type="submit" class="btn btn-outline btn-xs" title="Re-price for this many locals. If already paid, the difference is recorded as a refund.">Locals</button>
               </form>
             @endif
-          @endif
-          @if(auth()->user()->isTourismHead() || ($g->payment_status !== 'Unpaid' && (!$g->visit_date->isToday() || $g->visitor_type === 'Local')))
-            <span style="color:var(--text-4);font-size:12px">—</span>
           @endif
         </td>
       </tr>
@@ -469,9 +485,7 @@
       </div>
       <form method="GET" style="display:flex;gap:8px;align-items:center">
         <input type="hidden" name="tab" value="attendance">
-        <input type="date" name="att_date" value="{{ $attDate }}"
-          style="padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:var(--surface)"
-          onchange="this.form.submit()">
+        <x-date-field name="att_date" :value="$attDate" submit label="Date" />
         <span class="badge b-green">{{ $attendances->total() }} records</span>
       </form>
     </div>
@@ -484,6 +498,7 @@
           <th style="padding:9px 10px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;text-align:left">Accuracy</th>
           <th style="padding:9px 10px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;text-align:left">Time In</th>
           <th style="padding:9px 10px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;text-align:left">Duration</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -518,9 +533,12 @@
               <span style="color:var(--green-dark);font-size:11px">● Still inside</span>
             @endif
           </td>
+          <td style="padding:9px 10px;text-align:right">
+            <button type="button" class="btn btn-outline btn-xs" data-details="{{ route('records.details.attendance', $a) }}" data-title="Visit details">View Details</button>
+          </td>
         </tr>
       @empty
-        <tr><td colspan="5" style="padding:32px;text-align:center;color:var(--text-3);font-size:13px">No attendance records for this date.</td></tr>
+        <tr><td colspan="7" style="padding:32px;text-align:center;color:var(--text-3);font-size:13px">No attendance records for this date.</td></tr>
       @endforelse
       </tbody>
     </table>
@@ -554,6 +572,8 @@
     </form>
   </div>
 </div>
+
+@include('records.partials.details-modal')
 @endsection
 
 @push('scripts')

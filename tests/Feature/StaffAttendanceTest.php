@@ -334,7 +334,10 @@ class StaffAttendanceTest extends TestCase
 
         $this->assertSame('Present', $board['Late Arrival']['status']);
         $this->assertSame('Absent', $board['Stayed Home']['status']);
-        $this->assertSame(['present' => 1, 'absent' => 1], $response->viewData('counts'));
+        $this->assertSame(
+            ['present' => 1, 'absent' => 1, 'present_rate' => 50, 'absent_rate' => 50],
+            $response->viewData('counts')
+        );
     }
 
     public function test_the_code_carries_no_identity_so_it_only_checks_in_the_scanner(): void

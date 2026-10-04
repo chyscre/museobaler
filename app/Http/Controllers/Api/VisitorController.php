@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\CompanionsRequest;
 use App\Http\Requests\Api\JoinGroupRequest;
 use App\Http\Requests\Api\LoginRequest;
 use App\Http\Requests\Api\RegisterVisitorRequest;
@@ -246,6 +247,59 @@ class VisitorController extends Controller
         $visitor->joinGroup($group);
 
         return response()->json($visitor->clearancePayload() + ['joined' => true]);
+    }
+
+    /**
+     * PUT /api/v1/visitors/me/companions - the free people they brought.
+     *
+     * A grandparent, a PWD, a small child: counted on this visitor's visit
+     * rather than as a party, each as a visitor of their own for the
+     * reports (Visitor::setCompanions). What is sent replaces today's.
+     *
+     * SECURITY: a companion enters free on a document, so nothing here
+     * admits anybody. The holder's own clearance waits until the desk has
+     * seen the companions' documents (Visitor::clearance), and once it has,
+     * the list is the desk's to change: otherwise a visitor could be
+     * cleared with one child and then add four "seniors" from the queue.
+     */
+    public function companions(CompanionsRequest $request): JsonResponse
+    {
+        /** @var Visitor $visitor */
+        $visitor = $request->user('visitor');
+
+        if ($visitor->isWithGroupToday()) {
+            return response()->json([
+                'error'   => 'with_group',
+                'message' => 'You are with a group today. The desk counts everyone in it on the group.',
+            ], 422);
+        }
+
+        // A visitor resumed on a later day, who has not signed in since, is
+        // here today all the same: start today's visit first, as login does.
+        if (!$visitor->last_visit?->isToday()) {
+            $visitor->touchReturning();
+        }
+
+        $checkedAlready = $visitor->companionsToday()->where('id_verified', true)
+            ->whereDate('verified_at', today())->exists();
+        if ($visitor->clearance() === 'cleared' || $checkedAlready) {
+            return response()->json([
+                'error'   => 'already_checked',
+                'message' => 'The desk has already let you in. Ask them to add anyone else who is with you.',
+            ], 422);
+        }
+
+        $counts = $request->validated('companions');
+        if (array_sum(array_map('intval', $counts)) > Visitor::MAX_COMPANIONS) {
+            return response()->json([
+                'error'   => 'too_many_companions',
+                'message' => 'That is more than one visitor can bring. Ask the desk to register you as a group.',
+            ], 422);
+        }
+
+        $visitor->setCompanions($counts);
+
+        return response()->json($visitor->clearancePayload());
     }
 
     /**

@@ -16,6 +16,7 @@ use App\Support\Reports\DocxExporter;
 use App\Support\Reports\Earnings;
 use App\Support\Reports\PdfExporter;
 use App\Support\Reports\ReportBuilder;
+use App\Support\Reports\StaffAttendanceSummary;
 use App\Support\Reports\XlsxExporter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -134,6 +135,16 @@ class ReportController extends Controller
                 'minutes' => $days->sum('worked_minutes'),
             ],
         ];
+    }
+
+    // -- All staff attendance ----------------------------------------------
+
+    /** Every museum staff member over one period - the sheet on top of the DTRs. */
+    public function staffAttendance(Request $request)
+    {
+        [$from, $to] = $this->range($request);
+
+        return view('reports.staff-attendance', StaffAttendanceSummary::build($from, $to));
     }
 
     // -- Visitors and admission -------------------------------------------
@@ -371,6 +382,7 @@ class ReportController extends Controller
         return match ($report) {
             'logbook'  => $this->forLogbook($request, $builder),
             'dtr'      => $this->forDtr($request, $builder),
+            'staff-attendance' => $this->forStaffAttendance($request, $builder),
             'visitors' => $this->forVisitors($request, $builder),
             'earnings' => $this->forEarnings($request, $builder),
             'exhibits' => $this->forExhibits($request, $builder),
@@ -397,6 +409,13 @@ class ReportController extends Controller
             : today()->startOfMonth();
 
         return [$builder->dtr($staff, $month), 'reports.dtr', $this->dtrData($staff, $month)];
+    }
+
+    private function forStaffAttendance(Request $request, ReportBuilder $builder): array
+    {
+        [$from, $to] = $this->range($request);
+
+        return [$builder->staffAttendance($from, $to), 'reports.staff-attendance', StaffAttendanceSummary::build($from, $to)];
     }
 
     private function forVisitors(Request $request, ReportBuilder $builder): array

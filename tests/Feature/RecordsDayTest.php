@@ -69,7 +69,8 @@ class RecordsDayTest extends TestCase
 
         $this->actingAs($desk)->get('/records?tab=visitors')
             ->assertOk()
-            ->assertSee('Pick a date')
+            ->assertSee('data-date-field', false)
+            ->assertSee('name="day"', false)
             ->assertDontSee('rel="next"', false)
             ->assertDontSee('rel="prev"', false);
     }

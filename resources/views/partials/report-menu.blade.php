@@ -32,16 +32,16 @@
     <div class="rm-period">
       @if($mode === 'date')
         <label class="rm-lbl">Date</label>
-        <input type="date" class="fi rm-date" value="{{ request('date', today()->toDateString()) }}">
+        <x-date-field class="rm-date" block label="Date" :value="request('date', today()->toDateString())" />
       @else
         <div class="rm-range">
           <div>
             <label class="rm-lbl">From</label>
-            <input type="date" class="fi rm-from" value="{{ today()->startOfMonth()->toDateString() }}">
+            <x-date-field class="rm-from" block label="From" :value="today()->startOfMonth()" />
           </div>
           <div>
             <label class="rm-lbl">To</label>
-            <input type="date" class="fi rm-to" value="{{ today()->toDateString() }}">
+            <x-date-field class="rm-to" block label="To" :value="today()" />
           </div>
         </div>
       @endif

@@ -521,11 +521,15 @@ function feeLabel(amount) {
 //   resident_scope  'baler' asks a local for a barangay, 'aurora' for a town
 //   discounts       [{id, name, proof, percent_off, min_age, max_age,
 //                     benefit, age_range}] offered to everyone else
+//   companion_ids   ids of the free categories a visitor's companions may
+//                   be counted under (Admission::companionCategories)
 let ADMISSION_CONFIG = {
   resident_scope: 'baler',
   resident_place: 'Baler',
   towns: [],
   discounts: [],
+  companion_ids: [],
+  max_companions: 10,
 };
 
 /** The discount picked on the sign-up form, or null. */
@@ -1297,6 +1301,7 @@ function applySession(v) {
   // cleared when the reply says null: a stale group from a previous visit
   // must not linger in local state and claim to cover today's admission.
   if (v.group !== undefined) STATE.group = v.group || null;
+  applyCompanionState(v);
   STATE.provider      = 'manual';
   if (v.explore_mode) STATE.mode = v.explore_mode === 'Free Roam' ? 'free' : 'storyline';
   // Only a returning visitor has actually chosen a mode. A new registration
@@ -1360,6 +1365,7 @@ function showPending(v) {
     if (v.visitor_type) STATE.visitorType = v.visitor_type;
     if (v.discount !== undefined) STATE.discount = v.discount || null;
     if (v.resident_place) STATE.residentPlace = v.resident_place;
+    applyCompanionState(v);
     saveState();
   }
 
@@ -1385,7 +1391,8 @@ function showPending(v) {
     box.style.color      = '#166534';
     icon.textContent     = 'groups';
     title.textContent    = `You're with ${label}`;
-    text.textContent     = 'The group pays as one at the entrance counter. As soon as the person who signed you in settles it, this screen unlocks by itself - nothing to pay on your own.';
+    text.textContent     = 'The group pays as one at the entrance counter. As soon as the person who signed you in settles it, this screen unlocks by itself - nothing to pay on your own.'
+      + (STATE.group && STATE.group.join_code ? ` Group code: ${STATE.group.join_code}.` : '');
     feeRow.style.display = 'none';
   } else if (needsPayment) {
     box.style.background = '#FFFBEB';
@@ -1406,11 +1413,25 @@ function showPending(v) {
     // Free on a discount (a senior entering free) rather than as a local:
     // the desk wants that category's ID, not proof of residency.
     const disc = STATE.visitorType !== 'Local' && STATE.discount;
-    text.textContent     = disc
+    // Their own admission is settled; only the people with them are left.
+    const ownSettled = STATE.visitorType !== 'Local' && !(disc && disc.percent_off >= 100);
+    text.textContent     = ownSettled
+      ? 'Your admission is recorded. Show the staff the IDs of the people with you and this screen unlocks by itself.'
+      : disc
       ? `Present your ${disc.proof || disc.name + ' ID'} for free admission as ${disc.name.toLowerCase()}. Staff will verify it and this screen unlocks by itself.`
       : `Present proof of ${STATE.residentPlace || ADMISSION_CONFIG.resident_place} residency — barangay certificate, PhilSys ID, driver’s licence, school or company ID. Staff will verify it and this screen unlocks by itself.`;
     feeRow.style.display = 'none';
   }
+
+  // Itemised once they have companions; the plain "Amount due" otherwise.
+  const lines = STATE.admission && Array.isArray(STATE.admission.lines) ? STATE.admission.lines : [];
+  const itemised = !withGroup && (STATE.companions || []).length > 0;
+  renderAdmissionLines(document.getElementById('pending-lines'), itemised ? lines : []);
+  if (itemised) {
+    feeRow.style.display = 'flex';
+    document.getElementById('pending-fee').textContent = feeLabel(STATE.admission ? STATE.admission.total : 0);
+  }
+  renderCompanionPicker(!withGroup);
 
   document.getElementById('pending-name').textContent = STATE.name || 'Visitor';
   document.getElementById('pending-meta').textContent =
@@ -1564,6 +1585,8 @@ function _applyAdmissionRules(rules) {
     resident_place: rules.resident_place || 'Baler',
     towns:          Array.isArray(rules.towns) ? rules.towns : [],
     discounts:      Array.isArray(rules.discounts) ? rules.discounts : [],
+    companion_ids:  Array.isArray(rules.companion_ids) ? rules.companion_ids.map(Number) : [],
+    max_companions: Number(rules.max_companions) || 10,
   };
 
   const byTown = ADMISSION_CONFIG.resident_scope === 'aurora';
@@ -1838,6 +1861,149 @@ function joinGroupFromPending() {
     })
     .catch(() => showToast('Could not reach the museum. Check your connection and try again.', 3500))
     .finally(() => showLoading(false));
+}
+
+// ── Free companions ────────────────────────────────────────────────────────
+// A senior, a PWD, a small child who came with the visitor, counted on their
+// entry (PUT /visitors/me/companions). The server decides which categories
+// qualify and prices everything; this only sends counts.
+
+/** Keep what the server said about companions and today's receipt. */
+function applyCompanionState(v) {
+  if (!v) return;
+  if (Array.isArray(v.companions)) STATE.companions = v.companions;
+  if (v.headcount !== undefined) STATE.headcount = Number(v.headcount) || 1;
+  if (v.admission !== undefined) STATE.admission = v.admission || null;
+}
+
+/** "1 × Full admission … ₱50.00" rows, from the server's breakdown lines. */
+function renderAdmissionLines(el, lines) {
+  if (!el) return;
+  if (!lines || !lines.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'block';
+  el.innerHTML = lines.map(l => `
+    <div class="adm-line">
+      <span>${Number(l.count)} × ${escapeHtml(l.label)}</span>
+      <span>₱${Number(l.amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+    </div>`).join('');
+}
+
+/** What the steppers currently say, as {category id: heads}. */
+let companionDraft = {};
+let companionSaveTimer = null;
+
+function renderCompanionPicker(show) {
+  const box  = document.getElementById('pending-companions');
+  const rows = document.getElementById('pending-companion-rows');
+  if (!box || !rows) return;
+
+  const cats = (ADMISSION_CONFIG.discounts || [])
+    .filter(d => (ADMISSION_CONFIG.companion_ids || []).includes(Number(d.id)));
+  if (!show || !cats.length) { box.style.display = 'none'; return; }
+
+  companionDraft = {};
+  (STATE.companions || []).forEach(c => { companionDraft[c.id] = Number(c.count) || 0; });
+
+  box.style.display = 'block';
+  rows.innerHTML = cats.map(d => `
+    <div class="comp-row">
+      <div class="comp-label">${escapeHtml(d.name)}${d.age_range ? ` <span class="comp-age">(${escapeHtml(d.age_range)})</span>` : ''}
+        <small>₱0.00${d.proof ? ' · bring their ' + escapeHtml(d.proof) : ''}</small></div>
+      <div class="comp-step">
+        <button type="button" class="comp-btn" aria-label="One fewer ${escapeHtml(d.name)}" onclick="stepCompanion(${Number(d.id)}, -1)">−</button>
+        <span class="comp-n" id="comp-n-${Number(d.id)}">${companionDraft[d.id] || 0}</span>
+        <button type="button" class="comp-btn" aria-label="One more ${escapeHtml(d.name)}" onclick="stepCompanion(${Number(d.id)}, 1)">+</button>
+      </div>
+    </div>`).join('');
+}
+
+function stepCompanion(id, delta) {
+  const total = Object.values(companionDraft).reduce((s, n) => s + n, 0);
+  const max   = ADMISSION_CONFIG.max_companions || 10;
+  if (delta > 0 && total >= max) {
+    showToast(`Up to ${max} people. For more, ask the desk to sign you in as a group.`, 3500);
+    return;
+  }
+  companionDraft[id] = Math.max(0, (companionDraft[id] || 0) + delta);
+  const n = document.getElementById('comp-n-' + id);
+  if (n) n.textContent = companionDraft[id];
+
+  // Saved a moment after the last tap, so five taps are one request.
+  const status = document.getElementById('pending-companion-status');
+  if (status) status.textContent = 'Saving…';
+  clearTimeout(companionSaveTimer);
+  companionSaveTimer = setTimeout(saveCompanions, 700);
+}
+
+function saveCompanions() {
+  if (!STATE.token) { handleSessionLost(); return; }
+  const status = document.getElementById('pending-companion-status');
+
+  apiFetch(`${API_BASE}/visitors/me/companions`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ companions: companionDraft })
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (!data || data.error) {
+        if (status) status.textContent = '';
+        showToast((data && data.message) || 'Could not save that. Please try again.', 3800);
+        showPending(null);   // back to what the server last said
+        return;
+      }
+      applySession(data);
+      saveState();
+      if (status) {
+        const heads = STATE.headcount || 1;
+        status.textContent = heads > 1 ? `Saved. ${heads} people on your entry.` : 'Saved.';
+      }
+      showPending(data);
+    })
+    .catch(() => {
+      if (status) status.textContent = '';
+      showToast('Could not reach the museum. Check your connection and try again.', 3500);
+    });
+}
+
+/** Profile: today's entry pass, once the desk has given it a number. */
+function renderProfilePass() {
+  const card = document.getElementById('profile-pass');
+  if (!card) return;
+
+  // With a party: its pass, not theirs. The code is there so they can pass
+  // it to anyone in the party who has not joined yet.
+  const g = STATE.group;
+  if (g) {
+    card.style.display = 'block';
+    document.getElementById('profile-pass-ref').textContent = g.reference || '';
+    const rows = [
+      ['Group', g.label],
+      ['Signed in by', g.signed_in_by],
+      ['Group code', g.join_code],
+      ['Joined in the app', `${Number(g.joined) || 0} of ${Number(g.headcount) || 0}`],
+      ['Admission', g.payment_status === 'Paid' ? 'Paid by the group'
+        : g.payment_status === 'Free' ? 'Free entry' : 'Waiting for the group to pay'],
+    ].filter(([, v]) => v);
+    const lines = document.getElementById('profile-pass-lines');
+    lines.style.display = 'block';
+    lines.innerHTML = rows.map(([k, v]) =>
+      `<div class="adm-line"><span>${escapeHtml(k)}</span><span${k === 'Group code' ? ' class="pass-code"' : ''}>${escapeHtml(String(v))}</span></div>`
+    ).join('');
+    document.getElementById('profile-pass-heads').textContent = `Party of ${Number(g.headcount) || 0}`;
+    document.getElementById('profile-pass-total').textContent = g.reference ? '' : 'No transaction yet';
+    return;
+  }
+
+  const a = STATE.admission;
+  if (!a || !a.reference) { card.style.display = 'none'; return; }
+
+  card.style.display = 'block';
+  document.getElementById('profile-pass-ref').textContent = a.reference;
+  renderAdmissionLines(document.getElementById('profile-pass-lines'), a.lines || []);
+  const heads = STATE.headcount || 1;
+  document.getElementById('profile-pass-heads').textContent = 'Total · ' + (heads === 1 ? '1 person' : `${heads} people`);
+  document.getElementById('profile-pass-total').textContent = feeLabel(a.total);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4015,6 +4181,22 @@ function onProfileEnter() {
   const modeLabel = document.getElementById('profile-mode-label');
   const modeBadge = document.getElementById('profile-mode-badge');
   if (modeLabel) modeLabel.textContent = STATE.mode === 'free' ? 'Free Explore' : 'Storyline';
+
+  // The entry pass from what is known now, then from the server, which has
+  // the transaction number if the desk issued it after this phone last asked.
+  renderProfilePass();
+  if (STATE.token && navigator.onLine !== false) {
+    apiFetch(`${API_BASE}/visitors/me`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data || data.error) return;
+        applyCompanionState(data);
+        if (data.group !== undefined) STATE.group = data.group || null;
+        saveState();
+        renderProfilePass();
+      })
+      .catch(() => {});
+  }
   if (modeBadge) {
     const icon = modeBadge.querySelector('.material-icons-round');
     if (icon) icon.textContent = STATE.mode === 'free' ? 'explore' : 'route';
