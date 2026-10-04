@@ -37,6 +37,16 @@ class Exhibit extends Model
         return \Illuminate\Support\Facades\Storage::disk('public')->url('exhibits/' . $this->image);
     }
 
+    /** The ~400px copy, for the exhibit grid. The detail page keeps image_url. */
+    public function getThumbUrlAttribute(): ?string
+    {
+        if ($this->image && file_exists(public_path('images/exhibits/' . $this->image))) {
+            return route('exhibit.image', ['filename' => $this->image, 'v' => 'thumb']);
+        }
+
+        return $this->image_url;
+    }
+
     /**
      * The hall this exhibit sits in. Its name and floor are read through
      * the hall and floor accessors below, so views keep printing

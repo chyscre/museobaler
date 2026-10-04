@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\AuditTrail;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -41,12 +42,19 @@ class AuditLog
             in_array($request->method(), ['POST', 'PUT', 'PATCH', 'DELETE'], true)
         ) {
             try {
+                // Written in words (App\Support\AuditTrail): the people who
+                // read this trail are not the people who read HTTP codes.
+                // Errors flashed by THIS request mean its form was sent back;
+                // ones still in the session from the request before do not.
+                $refused = $request->hasSession()
+                    && in_array('errors', (array) $request->session()->get('_flash.new', []), true);
+
                 \App\Models\Log::create([
                     'user_id'    => Auth::id(),
                     'user_name'  => Auth::user()->name,
                     'role'       => Auth::user()->role ?? 'Staff',
-                    'action'     => $request->method() . ' ' . $request->path(),
-                    'details'    => 'HTTP ' . $request->method() . ' | Status: ' . $response->getStatusCode(),
+                    'action'     => AuditTrail::action($request->method(), $request->path()),
+                    'details'    => AuditTrail::outcome($response->getStatusCode(), $refused),
                     'ip_address' => $request->ip(),
                 ]);
             } catch (\Throwable $e) {

@@ -36,9 +36,11 @@ class ReportBuilder
         'logbook'  => ['csv', 'xlsx', 'pdf'],
         'dtr'      => ['csv', 'xlsx', 'pdf'],
         'visitors' => ['csv', 'xlsx', 'pdf'],
+        'earnings' => ['csv', 'xlsx', 'pdf'],
         'exhibits' => ['csv', 'docx', 'pdf'],
         'feedback' => ['csv', 'docx', 'pdf'],
         'audit'    => ['csv', 'pdf'],
+        'roster'   => ['csv', 'xlsx', 'pdf'],
     ];
 
     public static function supports(string $key, string $format): bool
@@ -218,6 +220,134 @@ class ReportBuilder
         );
     }
 
+    // -- Earnings ----------------------------------------------------------
+
+    /**
+     * Admission revenue, from the payments ledger. See Earnings.
+     *
+     * The transaction list is the primary section, so the CSV is one row per
+     * peso movement, which is what anything reconciling against it needs.
+     */
+    public function earnings(Carbon $from, Carbon $to): ReportDataset
+    {
+        $e = Earnings::build($from, $to);
+        $t = $e['totals'];
+
+        $payerRows = [];
+        foreach ($e['byPayer'] as $p) {
+            $payerRows[] = [$p['label'], $p['transactions'], $p['headcount'], $p['collected'], $p['refunded'], $p['net']];
+        }
+
+        $periodRows = [];
+        foreach ($e['periods'] as $period) {
+            $periodRows[] = [
+                $e['monthly'] ? $period['date']->format('Y-m') : $period['date']->toDateString(),
+                $period['individual']['transactions'], $period['individual']['net'],
+                $period['group']['transactions'],      $period['group']['net'],
+                $period['all']['refunded'],            $period['all']['net'],
+            ];
+        }
+
+        $txnRows = [];
+        foreach ($e['payments'] as $p) {
+            $txnRows[] = [
+                $p->number,
+                $p->recorded_at->format('Y-m-d'),
+                $p->recorded_at->format('g:i A'),
+                $p->payer === 'group' ? 'Group' : 'Individual',
+                $p->kind === 'refund' ? 'Refund' : 'Payment',
+                $p->payer_name,
+                $p->visitor_type,
+                (int) $p->headcount,
+                $p->signedAmount(),
+                $p->recordedBy?->name ?? ($p->backfilled ? 'Earlier record' : ''),
+                (string) $p->breakdown_summary,
+                implode(', ', $p->visitor_ids ?? []),
+            ];
+        }
+
+        $ind = $e['byPayer']['individual'];
+        $grp = $e['byPayer']['group'];
+
+        return new ReportDataset(
+            key: 'earnings',
+            title: 'Earnings and Revenue',
+            meta: $from->format('F j, Y') . ' - ' . $to->format('F j, Y'),
+            filename: 'earnings-' . $from->toDateString() . '-to-' . $to->toDateString(),
+            sections: [
+                new ReportSection('By payment type',
+                    ['Payment type', 'Transactions', 'People', 'Collected', 'Refunded', 'Net'], $payerRows,
+                    ['TOTAL', $t['transactions'], $t['headcount'], $t['collected'], $t['refunded'], $t['net']],
+                    [1, 2, 3, 4, 5]),
+                new ReportSection($e['monthly'] ? 'Month by month' : 'Day by day',
+                    [$e['monthly'] ? 'Month' : 'Date', 'Individual txns', 'Individual net', 'Group txns', 'Group net', 'Refunded', 'Net'],
+                    $periodRows,
+                    ['TOTAL', $ind['transactions'], $ind['net'], $grp['transactions'], $grp['net'], $t['refunded'], $t['net']],
+                    [1, 2, 3, 4, 5, 6]),
+                new ReportSection('Transactions',
+                    ['Txn No.', 'Date', 'Time', 'Payment type', 'Kind', 'Paid by', 'Visitor type', 'People', 'Amount', 'Recorded by', 'Breakdown', 'Visitor IDs'],
+                    $txnRows,
+                    ['', '', '', '', '', 'TOTAL', '', '', $t['net'], '', '', ''],
+                    [7, 8]),
+            ],
+            summary: [
+                'Net revenue'  => number_format($t['net'], 2),
+                'Transactions' => (string) $t['transactions'],
+                'Individual'   => number_format($ind['net'], 2) . ' (' . $ind['transactions'] . ')',
+                'Group'        => number_format($grp['net'], 2) . ' (' . $grp['transactions'] . ')',
+                'Refunded'     => number_format($t['refunded'], 2),
+            ],
+            primary: 2,
+        );
+    }
+
+    // -- Employee roster ---------------------------------------------------
+
+    /**
+     * Every staff account, active or not. A roster that dropped deactivated
+     * accounts would not say who has ever held a login, which is half of
+     * what an office keeps one for.
+     *
+     * Tourism-only, like the audit trail: it lists the accounts, and the
+     * accounts are Tourism's to manage.
+     */
+    public function roster(): ReportDataset
+    {
+        $staff = Staff::orderBy('role')->orderBy('name')->get();
+
+        $rows = [];
+        foreach ($staff->values() as $i => $s) {
+            $rows[] = [
+                $i + 1,
+                $s->name,
+                $s->email,
+                $s->role_label,
+                $s->status ? 'Active' : 'Inactive',
+                $s->created_at?->format('Y-m-d') ?? '',
+            ];
+        }
+
+        $active = $staff->where('status', true)->count();
+
+        return new ReportDataset(
+            key: 'roster',
+            title: 'Employee Master List',
+            meta: 'As of ' . now()->format('F j, Y'),
+            filename: 'employees-' . today()->toDateString(),
+            sections: [new ReportSection(
+                heading: null,
+                columns: ['No.', 'Name', 'Email', 'Role', 'Status', 'Date added'],
+                rows: $rows,
+                numeric: [0],
+            )],
+            summary: [
+                'Employees' => (string) $staff->count(),
+                'Active'    => (string) $active,
+                'Inactive'  => (string) ($staff->count() - $active),
+            ],
+        );
+    }
+
     // -- Exhibit engagement ------------------------------------------------
 
     public function exhibits(Carbon $from, Carbon $to): ReportDataset
@@ -365,8 +495,8 @@ class ReportBuilder
                 foreach ($chunk as $log) {
                     $rows[] = [
                         $log->created_at->format('Y-m-d H:i:s'),
-                        $log->user_name, $log->role, $log->action,
-                        $log->details, $log->ip_address,
+                        $log->user_name, $log->role, $log->display_action,
+                        $log->display_details, $log->ip_address,
                     ];
                 }
             });

@@ -82,7 +82,7 @@ class AdmissionRulesTest extends TestCase
             'visit_type' => 'Solo', 'visitor_type' => 'Tourist',
             'city' => 'Quezon City', 'province' => 'Metro Manila', 'country' => 'Philippines',
             'email' => 'maria@example.org',
-            'password' => 'correct horse battery', 'password_confirmation' => 'correct horse battery',
+            'password' => 'Correct-horse-battery-7', 'password_confirmation' => 'Correct-horse-battery-7',
         ];
     }
 
@@ -134,10 +134,13 @@ class AdmissionRulesTest extends TestCase
 
     public function test_a_bad_discount_row_is_refused_by_name_and_nothing_is_saved(): void
     {
+        // The defaults (senior, PWD, child) are there from the migration.
+        $before = \App\Models\AdmissionDiscount::count();
+
         $this->saveRules([$this->senior(), $this->child(['percent_off' => 0])], 'aurora')
             ->assertSessionHasErrors(['discounts' => 'Child: Say how much comes off, from 1% to 100% (free).']);
 
-        $this->assertDatabaseCount('admission_discounts', 0);
+        $this->assertDatabaseCount('admission_discounts', $before);
         $this->assertSame('baler', Admission::scope());
 
         $this->saveRules([$this->senior(['min_age' => 70, 'max_age' => 60])])
@@ -386,18 +389,20 @@ class AdmissionRulesTest extends TestCase
         $this->saveRules([$this->senior()]);
         $id = $this->discount('Senior citizen')->discount_id;
         $this->postJson('/api/v1/visitors', $this->signUp(['age' => 66, 'discount_id' => $id]))->assertCreated();
+        // As if the emailed code had been typed back.
+        Visitor::where('email', 'maria@example.org')->firstOrFail()->markEmailVerified();
 
         $this->saveRules([$this->senior(['id' => $id, 'percent_off' => 100])]);
         Carbon::setTestNow(now()->addDay());
 
-        $this->postJson('/api/v1/visitors/login', ['email' => 'maria@example.org', 'password' => 'correct horse battery'])
+        $this->postJson('/api/v1/visitors/login', ['email' => 'maria@example.org', 'password' => 'Correct-horse-battery-7'])
             ->assertOk()->assertJson(['admission_fee' => 0, 'payment_status' => 'Free', 'clearance' => 'pending_id']);
 
         // Withdrawn altogether: back to the full fee.
         $this->saveRules([]);
         Carbon::setTestNow(now()->addDay());
 
-        $this->postJson('/api/v1/visitors/login', ['email' => 'maria@example.org', 'password' => 'correct horse battery'])
+        $this->postJson('/api/v1/visitors/login', ['email' => 'maria@example.org', 'password' => 'Correct-horse-battery-7'])
             ->assertOk()->assertJson(['admission_fee' => 50, 'payment_status' => 'Unpaid', 'discount' => null]);
 
         Carbon::setTestNow();

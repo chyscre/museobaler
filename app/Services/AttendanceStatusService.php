@@ -23,6 +23,32 @@ class AttendanceStatusService
     public const REST_DAY = 'Rest Day';
     public const NO_SHIFT = 'No Schedule';
 
+    /** The scanner rests this long after a check-in, whatever the shift says. */
+    public const CHECKOUT_COOLDOWN_MINUTES = 5;
+
+    /** End of day for anyone without a shift set (or on a rest day). */
+    public const DEFAULT_SHIFT_END = '16:00';
+
+    /**
+     * The earliest moment a check-out scan is accepted: the end of the shift,
+     * but never sooner than the cooldown after checking in. Leaving early is
+     * still possible - it goes through a correction, where somebody else
+     * signs off on it, instead of a scan nobody looks at.
+     */
+    public function checkoutOpensAt(Staff $staff, Carbon $date, StaffAttendance $in): Carbon
+    {
+        $schedule = $staff->schedules->firstWhere('weekday', (int) $date->dayOfWeek);
+
+        $shiftEnd = $schedule && !$schedule->is_rest_day
+            ? $schedule->shift_end
+            : self::DEFAULT_SHIFT_END;
+
+        $opensAt  = $date->copy()->setTimeFromTimeString($shiftEnd);
+        $cooldown = $in->scanned_at->copy()->addMinutes(self::CHECKOUT_COOLDOWN_MINUTES);
+
+        return $opensAt->max($cooldown);
+    }
+
     /**
      * One person's day: the in/out rows, the derived status, and the minutes
      * worked. $rows is that staff member's attendance for the date.

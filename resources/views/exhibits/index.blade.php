@@ -9,7 +9,6 @@
 .btn-muted{background:var(--surface);color:var(--text-3);border:1.5px solid var(--border)}
 .btn-muted:hover{border-color:var(--text-3);color:var(--text)}
 .ex-stale{position:absolute;top:10px;right:10px;z-index:2;display:inline-flex;align-items:center;gap:4px;background:#b45309;color:#fff;border-radius:20px;padding:3px 9px;font-size:10.5px;font-weight:700;letter-spacing:.02em}
-.ex-chip{display:inline-flex;align-items:center;background:var(--border-light);border-radius:4px;padding:2px 8px;font-size:11px;color:var(--text-3);font-weight:500}
 /* The exhibit modal is a working surface, not a dialog: editing an exhibit
    means a form, a picture, translations and a gallery at once, and at 660px
    those stacked into a column nobody could see the end of. Wide, with the
@@ -55,6 +54,27 @@
 .ai-section [hidden]{display:none!important}
 .ex-vh{font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
 .ex-vt{font-size:13px;color:var(--text-2);line-height:1.7;white-space:pre-line}
+/* Read-only view: three sections split by a rule, a heading per section
+   rather than a bold label per field. */
+.exv-sec{margin-top:16px;padding-top:14px;border-top:1px solid var(--border-light)}
+.exv-sec > .ex-vh{margin-bottom:8px}
+.exv-main > .ex-vh{margin-bottom:8px}
+/* Label beside value, one fact to a line. */
+.exv-rows{display:grid;grid-template-columns:76px minmax(0,1fr);gap:7px 12px;margin:0;align-items:baseline}
+.exv-rows dt{font-size:12px;color:var(--text-3)}
+.exv-rows dd{margin:0;font-size:13px;color:var(--text);font-weight:500}
+.exv-sub{font-size:12px;font-weight:600;color:var(--text-2);margin:14px 0 4px}
+.exv-audio{display:grid;grid-template-columns:150px minmax(0,1fr);align-items:center;gap:12px;padding:7px 0}
+.exv-audio + .exv-audio{border-top:1px solid var(--border-light)}
+.exv-lang{font-size:12.5px;font-weight:600;color:var(--text);min-width:0}
+.exv-lang span{display:block;font-size:11.5px;font-weight:400;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.exv-none{font-size:12px;color:var(--text-4)}
+/* No picture (or one that failed to load): the facts move up to the top. */
+.ex-side > .exv-sec:first-child{margin-top:0;padding-top:0;border-top:0}
+
+.exv-qr{display:flex;align-items:center;gap:12px;margin-top:12px}
+.exv-qr img{width:84px;height:84px;background:#fff;border:1px solid var(--border);border-radius:6px;flex-shrink:0}
+.exv-qr-actions{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 </style>
 @endpush
 
@@ -182,7 +202,7 @@
        images rather than a list of forms. --}}
   <div class="ex-thumb {{ $ex->image ? '' : 'no-image' }}">
     @if($ex->image)
-      <img src="{{ $ex->image_url }}" alt="" loading="lazy">
+      <img src="{{ $ex->thumb_url }}" alt="" loading="lazy">
     @endif
     <span class="ex-code">{{ $ex->exhibit_code }}</span>
     @if(!$ex->status)<span class="arch-tag">Archived</span>@endif
@@ -308,7 +328,6 @@
         {{-- View mode actions --}}
         <div class="view-mode" style="display:flex;gap:6px;align-items:stretch">
           <button class="btn btn-green btn-sm" id="exEditBtn" onclick="switchToEdit()" style="height:32px;min-width:64px;justify-content:center;padding:0 14px;font-size:12px">Edit</button>
-          <a id="exQrBtn" href="#" class="btn btn-outline btn-sm" style="height:32px;min-width:64px;justify-content:center;padding:0 14px;font-size:12px">QR Code</a>
           <form id="exArchiveForm" method="POST" style="display:flex">
             @csrf
             <button id="exArchiveBtn" class="btn btn-outline btn-sm" type="submit" style="height:32px;min-width:64px;justify-content:center;padding:0 14px;font-size:12px">Archive</button>
@@ -392,11 +411,11 @@ function openExModal(id){
 
   // Load read-only data
   fetch('{{ url('/') }}/exhibits/'+id+'/modal')
-    .then(r=>r.json())
+    .then(r=>{ if(!r.ok) throw r; return r.json(); })
     .then(d=>renderView(d))
-    .catch(()=>{
+    .catch(e=>{
       document.getElementById('exViewBody').innerHTML =
-        '<p style="color:var(--red);padding:20px;text-align:center">Failed to load.</p>';
+        '<p style="color:var(--red);padding:20px;text-align:center">'+friendlyError(e)+'</p>';
     });
 }
 
@@ -409,17 +428,10 @@ function closeExModal(){
 function renderView(d){
   const id = d.exhibit_id;
   const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const chip = v => `<span class="ex-chip">${v}</span>`;
 
   // Update header
   document.getElementById('exModalTitle').textContent = d.name;
   document.getElementById('exModalCode').textContent  = d.exhibit_code;
-
-  // Wire QR link — opens QR modal for this exhibit
-  document.getElementById('exQrBtn').onclick = function(e) {
-    e.preventDefault();
-    openQrModal(d.exhibit_id, d.name, d.exhibit_code, d.floor, d.hall);
-  };
 
   // Wire archive/restore form
   const archForm = document.getElementById('exArchiveForm');
@@ -436,71 +448,72 @@ function renderView(d){
     archBtn.className = 'btn btn-outline btn-sm';
   }
 
-  const statusBadge = d.status
-    ? '<span class="badge b-green">Active</span>'
-    : '<span class="badge b-red">Archived</span>';
-  const catBadge = d.category
-    ? `<span class="badge b-gold">${esc(d.category)}</span>`
-    : '<span style="color:var(--text-4)">—</span>';
+  // Overview / Content / Status. What the view used to show besides -
+  // the curator credit, the raw language list, the language codes - is
+  // still on the edit form; it was noise for someone checking an exhibit.
+  const meta = (k, v) => v ? `<dt>${k}</dt><dd>${v}</dd>` : '';
+  const location = [d.floor, d.hall].filter(Boolean).map(esc).join(' · ');
 
-  const transHtml = d.translations && d.translations.length
+  // One row per language: the guide's title in that language, and its audio.
+  const audioHtml = d.translations && d.translations.length
     ? d.translations.map(t=>`
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light)">
-          <div style="min-width:90px">
-            <div style="font-size:12.5px;font-weight:600;color:var(--text)">${esc(t.language_label)}</div>
-            <span class="badge b-gray" style="font-size:10px;margin-top:2px">${esc(t.language_code)}</span>
-          </div>
-          <div style="flex:1">
-            ${t.title?`<div style="font-size:12px;color:var(--text-3);margin-bottom:4px">${esc(t.title)}</div>`:''}
-            ${t.audio_file
-              ?`<audio controls style="height:26px;width:100%"><source src="${t.audio_url||'/storage/audio/'+esc(t.audio_file)}"></audio>`
-              :'<span style="font-size:11px;color:var(--text-4)">No audio file</span>'}
-          </div>
+        <div class="exv-audio">
+          <div class="exv-lang">${esc(t.language_label)}${t.title && t.title !== d.name ? `<span title="${esc(t.title)}">${esc(t.title)}</span>` : ''}</div>
+          ${t.audio_file
+            ? `<audio controls preload="none" style="height:30px;width:100%"><source src="${esc(t.audio_url||'{{ url('/') }}/storage/audio/'+t.audio_file)}"></audio>`
+            : '<span class="exv-none">No audio yet</span>'}
         </div>`).join('')
-    : '<p style="font-size:13px;color:var(--text-3);padding:8px 0">No translations added yet.</p>';
+    : '<div class="exv-none">No audio guides yet.</div>';
 
+  // The text runs long and the facts are short, so the facts stack under the
+  // picture and the text gets the wide column to itself. Laid out the other
+  // way, three one-word facts were stretched across the whole modal and the
+  // column beside the text sat empty below the picture.
   document.getElementById('exViewBody').innerHTML = `
-    <div style="padding:18px 22px">
+    <div style="padding:20px 22px">
       <div class="ex-two">
-        <div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
-            ${catBadge}
-            ${chip(esc(d.floor)+' · '+esc(d.hall))}
-            ${d.authors ? chip(esc(d.authors)) : ''}
-            ${d.languages ? chip(esc(d.languages)) : ''}
-            ${d.storyline_order ? chip('Story #'+d.storyline_order) : ''}
-            ${statusBadge}
-            <span class="ex-chip" style="color:var(--green-dark);font-weight:700">${(d.scans_count||0).toLocaleString()} scans</span>
-          </div>
-
-          ${d.description ? `
-            <div style="margin-bottom:14px">
-              <div class="ex-vh">Description</div>
-              <div class="ex-vt">${esc(d.description)}</div>
-            </div>` : ''}
-
-          ${d.fun_facts ? `
-            <div style="margin-bottom:14px">
-              <div class="ex-vh">Fun Facts</div>
-              <div class="ex-vt">${esc(d.fun_facts)}</div>
-            </div>` : ''}
-
-          <div>
-            <div class="ex-vh">Translations &amp; Audio</div>
-            ${transHtml}
-          </div>
-        </div>
+        <section class="exv-main">
+          <div class="ex-vh">Content</div>
+          ${d.description ? `<div class="ex-vt">${esc(d.description)}</div>` : '<div class="exv-none">No description yet.</div>'}
+          ${d.fun_facts ? `<div class="exv-sub">Fun facts</div><div class="ex-vt">${esc(d.fun_facts)}</div>` : ''}
+          <div class="exv-sub">Audio guides</div>
+          ${audioHtml}
+        </section>
 
         <div class="ex-side">
-          ${d.image ? `<img src="/exhibit-image/${encodeURIComponent(d.image)}" class="ex-side-img" alt="">` : ''}
-          ${d.qr_url ? `
-            <div style="margin-top:12px;text-align:center">
-              <img src="${esc(d.qr_url)}?t=${Date.now()}" style="width:120px;height:120px;background:#fff;border:1px solid var(--border);border-radius:6px" alt="QR code for ${esc(d.exhibit_code)}">
-              <div style="margin-top:6px"><a class="btn btn-outline btn-xs" href="${esc(d.qr_url)}?download=1">Download QR</a></div>
-            </div>` : ''}
+          ${d.image_url
+            ? `<img src="${esc(d.image_url)}" class="ex-side-img" alt="" onerror="this.remove()">`
+            : ''}
+
+          <section class="exv-sec">
+            <div class="ex-vh">Overview</div>
+            <dl class="exv-rows">
+              ${meta('Category', d.category ? esc(d.category) : '<span class="exv-none">None</span>')}
+              ${meta('Location', location || '<span class="exv-none">Not placed</span>')}
+              ${meta('Storyline', d.storyline_order ? 'Stop ' + d.storyline_order : '')}
+            </dl>
+          </section>
+
+          <section class="exv-sec">
+            <div class="ex-vh">Status</div>
+            <dl class="exv-rows">
+              ${meta('Status', d.status ? '<span class="badge b-green">Active</span>' : '<span class="badge b-red">Archived</span>')}
+              ${meta('Scans', (d.scans_count||0).toLocaleString())}
+            </dl>
+            <div class="exv-qr">
+              ${d.qr_url ? `<img src="${esc(d.qr_url)}?t=${Date.now()}" alt="QR code for ${esc(d.exhibit_code)}">` : ''}
+              <div class="exv-qr-actions">
+                <button type="button" class="btn btn-outline btn-xs" id="exQrBtn">View &amp; print QR</button>
+                ${d.qr_url ? `<a class="btn btn-outline btn-xs" href="${esc(d.qr_url)}?download=1">Download QR</a>` : ''}
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </div>`;
+
+  document.getElementById('exQrBtn').onclick = () =>
+    openQrModal(d.exhibit_id, d.name, d.exhibit_code, d.floor, d.hall);
 }
 
 // ── Switch to edit mode ───────────────────────────────────────
@@ -515,7 +528,7 @@ function switchToEdit(){
   editBody.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;padding:40px"><div class="spinner"></div></div>';
 
   fetch('{{ url('/') }}/exhibits/'+_currentId+'/edit-form')
-    .then(r=>r.text())
+    .then(r=>{ if(!r.ok) throw r; return r.text(); })
     .then(html=>{
       editBody.innerHTML = html;
       // The edit form carries its own translations & audio review section.
@@ -530,8 +543,8 @@ function switchToEdit(){
       const form = editBody.querySelector('form');
       if(form) form.addEventListener('submit', ()=>{ _editLoaded = false; });
     })
-    .catch(()=>{
-      editBody.innerHTML = '<p style="color:var(--red);padding:20px;text-align:center">Failed to load edit form.</p>';
+    .catch(e=>{
+      editBody.innerHTML = '<p style="color:var(--red);padding:20px;text-align:center">'+friendlyError(e)+'</p>';
     });
 }
 

@@ -44,6 +44,8 @@ class ClearRecords extends Command
         'scans'                  => 'exhibit QR scans',
         'attendances'            => 'visitor check-ins',
         'tours'                  => 'guided tours',
+        'admission_payments'     => 'admission payments',
+        'visits'                 => 'visitor visit history',
         'visitors'               => 'visitors',
         'visit_groups'           => 'visitor groups',
         'staff_attendances'      => 'staff check-in/out rows',

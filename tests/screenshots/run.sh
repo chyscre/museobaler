@@ -23,6 +23,7 @@ cd "$(dirname "$0")/../.."
 
 PORT="${SCREENSHOT_PORT:-8123}"
 EMAIL="admin@museobaler.com"
+TOURISM_EMAIL="tourism@baler.gov.ph"
 # Only ever the password of a database that is deleted a minute from now.
 PASSWORD="Sh0tsDemo@2026x"
 # A directory, not a file: mktemp's own file would be left behind if the
@@ -57,6 +58,14 @@ php artisan db:seed --class=DemoDataSeeder --force --no-interaction >/dev/null
 # --ready skips the change-password screen the seeded account would otherwise
 # be held on, which is the whole point of that flag existing.
 php artisan staff:password "$EMAIL" --password="$PASSWORD" --ready >/dev/null
+# The Tourism office owns four screens the Administrator cannot open at all,
+# so they have to be shot from that account rather than this one.
+php artisan staff:password "$TOURISM_EMAIL" --password="$PASSWORD" --ready >/dev/null
+
+# The visitor app needs accounts that can sign in, which DemoDataSeeder's
+# counter records are not. See tests/screenshots/demo-visitors.php.
+DEMO_VISITOR_PASSWORD="$PASSWORD" \
+    php artisan tinker tests/screenshots/demo-visitors.php >/dev/null
 
 echo "==> Serving it on port ${PORT}"
 php artisan serve --host=127.0.0.1 --port="$PORT" >/dev/null 2>&1 &
@@ -77,7 +86,9 @@ fi
 echo "==> Capturing"
 BASE_URL="http://127.0.0.1:${PORT}" \
 STAFF_EMAIL="$EMAIL" \
+TOURISM_STAFF_EMAIL="$TOURISM_EMAIL" \
 STAFF_PASSWORD="$PASSWORD" \
+VISITOR_PASSWORD="$PASSWORD" \
     node tests/screenshots/capture.mjs
 
 echo "==> Done. Review the images before committing them."

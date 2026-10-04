@@ -27,7 +27,8 @@ class VisitorFactory extends Factory
             'province'       => 'Metro Manila',
             'country'        => 'Philippines',
             'email'          => fake()->unique()->safeEmail(),
-            'password'       => 'correct horse battery',
+            'email_verified_at' => now(),
+            'password'       => 'Correct-horse-battery-7',
             'auth_provider'  => 'manual',
             'explore_mode'   => 'Storyline',
             'source'         => 'app',
@@ -36,6 +37,12 @@ class VisitorFactory extends Factory
             'id_verified'    => false,
             'last_visit'     => now(),
         ];
+    }
+
+    /** Signed up with a password and never typed the emailed code back. */
+    public function unverified(): static
+    {
+        return $this->state(fn () => ['email_verified_at' => null]);
     }
 
     /** The desk has taken their fee: cleared to enter. */

@@ -41,6 +41,19 @@ return [
         'endpoint'   => env('GEMINI_ENDPOINT', 'https://generativelanguage.googleapis.com/v1beta'),
     ],
 
+    /*
+    | "Continue with Google" for visitors (Laravel Socialite). An OAuth
+    | client from Google Cloud Console, type "Web application". With no id
+    | set, the app hides the button. The redirect URI is built from the
+    | request when left blank; whichever host is used has to be listed on
+    | the client as an authorised redirect URI, ending /auth/google/callback.
+    */
+    'google' => [
+        'client_id'     => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect'      => env('GOOGLE_REDIRECT_URI'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

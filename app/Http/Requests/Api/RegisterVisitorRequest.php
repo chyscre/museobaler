@@ -40,7 +40,11 @@ class RegisterVisitorRequest extends ApiFormRequest
             'explore_mode' => ['nullable', Rule::in(['Storyline', 'Free Roam'])],
             // Mandatory: it is how a returning visitor is recognised.
             'email'        => ['required', 'string', 'email', 'max:150'],
+            // Signing up through Google: this token stands in for the
+            // password, and the email it was issued for wins over the form's.
+            'google_signup' => ['nullable', 'string', 'regex:/^[a-f0-9]{64}$/'],
             'password'     => [
+                'exclude_with:google_signup',
                 'required', 'string', 'confirmed',
                 new VisitorPassword([
                     $this->scalarInput('first_name'),

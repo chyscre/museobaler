@@ -58,33 +58,61 @@
   </div>
 @endif
 
-{{-- The three things the desk does, each folded until it is needed. A
-     validation error re-opens the form it came from so the message is not
-     hidden behind a closed card. --}}
+{{-- Every arrival starts from one button: who is it - one person, or a
+     party - and then only the form for that. A validation error re-opens the
+     modal on the form it came from so the message is not hidden. --}}
 @php
   $groupErr = $errors->hasAny(['contact_name', 'headcount', 'group_type', 'paying_count', 'discounts']);
   $soloErr  = $errors->any() && !$groupErr;
 @endphp
 
-<div style="display:grid;gap:14px">
+<div class="card av-bar">
+  <div style="flex:1;min-width:220px">
+    <div style="font-size:15px;font-weight:700;color:var(--text)">Someone at the counter?</div>
+    <div style="font-size:12.5px;color:var(--text-3);margin-top:2px">Register a visitor who has no phone, or a family or group paying as one.</div>
+  </div>
+  <button type="button" class="btn btn-green" id="avOpen">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="width:15px;height:15px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Add Visitor
+  </button>
+</div>
 
-  {{-- ── One visitor ─────────────────────────────────────────── --}}
-  <details class="fold" {{ $soloErr ? 'open' : '' }}>
-    <summary>
-      <div class="fold-ico">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+<div class="overlay" id="avModal" data-start="{{ $groupErr ? 'group' : ($soloErr ? 'single' : '') }}" role="dialog" aria-modal="true" aria-labelledby="avTitle">
+  <div class="modal modal-lg">
+    <div class="modal-hd">
+      <div style="display:flex;align-items:center;gap:8px">
+        <button type="button" class="modal-close" id="avBack" hidden aria-label="Back to visit type">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <h3 id="avTitle">Add visitor</h3>
       </div>
-      <div class="fold-text">
-        <div class="fold-title">One visitor</div>
-        <div class="fold-sub">Someone arriving on their own, or without a phone</div>
-      </div>
-      <svg class="fold-chev" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-    </summary>
+      <button type="button" class="modal-close" id="avClose" aria-label="Close">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
 
-    <div class="fold-body">
+    {{-- ── Which kind of arrival ─────────────────────────────────── --}}
+    <div class="av-step" data-step="choose">
+      <div style="font-size:13px;color:var(--text-3);margin-bottom:12px">What kind of visit is this?</div>
+      <div class="av-choices">
+        <button type="button" class="av-choice" data-go="single">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <strong>Single visitor</strong>
+          <small>Someone arriving on their own, or without a phone</small>
+        </button>
+        <button type="button" class="av-choice" data-go="group">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <strong>Group / Family</strong>
+          <small>A family, friends travelling together, or a school tour: one entry, one payment</small>
+        </button>
+      </div>
+    </div>
+
+    {{-- ── One visitor ─────────────────────────────────────────── --}}
+    <div class="av-step" data-step="single" data-title="Single visitor" hidden>
       <form method="POST" action="{{ route('desk.visitors.store') }}">
         @csrf
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div id="soloNames" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <div>
             <label class="fl">First name *</label>
             <input class="fi" name="first_name" required value="{{ old('first_name') }}" autocomplete="off">
@@ -162,34 +190,38 @@
           <select class="fi" name="discount_id">
             <option value="">None — full price</option>
             @foreach($admission['discounts'] as $d)
-            <option value="{{ $d['id'] }}" @selected((string) old('discount_id') === (string) $d['id'])>
+            <option value="{{ $d['id'] }}" data-free="{{ $d['percent_off'] >= 100 ? 1 : 0 }}" @selected((string) old('discount_id') === (string) $d['id'])>
               {{ $d['name'] }}{{ $d['age_range'] ? ' (' . $d['age_range'] . ')' : '' }} — {{ $d['benefit'] }}{{ $d['percent_off'] < 100 ? ', PHP ' . number_format(\App\Support\Admission::discounted($admission['fee'], $d['percent_off']), 2) : '' }}{{ $d['proof'] ? ' · check ' . $d['proof'] : '' }}
             </option>
             @endforeach
           </select>
           @error('discount_id')<div style="font-size:12px;color:var(--red);margin-top:4px">{{ $message }}</div>@enderror
+
+          {{-- Express entry: only offered for a category that is free. The
+               desk sees the person and their ID now, so no name is asked and
+               the ID check is done on the spot. See DeskController::storeExpress(). --}}
+          <div id="expressBox" class="express-box" hidden>
+            <label class="express-opt">
+              <input type="checkbox" name="express" value="1" id="expressOn" @checked(old('express'))>
+              <span>
+                <strong>Express entry — no name needed</strong>
+                <small>Counts them in free with the ID checked now. Type, age, sex and where from are still recorded.</small>
+              </span>
+            </label>
+            <div id="expressCount" hidden style="margin-top:10px;max-width:160px">
+              <label class="fl">How many</label>
+              <input class="fi" name="express_count" type="number" min="1" max="30" value="{{ old('express_count', 1) }}">
+            </div>
+          </div>
         </div>
         @endif
 
-        <button type="submit" class="btn btn-green" style="width:100%;margin-top:18px;justify-content:center">Register visitor</button>
+        <button type="submit" id="soloSubmit" class="btn btn-green" style="width:100%;margin-top:18px;justify-content:center">Register visitor</button>
       </form>
     </div>
-  </details>
 
-  {{-- ── A group ─────────────────────────────────────────────── --}}
-  <details class="fold" {{ $groupErr ? 'open' : '' }}>
-    <summary>
-      <div class="fold-ico">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      </div>
-      <div class="fold-text">
-        <div class="fold-title">A group arriving together</div>
-        <div class="fold-sub">Four or five from out of town, a family, or a school tour — one entry, one payment</div>
-      </div>
-      <svg class="fold-chev" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-    </summary>
-
-    <div class="fold-body">
+    {{-- ── A group ─────────────────────────────────────────────── --}}
+    <div class="av-step" data-step="group" data-title="Group / Family" hidden>
       <form method="POST" action="{{ route('desk.groups.store') }}">
         @csrf
         <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px">
@@ -258,7 +290,10 @@
         <button type="submit" class="btn btn-green" style="width:100%;margin-top:14px;justify-content:center">Register group</button>
       </form>
     </div>
-  </details>
+  </div>
+</div>
+
+<div style="display:grid;gap:14px">
 
   {{-- ── Staff check-in code ─────────────────────────────────── --}}
   {{-- Lives on the desk page because a museum with one computer and no spare
@@ -430,7 +465,13 @@
 @push('styles')
 <style>
   /* Visitor-type picker: three big tap targets. */
-  #fromLocal[hidden], #fromCity[hidden], #soloDiscount[hidden] { display: none; }
+  #fromLocal[hidden], #fromCity[hidden], #soloDiscount[hidden], #soloNames[hidden],
+  #expressBox[hidden], #expressCount[hidden] { display: none; }
+  .express-box { margin-top: 12px; padding: 12px 14px; border: 1.5px dashed #86efac; border-radius: 10px; background: var(--green-pale); }
+  .express-opt { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+  .express-opt input { margin-top: 3px; accent-color: var(--green-dark); }
+  .express-opt strong { display: block; font-size: 13px; color: var(--green-dark); }
+  .express-opt small { display: block; font-size: 12px; color: var(--text-2); margin-top: 2px; line-height: 1.45; }
   .vtype-opt { cursor: pointer; }
   .vtype-opt input { display: none; }
   .vtype-opt span {
@@ -444,11 +485,64 @@
     background: var(--green-pale);
     box-shadow: 0 0 0 3px rgba(22,101,52,.08);
   }
+
+  /* Add Visitor: one button, then single or group, then that form. */
+  .av-bar { margin-bottom: 18px; padding: 16px 22px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .av-step[hidden] { display: none; }
+  .av-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .av-choice {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left;
+    padding: 18px; border: 1.5px solid var(--border); border-radius: 12px;
+    background: var(--surface); cursor: pointer; transition: .12s; font: inherit;
+  }
+  .av-choice svg { width: 26px; height: 26px; color: var(--green-dark); margin-bottom: 4px; }
+  .av-choice strong { font-size: 15px; color: var(--text); }
+  .av-choice small  { font-size: 12px; color: var(--text-3); line-height: 1.45; }
+  .av-choice:hover, .av-choice:focus-visible {
+    border-color: var(--green-dark); background: var(--green-pale); outline: none;
+    box-shadow: 0 0 0 3px rgba(22,101,52,.08);
+  }
 </style>
 @endpush
 
 @push('scripts')
 <script>
+  // Add Visitor modal. Closing keeps whatever was typed, so a desk that
+  // steps away mid-entry does not have to start again.
+  (function () {
+    var modal = document.getElementById('avModal');
+    if (!modal) return;
+    var title = document.getElementById('avTitle');
+    var back  = document.getElementById('avBack');
+    var steps = modal.querySelectorAll('.av-step');
+
+    function go(step) {
+      steps.forEach(function (s) { s.hidden = s.dataset.step !== step; });
+      var pane = modal.querySelector('.av-step[data-step="' + step + '"]');
+      title.textContent = pane.dataset.title || 'Add visitor';
+      back.hidden = step === 'choose';
+      var first = step === 'choose'
+        ? pane.querySelector('.av-choice')
+        : pane.querySelector('input:not([type=hidden]):not([disabled]), select:not([disabled])');
+      if (first) first.focus();
+    }
+    function open(step) { modal.classList.add('open'); go(step || 'choose'); }
+    function close() { modal.classList.remove('open'); document.getElementById('avOpen').focus(); }
+
+    document.getElementById('avOpen').addEventListener('click', function () { open(); });
+    document.getElementById('avClose').addEventListener('click', close);
+    back.addEventListener('click', function () { go('choose'); });
+    modal.querySelectorAll('.av-choice').forEach(function (b) {
+      b.addEventListener('click', function () { go(b.dataset.go); });
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && modal.classList.contains('open')) close();
+    });
+
+    // Back from a refused save: straight to the form with its errors.
+    if (modal.dataset.start) open(modal.dataset.start);
+  })();
+
   // Keeps the embedded check-in code in step with the server's window. Only
   // runs while the panel is open, so a desk that never expands it does not
   // poll all day.
@@ -515,13 +609,34 @@
         el.hidden = !on;
         el.querySelectorAll('input, select').forEach(f => { f.disabled = !on; });
       }
+      // Express entry is offered only while a free category is picked, and
+      // when it is on the name boxes go: disabled, so they are neither
+      // required nor sent.
+      const pick    = disc ? disc.querySelector('select[name="discount_id"]') : null;
+      const xBox    = document.getElementById('expressBox');
+      const xOn     = document.getElementById('expressOn');
+      const xCount  = document.getElementById('expressCount');
+      const names   = document.getElementById('soloNames');
+      const submit  = document.getElementById('soloSubmit');
+      function express() {
+        const local = document.querySelector('input[name="visitor_type"]:checked')?.value === 'Local';
+        const free  = !local && pick && pick.selectedOptions[0]?.dataset.free === '1';
+        show(xBox, !!free);
+        const on = !!free && xOn && xOn.checked;
+        show(xCount, on);
+        show(names, !on);
+        if (submit) submit.textContent = on ? 'Count in — free entry' : 'Register visitor';
+      }
       function swap() {
         const local = document.querySelector('input[name="visitor_type"]:checked')?.value === 'Local';
         show(city, !local);
         show(home, local);
         show(disc, !local);
+        express();
       }
       radios.forEach(r => r.addEventListener('change', swap));
+      if (pick) pick.addEventListener('change', express);
+      if (xOn) xOn.addEventListener('change', express);
       swap();
     })();
 

@@ -116,6 +116,68 @@ class AppServiceProvider extends ServiceProvider
                 Limit::perMinutes(5, 30)->by('login:ip:' . $request->ip()),
             ];
         });
+
+        // Forgot password. Each code allows five guesses at a million, so
+        // what keeps an account from being guessed is how many codes can be
+        // asked for: three per quarter hour and ten a day per email. The
+        // per-address limit stops one phone mailing a list of strangers.
+        RateLimiter::for('visitor-password-forgot', function (Request $request) {
+            $email = self::postedEmail($request);
+
+            return [
+                Limit::perMinutes(15, 3)->by('pwforgot:acct:' . md5($email)),
+                Limit::perDay(10)->by('pwforgot:day:' . md5($email)),
+                Limit::perMinutes(15, 10)->by('pwforgot:ip:' . $request->ip()),
+            ];
+        });
+
+        // Typing the code and setting the password. Generous enough for
+        // typos; the five-guess limit on the code itself does the real work.
+        RateLimiter::for('visitor-password-code', function (Request $request) {
+            return [
+                Limit::perMinutes(15, 15)->by('pwcode:acct:' . md5(self::postedEmail($request))),
+                Limit::perMinutes(15, 40)->by('pwcode:ip:' . $request->ip()),
+            ];
+        });
+
+        // The sign-up code. Same reasoning as the reset code above: a code
+        // allows five guesses, so what matters is how many can be sent.
+        RateLimiter::for('visitor-verify-resend', function (Request $request) {
+            $email = self::postedEmail($request);
+
+            return [
+                Limit::perMinutes(15, 4)->by('verifysend:acct:' . md5($email)),
+                Limit::perDay(12)->by('verifysend:day:' . md5($email)),
+                Limit::perMinutes(15, 10)->by('verifysend:ip:' . $request->ip()),
+            ];
+        });
+
+        RateLimiter::for('visitor-verify-code', function (Request $request) {
+            return [
+                Limit::perMinutes(15, 15)->by('verifycode:acct:' . md5(self::postedEmail($request))),
+                Limit::perMinutes(15, 40)->by('verifycode:ip:' . $request->ip()),
+            ];
+        });
+
+        // Continue with Google: the trip to Google and the code exchange.
+        // The codes are 256-bit and single-use; this only stops a loop.
+        RateLimiter::for('visitor-google', fn (Request $request) => Limit::perMinute(20)->by('google:' . $request->ip()));
+
+        // Changing it from Settings: guesses at the current password from a
+        // phone that has a session. Keyed on the account the token names.
+        RateLimiter::for('visitor-password-change', function (Request $request) {
+            $who = $request->user('visitor')?->getAuthIdentifier() ?: $request->ip();
+
+            return Limit::perMinutes(15, 5)->by("pwchange:$who");
+        });
+    }
+
+    /** The posted email, lowercased, or '' when it is not a scalar - see visitor-login. */
+    private static function postedEmail(Request $request): string
+    {
+        $posted = $request->input('email');
+
+        return mb_strtolower(trim(is_scalar($posted) ? (string) $posted : ''));
     }
 
     /**

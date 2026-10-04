@@ -148,7 +148,7 @@ function openFeedbackModal(id){
   body.style.display='flex';
   overlay.classList.add('open');
   fetch('{{ url('/') }}/feedback/'+id+'/modal')
-    .then(r=>r.json())
+    .then(r=>{ if(!r.ok) throw r; return r.json(); })
     .then(d=>{
       const name=esc(((d.visitor_first||'')+' '+(d.visitor_last||'')).trim()||'—');
       const stars='★'.repeat(d.rating)+'☆'.repeat(5-d.rating);
@@ -172,7 +172,7 @@ function openFeedbackModal(id){
         <div class="fi-val" style="white-space:pre-line;min-height:60px;line-height:1.6">${esc(d.comment)||'No comment provided.'}</div>
         <div class="modal-ft"><button class="btn btn-outline" onclick="closeFeedbackModal()">Close</button></div>`;
     })
-    .catch(()=>{ body.innerHTML='<p style="color:var(--red);padding:20px">Failed to load feedback.</p>'; });
+    .catch(e=>{ body.innerHTML='<p style="color:var(--red);padding:20px">'+friendlyError(e)+'</p>'; });
 }
 function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 // The survey answers, grouped the way the paper form is. Feedback from

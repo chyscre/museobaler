@@ -253,6 +253,90 @@ class StaffAttendanceTest extends TestCase
 
     }
 
+    public function test_without_a_shift_check_out_is_locked_until_four_pm(): void
+    {
+        $staff = Staff::factory()->administrator()->create();
+        $this->actingAs($staff)->postJson('/my/attendance/scan', ['code' => $this->currentCode()] + $this->onSite());
+
+        Carbon::setTestNow(Carbon::create(2026, 9, 9, 15, 59, 0));
+        $this->actingAs($staff)->postJson('/my/attendance/scan', ['code' => $this->currentCode()] + $this->onSite())
+            ->assertStatus(422)
+            ->assertJsonFragment(['ok' => false])
+            ->assertSee('4:00 PM');
+        $this->assertDatabaseMissing('staff_attendances', ['staff_id' => $staff->staff_id, 'type' => 'out']);
+
+        Carbon::setTestNow(Carbon::create(2026, 9, 9, 16, 0, 0));
+        $this->actingAs($staff)->postJson('/my/attendance/scan', ['code' => $this->currentCode()] + $this->onSite())
+            ->assertOk()->assertJson(['type' => 'out']);
+    }
+
+    public function test_check_out_follows_the_shift_end_when_one_is_set(): void
+    {
+        $staff = Staff::factory()->administrator()->create();
+        \App\Models\StaffSchedule::create([
+            'staff_id' => $staff->staff_id, 'weekday' => now()->dayOfWeek,
+            'shift_start' => '08:00', 'shift_end' => '17:00', 'grace_minutes' => 15,
+        ]);
+        $this->actingAs($staff)->postJson('/my/attendance/scan', ['code' => $this->currentCode()] + $this->onSite());
+
+        // 4 PM is only the fallback - a later shift keeps the lock on.
+        Carbon::setTestNow(Carbon::create(2026, 9, 9, 16, 30, 0));
+        $this->actingAs($staff)->postJson('/my/attendance/scan', ['code' => $this->currentCode()] + $this->onSite())
+            ->assertStatus(422)->assertSee('5:00 PM');
+
+        Carbon::setTestNow(Carbon::create(2026, 9, 9, 17, 0, 0));
+        $this->actingAs($staff)->postJson('/my/attendance/scan', ['code' => $this->currentCode()] + $this->onSite())
+            ->assertOk()->assertJson(['type' => 'out']);
+    }
+
+    public function test_a_check_in_after_shift_end_still_gets_the_five_minute_cooldown(): void
+    {
+        $staff = Staff::factory()->administrator()->create();
+
+        Carbon::setTestNow(Carbon::create(2026, 9, 9, 16, 10, 0));
+        $this->actingAs($staff)->postJson('/my/attendance/scan', ['code' => $this->currentCode()] + $this->onSite())
+            ->assertJson(['type' => 'in']);
+
+        Carbon::setTestNow(Carbon::create(2026, 9, 9, 16, 14, 0));
+        $this->actingAs($staff)->postJson('/my/attendance/scan', ['code' => $this->currentCode()] + $this->onSite())
+            ->assertOk()->assertJson(['noop' => true]);
+
+        Carbon::setTestNow(Carbon::create(2026, 9, 9, 16, 15, 0));
+        $this->actingAs($staff)->postJson('/my/attendance/scan', ['code' => $this->currentCode()] + $this->onSite())
+            ->assertOk()->assertJson(['type' => 'out']);
+    }
+
+    public function test_the_scan_button_is_disabled_until_check_out_opens(): void
+    {
+        $staff = Staff::factory()->administrator()->create();
+        $this->actingAs($staff)->postJson('/my/attendance/scan', ['code' => $this->currentCode()] + $this->onSite());
+
+        $this->actingAs($staff)->get('/my/attendance')
+            ->assertOk()
+            ->assertSee('Check-out opens at 4:00 PM')
+            ->assertSee('data-wait="28800"', false);
+    }
+
+    public function test_the_board_reads_only_present_or_absent(): void
+    {
+        $late = Staff::factory()->administrator()->create(['name' => 'Late Arrival']);
+        $away = Staff::factory()->administrator()->create(['name' => 'Stayed Home']);
+        \App\Models\StaffSchedule::create([
+            'staff_id' => $late->staff_id, 'weekday' => now()->dayOfWeek,
+            'shift_start' => '07:00', 'shift_end' => '15:00', 'grace_minutes' => 0,
+        ]);
+
+        // An hour past the shift start - the month view calls this Late.
+        $this->actingAs($late)->postJson('/my/attendance/scan', ['code' => $this->currentCode()] + $this->onSite());
+
+        $response = $this->actingAs(Staff::factory()->tourismHead()->create())->get('/staff-attendance');
+        $board = $response->viewData('board')->keyBy(fn ($row) => $row['staff']->name);
+
+        $this->assertSame('Present', $board['Late Arrival']['status']);
+        $this->assertSame('Absent', $board['Stayed Home']['status']);
+        $this->assertSame(['present' => 1, 'absent' => 1], $response->viewData('counts'));
+    }
+
     public function test_the_code_carries_no_identity_so_it_only_checks_in_the_scanner(): void
     {
         $maria = Staff::factory()->administrator()->create();

@@ -1,11 +1,14 @@
 <?php
 
 use App\Http\Controllers\Api\AttendanceController;
+use App\Http\Controllers\Api\EmailVerificationController;
+use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\Api\ExhibitController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\MuseumController;
 use App\Http\Controllers\Api\MediaController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\RecognitionController;
 use App\Http\Controllers\Api\ScanController;
 use App\Http\Controllers\Api\SurveyController;
@@ -39,6 +42,7 @@ Route::prefix('v1')->name('api.')->group(function () {
 
     // -- Public ------------------------------------------------------------
     Route::get('museum', [MuseumController::class, 'show'])->name('museum');
+    Route::get('museum/app-qr', [MuseumController::class, 'appQr'])->name('museum.app-qr');
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications');
 
     // -- Accounts ----------------------------------------------------------
@@ -49,6 +53,32 @@ Route::prefix('v1')->name('api.')->group(function () {
         ->middleware('throttle:visitor-login')
         ->name('visitors.login');
     Route::post('visitors/logout', [VisitorController::class, 'logout'])->name('visitors.logout');
+
+    // Proving the email: the 6-digit code from sign-up, and "Resend Code".
+    // No session token exists until this succeeds. See EmailVerificationController.
+    Route::post('visitors/verify-email', [EmailVerificationController::class, 'verify'])
+        ->middleware('throttle:visitor-verify-code')
+        ->name('visitors.verify-email');
+    Route::post('visitors/verify-email/resend', [EmailVerificationController::class, 'resend'])
+        ->middleware('throttle:visitor-verify-resend')
+        ->name('visitors.verify-email.resend');
+
+    // Continue with Google: the one-time code from /auth/google/callback.
+    Route::post('visitors/google', [GoogleAuthController::class, 'exchange'])
+        ->middleware('throttle:visitor-google')
+        ->name('visitors.google');
+
+    // Forgot password: a code by email, the code for a reset token, the
+    // token for a new password. See Api\PasswordController.
+    Route::post('visitors/password/forgot', [PasswordController::class, 'forgot'])
+        ->middleware('throttle:visitor-password-forgot')
+        ->name('visitors.password.forgot');
+    Route::post('visitors/password/verify', [PasswordController::class, 'verify'])
+        ->middleware('throttle:visitor-password-code')
+        ->name('visitors.password.verify');
+    Route::post('visitors/password/reset', [PasswordController::class, 'reset'])
+        ->middleware('throttle:visitor-password-code')
+        ->name('visitors.password.reset');
 
     // -- The fence: token read when present, never required -------------------
     Route::post('attendance', [AttendanceController::class, 'store'])->name('attendance.store');
@@ -70,6 +100,11 @@ Route::prefix('v1')->name('api.')->group(function () {
     Route::middleware('visitor.auth')->group(function () {
         Route::get('visitors/me', [VisitorController::class, 'status'])->name('visitors.me');
         Route::post('visitors/me/group', [VisitorController::class, 'joinGroup'])->name('visitors.join-group');
+        // Not behind visitor.cleared: the password belongs to the account,
+        // not to today's admission.
+        Route::put('visitors/me/password', [PasswordController::class, 'change'])
+            ->middleware('throttle:visitor-password-change')
+            ->name('visitors.password.change');
     });
 
     // -- The museum: signed in and cleared by the desk -----------------------

@@ -4,12 +4,12 @@
 @section('report-meta', $from->format('F j, Y') . ' – ' . $to->format('F j, Y'))
 
 @section('downloads')
-  {{-- Its own routes, not reports.export/preview: the audit trail sits
+  {{-- Its own routes, not reports.export: the audit trail sits
        behind the Tourism wall and is not on the shared routes at all. --}}
   @include('reports.partials.downloads', [
     'report' => 'audit',
     'params' => ['from' => $from->toDateString(), 'to' => $to->toDateString()],
-    'routes' => ['export' => 'reports.audit.export', 'preview' => 'reports.audit.preview'],
+    'routes' => ['export' => 'reports.audit.export'],
   ])
 @endsection
 
@@ -44,8 +44,8 @@
             <td>{{ $log->created_at->format('Y-m-d H:i:s') }}</td>
             <td>{{ $log->user_name }}</td>
             <td><span class="tag t-gray">{{ $log->role }}</span></td>
-            <td>{{ $log->action }}</td>
-            <td>{{ $log->details }}</td>
+            <td>{{ $log->display_action }}</td>
+            <td>{{ $log->display_details }}</td>
             <td>{{ $log->ip_address }}</td>
           </tr>
         @endforeach

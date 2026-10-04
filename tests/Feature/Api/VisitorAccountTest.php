@@ -2,11 +2,13 @@
 
 namespace Tests\Feature\Api;
 
+use App\Mail\VisitorVerificationCodeMail;
 use App\Models\MuseumInfo;
 use App\Models\Visitor;
 use App\Models\VisitGroup;
 use App\Support\MailDomain;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Tests\TestCase;
 
@@ -46,8 +48,8 @@ class VisitorAccountTest extends TestCase
             'province'              => 'Metro Manila',
             'country'               => 'Philippines',
             'email'                 => 'maria@example.org',
-            'password'              => 'correct horse battery',
-            'password_confirmation' => 'correct horse battery',
+            'password'              => 'Correct-horse-battery-7',
+            'password_confirmation' => 'Correct-horse-battery-7',
             'explore_mode'          => 'Storyline',
         ];
     }
@@ -79,7 +81,7 @@ class VisitorAccountTest extends TestCase
             ['first_name' => ['Maria']],
             ['last_name'  => ['x' => 'Santos']],
             ['email'      => ['maria@example.org']],
-            ['password'   => ['correct horse battery'], 'password_confirmation' => ['correct horse battery']],
+            ['password'   => ['Correct-horse-battery-7'], 'password_confirmation' => ['Correct-horse-battery-7']],
             ['barangay'   => ['Buhangin'], 'visitor_type' => 'Local'],
             ['country'    => ['Japan'], 'visitor_type' => 'Foreign'],
             ['group_code' => ['ABCD']],
@@ -103,24 +105,37 @@ class VisitorAccountTest extends TestCase
 
     public function test_a_tourist_registers_owes_the_fee_and_waits_on_the_desk(): void
     {
+        Mail::fake();
         MuseumInfo::create(['name' => 'Museo de Baler', 'admission_fee' => 75]);
 
-        $res = $this->postJson('/api/v1/visitors', $this->signUp())->assertCreated();
+        $signup = $this->postJson('/api/v1/visitors', $this->signUp())->assertCreated();
 
-        $res->assertJsonPath('first_name', 'Maria')
+        $signup->assertJsonPath('first_name', 'Maria')
             ->assertJsonPath('admission_fee', 75)
             ->assertJsonPath('payment_status', 'Unpaid')
-            ->assertJsonPath('clearance', 'pending_payment')
-            ->assertJsonPath('cleared', false)
-            ->assertJsonPath('returning', false)
+            ->assertJsonPath('verification_required', true)
+            ->assertJsonMissingPath('token')
             ->assertJsonMissingPath('password');
 
-        $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $res->json('token'));
-
         $v = Visitor::firstWhere('email', 'maria@example.org');
-        $this->assertNotSame('correct horse battery', $v->password, 'stored hashed');
+        $this->assertNotSame('Correct-horse-battery-7', $v->password, 'stored hashed');
         $this->assertSame('app', $v->source);
         $this->assertNotNull($v->last_visit);
+        $this->assertNull($v->email_verified_at);
+
+        // The emailed code is what signs them in.
+        $code = null;
+        Mail::assertSent(VisitorVerificationCodeMail::class, function ($mail) use (&$code) {
+            $code = $mail->code;
+            return true;
+        });
+        $res = $this->postJson('/api/v1/visitors/verify-email', ['email' => 'maria@example.org', 'code' => $code])
+            ->assertOk()
+            ->assertJsonPath('clearance', 'pending_payment')
+            ->assertJsonPath('cleared', false)
+            ->assertJsonPath('returning', false);
+
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $res->json('token'));
 
         // The token works, and reaches the gate but not through it.
         $this->getJson('/api/v1/visitors/me', ['Authorization' => 'Bearer ' . $res->json('token')])
@@ -172,6 +187,19 @@ class VisitorAccountTest extends TestCase
             $this->postJson('/api/v1/visitors', $this->signUp(['password' => $pw, 'password_confirmation' => $pw]))
                 ->assertStatus(422)
                 ->assertJsonPath('field', 'password');
+        }
+
+        foreach ([
+            'Kalabaw-9-b'     => 'Password must be at least 12 characters.',   // 11 characters
+            'kalabaw-tuwid-9' => 'Password must include an uppercase letter.',
+            'KALABAW-TUWID-9' => 'Password must include a lowercase letter.',
+            'Kalabaw-tuwid-x' => 'Password must include a number.',
+            'Kalabaw tuwid 9' => 'Password must include a symbol, such as ! @ # $ or %.',
+        ] as $pw => $message) {
+            $this->postJson('/api/v1/visitors', $this->signUp(['password' => $pw, 'password_confirmation' => $pw]))
+                ->assertStatus(422)
+                ->assertJsonPath('field', 'password')
+                ->assertJsonPath('message', $message);
         }
 
         $this->postJson('/api/v1/visitors', $this->signUp(['password_confirmation' => 'different']))
@@ -240,7 +268,7 @@ class VisitorAccountTest extends TestCase
         MuseumInfo::create(['name' => 'Museo de Baler', 'admission_fee' => 50]);
         $v = Visitor::factory()->paid()->create(['email' => 'maria@example.org', 'last_visit' => now()->subDays(3)]);
 
-        $res = $this->postJson('/api/v1/visitors/login', ['email' => 'maria@example.org', 'password' => 'correct horse battery'])
+        $res = $this->postJson('/api/v1/visitors/login', ['email' => 'maria@example.org', 'password' => 'Correct-horse-battery-7'])
             ->assertOk()
             ->assertJsonPath('returning', true)
             ->assertJsonPath('payment_status', 'Unpaid')
@@ -257,7 +285,7 @@ class VisitorAccountTest extends TestCase
             'paid_at'        => now(),
             'last_visit'     => now(),
         ])->save();
-        $this->postJson('/api/v1/visitors/login', ['email' => 'maria@example.org', 'password' => 'correct horse battery'])
+        $this->postJson('/api/v1/visitors/login', ['email' => 'maria@example.org', 'password' => 'Correct-horse-battery-7'])
             ->assertOk()->assertJsonPath('cleared', true);
     }
 
@@ -288,7 +316,7 @@ class VisitorAccountTest extends TestCase
 
         // A different account from the same address is not locked out with it.
         Visitor::factory()->create(['email' => 'jun@example.org']);
-        $this->postJson('/api/v1/visitors/login', ['email' => 'jun@example.org', 'password' => 'correct horse battery'])->assertOk();
+        $this->postJson('/api/v1/visitors/login', ['email' => 'jun@example.org', 'password' => 'Correct-horse-battery-7'])->assertOk();
     }
 
     public function test_sign_out_kills_the_token(): void

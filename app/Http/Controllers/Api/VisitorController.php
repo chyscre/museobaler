@@ -9,7 +9,9 @@ use App\Http\Requests\Api\RegisterVisitorRequest;
 use App\Models\Visitor;
 use App\Models\VisitGroup;
 use App\Support\Admission;
+use App\Support\GoogleSignIn;
 use App\Support\MailDomain;
+use App\Support\VisitorVerification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -40,8 +42,23 @@ class VisitorController extends Controller
     {
         $data = $request->validated();
 
+        // Signing up through Google: the address is the one Google vouched
+        // for, whatever the form sent, and it needs no code.
+        $google = null;
+        if (!empty($data['google_signup'])) {
+            $google = GoogleSignIn::pullSignup($data['google_signup']);
+            if ($google === null) {
+                return response()->json([
+                    'error'   => 'google_signup_expired',
+                    'field'   => 'email',
+                    'message' => 'Your Google sign-in timed out. Please tap Continue with Google again.',
+                ], 422);
+            }
+            $data['email'] = $google['email'];
+        }
+
         // Shape is not enough: the domain has to be one that can receive mail.
-        if (!MailDomain::acceptsMail($data['email'])) {
+        if ($google === null && !MailDomain::acceptsMail($data['email'])) {
             return response()->json([
                 'error'   => 'email_domain_invalid',
                 'field'   => 'email',
@@ -101,8 +118,8 @@ class VisitorController extends Controller
             'barangay'       => $data['barangay'] ?? null,
             'province'       => $data['province'] ?? null,
             'email'          => $data['email'],
-            'password'       => $data['password'],
-            'auth_provider'  => 'manual',
+            'password'       => $google ? null : $data['password'],
+            'auth_provider'  => $google ? 'google' : 'manual',
             'explore_mode'   => $data['explore_mode'] ?? 'Storyline',
             // The category is recorded even for a group member, who owes
             // nothing personally: it is part of who they are next visit.
@@ -117,6 +134,19 @@ class VisitorController extends Controller
             // visitor who had paid minutes earlier.
             'last_visit'     => now(),
         ]);
+
+        // A password sign-up has proved nothing about the inbox yet, so it
+        // gets a code and no session. The app shows the code screen, and
+        // EmailVerificationController::verify signs them in. Their own
+        // details and fee come back too - what they just typed, priced -
+        // but no token, so none of it opens anything.
+        if ($google === null) {
+            $visitor->load('group');
+            return response()->json($visitor->clearancePayload() + VisitorVerification::send($visitor), 201);
+        }
+
+        $visitor->forceFill(['google_id' => $google['google_id']])->save();
+        $visitor->markEmailVerified();
 
         $token = $visitor->issueToken();
         $visitor->load('group');
@@ -147,6 +177,14 @@ class VisitorController extends Controller
         if (Hash::needsRehash($visitor->password)) {
             $visitor->password = $request->input('password');
             $visitor->save();
+        }
+
+        // Right password, unproved inbox: a sign-up abandoned at the code
+        // screen. A fresh code (unless one went out a moment ago) and no
+        // session. Only reached with the right password, so this tells a
+        // stranger nothing about the address.
+        if (!$visitor->hasVerifiedEmail()) {
+            return response()->json(['error' => 'email_unverified'] + VisitorVerification::send($visitor), 403);
         }
 
         // A new visit means the admission fee falls due again for paying types.

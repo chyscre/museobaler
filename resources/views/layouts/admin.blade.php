@@ -13,7 +13,7 @@
   @vite(['resources/css/app.css'])
   @stack('styles')
 </head>
-<body>
+<body class="{{ auth()->user()->isTourismHead() ? '' : 'has-topbar' }}">
 <div class="layout">
 
   <!-- SIDEBAR -->
@@ -117,20 +117,10 @@
         {{-- Everyone owns their own password, including the Tourism office —
              an account nobody can change the password of is an account whose
              credential stays wherever it first leaked. --}}
-        <a href="{{ route('password.edit') }}" class="icon-btn" title="Change my password">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          <span>Password</span>
+        <a href="{{ route('password.edit') }}" class="icon-btn {{ request()->routeIs('password.edit') ? 'active' : '' }}" title="My account: profile and password">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>
+          <span>Account</span>
         </a>
-        {{-- Notification Bell — the live desk feed (check-ins, unpaid
-             fees, unverified IDs) is museum-floor work, so the Tourism
-             office does not get it. Its poll route is museum-only too. --}}
-        @if(!auth()->user()->isTourismHead())
-        <button id="notifBtn" class="icon-btn" onclick="toggleNotifPanel()" title="Notifications">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-          <span id="notifBadge" class="dot" style="display:none"></span>
-          <span>Alerts</span>
-        </button>
-        @endif
         <form method="POST" action="{{ route('logout') }}">
           @csrf
           <button type="submit" class="logout-btn" title="Log out">
@@ -145,8 +135,21 @@
   <!-- MAIN -->
   <main class="main-content">
     @if(!auth()->user()->isTourismHead())
-    <!-- Notification panel — fixed top-right, won't clip against sidebar -->
-    <div id="notifPanel" style="display:none;position:fixed;top:16px;right:16px;width:320px;background:var(--surface);border:1.5px solid var(--border);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.15);z-index:9999;overflow:hidden">
+    {{-- Alerts sit top-right, where people look for them, rather than in
+         the sidebar footer. The live desk feed (check-ins, unpaid fees,
+         unverified IDs) is museum-floor work, so the Tourism office does not
+         get it; its poll route is museum-only too. --}}
+    <div class="topbar">
+      <span class="topbar-date">{{ now()->format('l, F j, Y') }}</span>
+      <button type="button" id="notifBtn" class="topbar-btn" onclick="toggleNotifPanel()" aria-haspopup="true" aria-controls="notifPanel" title="Live activity and desk tasks">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span>Alerts</span>
+        <span id="notifBadge" class="dot" style="display:none"></span>
+      </button>
+    </div>
+
+    <!-- Notification panel — fixed, opening under the Alerts button -->
+    <div id="notifPanel" style="display:none;position:fixed;top:60px;right:16px;width:320px;background:var(--surface);border:1.5px solid var(--border);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.15);z-index:9999;overflow:hidden">
       <div style="padding:12px 16px 10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)">
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:13px;font-weight:700;color:var(--text)">Live Activity</span>
@@ -164,25 +167,11 @@
     </div>
     @endif
 
-    <!-- TOAST -->
-    <div class="toast" id="toast">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;flex-shrink:0"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-      <span id="toastMsg"></span>
-    </div>
-
-    {{-- Saved / failed messages go to the toast in the corner, not a banner
-         above the page: a banner pushed the whole page down as it appeared
-         and again as it left, which moved whatever was being read or clicked.
-         The text is still in the HTML, so it is there for anything reading
-         the page rather than looking at it. --}}
-    @if(session('success') || session('error'))
-      <div id="flashMsg" hidden data-kind="{{ session('error') ? 'red' : 'green' }}">{{ session('error') ?: session('success') }}</div>
-    @endif
-
     @yield('content')
   </main>
 </div>
 
+@include('partials.toasts')
 @stack('scripts')
 <script>
   lucide.createIcons();
@@ -261,21 +250,6 @@
     sel.addEventListener('change', mark); mark();
   });
 
-  // Flash messages from the last request, shown as a toast.
-  var fm = document.getElementById('flashMsg');
-  if (fm) setTimeout(function () { toast(fm.textContent.trim(), fm.dataset.kind); }, 60);
-
-  // Toast helper
-  var _toastTimer;
-  function toast(msg, type) {
-    type = type || 'green';
-    var el = document.getElementById('toast');
-    el.className = 'toast t-' + type + ' show';
-    document.getElementById('toastMsg').textContent = msg;
-    clearTimeout(_toastTimer);
-    _toastTimer = setTimeout(function(){ el.classList.remove('show'); }, 3000);
-  }
-
   // ── Live notification polling ──────────────────────────────
   // Museum-floor only: the poll route is museum-staff-only, so running this
   // for the Tourism office would just 403 every 30 seconds.
@@ -300,12 +274,16 @@
     _notifOpen = !_notifOpen;
     document.getElementById('notifPanel').style.display = _notifOpen ? 'block' : 'none';
     if (_notifOpen) document.getElementById('notifBadge').style.display = 'none';
+    document.getElementById('notifBtn').setAttribute('aria-expanded', _notifOpen ? 'true' : 'false');
+    document.body.classList.toggle('notif-open', _notifOpen);
   }
 
   document.addEventListener('click', function(e) {
     if (_notifOpen && !document.getElementById('notifBtn').contains(e.target) && !document.getElementById('notifPanel').contains(e.target)) {
       _notifOpen = false;
       document.getElementById('notifPanel').style.display = 'none';
+      document.getElementById('notifBtn').setAttribute('aria-expanded', 'false');
+      document.body.classList.remove('notif-open');
     }
   });
 
@@ -337,14 +315,47 @@
       }).join('');
   }
 
-  // Posts mark-paid / verify-id straight from the panel, then reloads so the
-  // records table and the badge both reflect the change.
+  // Posts mark-paid / verify-id straight from the panel or a toast, and says
+  // how it went. Only the pages whose figures it changes are reloaded; on any
+  // other one a reload could throw away a half-filled form, so the panel and
+  // its badge are refreshed in place instead.
   function runAdmissionAction(url) {
     var body = new FormData();
     body.append('_token', document.querySelector('meta[name="csrf-token"]').content);
-    fetch(url, { method: 'POST', body: body, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-      .then(function() { window.location.reload(); })
-      .catch(function() { toast('Could not complete that action', 'blue'); });
+    fetch(url, { method: 'POST', body: body, headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' } })
+      .then(function(r) {
+        return r.json().catch(function(){ return {}; }).then(function(d) {
+          // A refusal says why ("already paid for today"); anything else
+          // gets the plain sentence for its status.
+          if (!r.ok || !d.ok) { toast(r.status === 422 && d.message ? d.message : friendlyError(r), 'red'); return; }
+          toast(d.message || 'Done.', 'green');
+          if (onRefreshPage()) setTimeout(function(){ window.location.reload(); }, 1200);
+          else pollNotifications(false);
+        });
+      })
+      .catch(function() { toast(friendlyError(), 'red'); });
+  }
+
+  function onRefreshPage() {
+    return REFRESH_PATHS.indexOf(window.location.pathname.replace(/\/$/, '')) > -1;
+  }
+
+  // The buttons a live toast offers. A visitor who just registered or came
+  // back, and still owes a fee or an ID check, gets that task's button so
+  // the desk can clear it from the corner; everything gets a way to see it.
+  function toastActions(n, count) {
+    var acts = [];
+    var vid = n.visitor_id;
+    var task = vid && _pending.filter(function(p) { return p.id === 'pay_' + vid || p.id === 'idv_' + vid; })[0];
+    if (task) acts.push({ label: task.action, primary: true, run: function() { runAdmissionAction(task.action_url); } });
+    if (count > 1) {
+      // Deferred: the click that pressed this would otherwise reach the
+      // close-when-clicking-outside handler and shut the panel again.
+      acts.push({ label: 'See all ' + count, run: function() { setTimeout(function(){ if (!_notifOpen) toggleNotifPanel(); }, 0); } });
+    } else if (n.url) {
+      acts.push({ label: n.type === 'feedback' ? 'Read' : 'View', href: n.url });
+    }
+    return acts;
   }
 
   function renderNotifList() {
@@ -431,16 +442,24 @@
           _allNotifs = newItems.concat(_allNotifs).slice(0, 20);
           renderNotifList();
           if (!_notifOpen) document.getElementById('notifBadge').style.display = 'block';
+          var acts = toastActions(newItems[0], newItems.length);
+
+          // Auto-refresh the read-only pages whose figures the new record
+          // changes. Deliberately limited to these — reloading while someone
+          // is mid-way through an exhibit or staff form would throw away
+          // their unsaved input. A toast with buttons holds the reload until
+          // it closes, or it would vanish before anyone could press one; if
+          // a button was used, that action does its own refreshing.
+          var refresh = onRefreshPage();
+
           toast(newItems.length === 1
             ? newItems[0].message
             : newItems[0].message + ' (+' + (newItems.length - 1) + ' more)',
-            newItems[0].type === 'visitor' || newItems[0].type === 'feedback' ? 'blue' : 'green');
+            newItems[0].type === 'visitor' || newItems[0].type === 'feedback' ? 'blue' : 'green',
+            acts,
+            refresh && acts.length ? function(acted) { if (!acted) window.location.reload(); } : null);
 
-          // Auto-refresh the read-only pages whose figures the new record
-          // changes. Deliberately limited to these three — reloading while
-          // someone is mid-way through an exhibit or staff form would throw
-          // away their unsaved input.
-          if (REFRESH_PATHS.indexOf(window.location.pathname.replace(/\/$/, '')) > -1) {
+          if (refresh && !acts.length) {
             setTimeout(function(){ window.location.reload(); }, 1500);
           }
         }

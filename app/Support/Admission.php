@@ -199,14 +199,18 @@ class Admission
      * group later (a correction at the desk) uses the percentages it was
      * registered under.
      *
-     * @param  list<array{percent_off: int, count: int}>  $discounts
-     * @return array{paying: int, fee: float, over: bool}  over = more locals
-     *               and discounted heads than the party has
+     * `lines` is the same sum itemised, for the transaction's breakdown.
+     *
+     * @param  list<array{name?: string, percent_off: int, count: int}>  $discounts
+     * @return array{paying: int, fee: float, over: bool, lines: list<array{label: string, count: int, unit: float, amount: float}>}
+     *               over = more locals and discounted heads than the party has
      */
     public static function groupPrice(string $visitorType, int $headcount, int $localCount, array $discounts, ?float $fee = null): array
     {
+        $residents = self::residentPlace() . ' residents';
+
         if ($visitorType === 'Local') {
-            return ['paying' => 0, 'fee' => 0.00, 'over' => false];
+            return ['paying' => 0, 'fee' => 0.00, 'over' => false, 'lines' => [self::line($residents, $headcount, 0.0)]];
         }
 
         $fee         = $fee ?? self::fee();
@@ -214,17 +218,45 @@ class Admission
         $discounted  = array_sum(array_map(fn ($d) => max(0, (int) $d['count']), $discounts));
         $fullPayers  = $headcount - $localCount - $discounted;
 
-        $total  = max(0, $fullPayers) * $fee;
+        $lines  = [self::line('Full admission', max(0, $fullPayers), $fee)];
         $paying = max(0, $fullPayers);
         foreach ($discounts as $d) {
-            $each = self::discounted($fee, (int) $d['percent_off']);
-            $total += $each * max(0, (int) $d['count']);
+            $each    = self::discounted($fee, (int) $d['percent_off']);
+            $lines[] = self::line(($d['name'] ?? 'Discount') . ' (' . ((int) $d['percent_off'] >= 100 ? 'free' : $d['percent_off'] . '% off') . ')',
+                max(0, (int) $d['count']), $each);
             if ($each > 0) {
                 $paying += max(0, (int) $d['count']);
             }
         }
+        $lines[] = self::line($residents, $localCount, 0.0);
 
-        return ['paying' => $paying, 'fee' => round($total, 2), 'over' => $fullPayers < 0];
+        $lines = array_values(array_filter($lines, fn ($l) => $l['count'] > 0));
+        $total = array_sum(array_column($lines, 'amount'));
+
+        return ['paying' => $paying, 'fee' => round($total, 2), 'over' => $fullPayers < 0, 'lines' => $lines];
+    }
+
+    /**
+     * One visitor's charge as a single breakdown line, in the same shape as
+     * groupPrice()'s.
+     *
+     * @return list<array{label: string, count: int, unit: float, amount: float}>
+     */
+    public static function visitorLines(string $visitorType, float $charged, ?string $discountName, ?int $percentOff): array
+    {
+        $label = match (true) {
+            $visitorType === 'Local' => self::residentPlace() . ' resident',
+            $discountName !== null   => $discountName . ' (' . ((int) $percentOff >= 100 ? 'free' : $percentOff . '% off') . ')',
+            default                  => 'Full admission',
+        };
+
+        return [self::line($label, 1, $charged)];
+    }
+
+    /** @return array{label: string, count: int, unit: float, amount: float} */
+    private static function line(string $label, int $count, float $unit): array
+    {
+        return ['label' => $label, 'count' => $count, 'unit' => round($unit, 2), 'amount' => round($unit * $count, 2)];
     }
 
     /**

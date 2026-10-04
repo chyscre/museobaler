@@ -47,11 +47,18 @@
   }
 
   async function postOnce(url, body) {
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf() },
-      body: JSON.stringify(body),
-    });
+    // A request that never got an answer throws the browser's own wording
+    // ("Failed to fetch", "NetworkError when..."), which explains nothing.
+    let r;
+    try {
+      r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf() },
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      return { error: new Error('Connection lost. Please check your network and try again.') };
+    }
     // Read once as text, then try JSON: a server that died mid-request
     // answers with HTML or nothing at all, and r.json() throwing there used
     // to leave the curator with "Request failed (500)" - a status code is
@@ -89,7 +96,7 @@
       504: 'The server took too long to answer. Try again; narration can take a few tries on a slow connection.',
     };
     if (raw) console.error('museobaler: ' + r.status + ' from ' + url + ' —', raw.slice(0, 400));
-    return { error: new Error(BY_STATUS[r.status] || ('The server refused that (' + r.status + '). Reload the page and try again.')) };
+    return { error: new Error(BY_STATUS[r.status] || 'Something went wrong. Please try again in a moment.') };
   }
 
   /** What gets read aloud: title, description, then the facts. */

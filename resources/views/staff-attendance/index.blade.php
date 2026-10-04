@@ -43,25 +43,13 @@
     <div class="stat-ico green">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
     </div>
-    <div><div class="stat-val">{{ $counts['present'] }}</div><div class="stat-lbl">On time</div></div>
-  </div>
-  <div class="stat">
-    <div class="stat-ico gold">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-    </div>
-    <div><div class="stat-val">{{ $counts['late'] }}</div><div class="stat-lbl">Late</div></div>
+    <div><div class="stat-val">{{ $counts['present'] }}</div><div class="stat-lbl">Present</div></div>
   </div>
   <div class="stat">
     <div class="stat-ico red">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
     </div>
     <div><div class="stat-val">{{ $counts['absent'] }}</div><div class="stat-lbl">Absent</div></div>
-  </div>
-  <div class="stat">
-    <div class="stat-ico blue">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
-    </div>
-    <div><div class="stat-val">{{ $counts['manual'] }}</div><div class="stat-lbl">Entered by hand</div></div>
   </div>
 </div>
 
@@ -76,7 +64,7 @@
   <table style="width:100%;border-collapse:collapse">
     <thead>
       <tr style="border-bottom:1.5px solid var(--border)">
-        @foreach(['Staff','Role','Shift','In','Out','Worked','Status',''] as $h)
+        @foreach(['Staff','Role','Shift','Status',''] as $h)
           <th style="padding:10px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;text-align:left">{{ $h }}</th>
         @endforeach
       </tr>
@@ -95,16 +83,10 @@
               <span style="color:var(--text-3)">Not set</span>
             @endif
           </td>
-          <td style="padding:10px;font-size:13px">{{ $row['in']?->scanned_at->format('g:i A') ?? '—' }}</td>
-          <td style="padding:10px;font-size:13px">{{ $row['out']?->scanned_at->format('g:i A') ?? '—' }}</td>
-          <td style="padding:10px;font-size:13px">
-            @if($row['worked_minutes'] !== null)
-              {{ intdiv($row['worked_minutes'], 60) }}h {{ $row['worked_minutes'] % 60 }}m
-            @else — @endif
-          </td>
           <td style="padding:10px">
-            <span class="badge {{ $row['status'] === 'Present' ? 'b-green' : ($row['status'] === 'Late' ? 'b-gold' : ($row['status'] === 'Absent' ? 'b-red' : 'b-gray')) }}">
-              {{ $row['status'] }}@if($row['late_minutes'] > 0) · {{ $row['late_minutes'] }}m @endif
+            <span class="badge {{ $row['status'] === 'Present' ? 'b-green' : 'b-red' }}"
+                  @if($row['in']) title="Checked in {{ $row['in']->scanned_at->format('g:i A') }}" @endif>
+              {{ $row['status'] }}
             </span>
             @if($row['is_manual'])
               {{-- Flagged everywhere it appears so a hand-entered day can

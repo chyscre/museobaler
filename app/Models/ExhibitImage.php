@@ -20,6 +20,16 @@ class ExhibitImage extends Model
         return \Illuminate\Support\Facades\Storage::disk('public')->url('exhibits/' . $this->filename);
     }
 
+    /** The ~400px copy, for the edit form's gallery strip. */
+    public function getThumbUrlAttribute(): string
+    {
+        if (file_exists(public_path('images/exhibits/' . $this->filename))) {
+            return route('exhibit.image', ['filename' => $this->filename, 'v' => 'thumb']);
+        }
+
+        return $this->url;
+    }
+
     public function exhibit()
     {
         return $this->belongsTo(Exhibit::class, 'exhibit_id', 'exhibit_id');

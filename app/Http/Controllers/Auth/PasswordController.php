@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\Log;
+use App\Support\Device;
 use App\Support\PasswordPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -24,9 +25,27 @@ class PasswordController extends Controller
 {
     public function edit(Request $request)
     {
-        return view('auth.password', [
-            'forced' => $request->user()->mustChangePassword(),
-            'hint'   => PasswordPolicy::hint(),
+        $staff = $request->user();
+
+        // Someone still on an issued password gets the bare card: nothing
+        // else in the panel opens for them yet, so a sidebar full of links
+        // that bounce straight back here would only confuse.
+        if ($staff->mustChangePassword()) {
+            return view('auth.password', ['forced' => true, 'hint' => PasswordPolicy::hint()]);
+        }
+
+        // Everyone else gets My Account inside the panel: who the account
+        // is, and its password, on one page.
+        return view('auth.account', [
+            'staff'      => $staff,
+            'hint'       => PasswordPolicy::hint(),
+            // The sign-in before this one: the latest is the session reading
+            // the page. One the person does not recognise is worth a password
+            // change. ("POST login" is how the trail wrote it before.)
+            'previousSignIn' => Log::where('user_id', $staff->staff_id)
+                ->whereIn('action', ['Sign in', 'POST login'])
+                ->latest('log_id')->skip(1)->first(['created_at', 'ip_address']),
+            'layout'     => Device::isPhone($request->userAgent()) ? 'layouts.mobile' : 'layouts.admin',
         ]);
     }
 
@@ -93,10 +112,12 @@ class PasswordController extends Controller
             'ip_address' => $request->ip(),
         ]);
 
+        // The first change opens the panel, so it goes to the home screen. A
+        // later one was made from My Account, and comes back to it.
         return redirect()
-            ->to(LoginController::homeFor($staff->fresh()))
+            ->to($wasForced ? LoginController::homeFor($staff->fresh()) : route('password.edit'))
             ->with('success', $wasForced
                 ? 'Your password is set. This account is yours now - nobody else knows it.'
-                : 'Password changed.');
+                : 'Password changed. Any other device signed in as you has been signed out.');
     }
 }

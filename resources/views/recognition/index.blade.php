@@ -241,6 +241,8 @@
   var SIZE = 224;
 
   function say(msg) { status.textContent = msg; }
+  // An error whose message is fit to show as it is.
+  function plain(msg) { var e = new Error(msg); e.plain = true; return e; }
   function log(msg) { logEl.style.display = 'block'; logEl.textContent += msg + '\n'; logEl.scrollTop = logEl.scrollHeight; }
   function progress(p) { bar.style.width = Math.max(0, Math.min(100, p)) + '%'; }
 
@@ -250,8 +252,9 @@
   // what was tried, never a dead "Unavailable".
   // A library that throws while it starts still fires onload, and the
   // browser only tells the console. Catching window errors during the load
-  // keeps the reason - it goes into the status line, where whoever is
-  // standing at the screen can read it out.
+  // keeps the reason - it goes into the log under the status line, where
+  // whoever is standing at the screen can read it out. The status line
+  // itself stays in plain words.
   var lastScriptError = null;
   window.addEventListener('error', function (ev) {
     if (ev && ev.message) lastScriptError = ev.message + (ev.filename ? ' [' + ev.filename.split('/').pop() + ':' + ev.lineno + ']' : '');
@@ -297,7 +300,8 @@
     }, function (e) {
       libsReady = null;
       btn.disabled = false; label.textContent = 'Retry loading';
-      say('The trainer could not load. ' + e.message + '. Check the connection, then press Retry loading.');
+      say('The trainer could not load. Check the connection, then press Retry loading.');
+      log('Error: ' + e.message);
       log('Browser: ' + navigator.userAgent);
       throw e;
     });
@@ -347,7 +351,7 @@
       });
 
       if (classes.length < 2) {
-        throw new Error('Need photos for at least two things (one exhibit plus Background, or two exhibits) before training.');
+        throw plain('Need photos for at least two things (one exhibit plus Background, or two exhibits) before training.');
       }
 
       var total = classes.reduce(function (n, c) { return n + c.photos.length; }, 0);
@@ -433,7 +437,10 @@
 
       var saveRes = await fetch(cfg.save, { method: 'POST', body: fd, headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
       var saved = await saveRes.json().catch(function () { return {}; });
-      if (!saveRes.ok || !saved.ok) throw new Error(saved.message || 'The server did not accept the model.');
+      if (!saveRes.ok || !saved.ok) {
+        log('Save answered ' + saveRes.status + (saved.message ? ': ' + saved.message : ''));
+        throw plain(saveRes.status === 422 && saved.message ? saved.message : 'The model was trained but not saved. ' + friendlyError(saveRes));
+      }
 
       progress(100);
       say('Done. The visitor app will use the new model from its next scan.');
@@ -442,7 +449,9 @@
       setTimeout(function () { window.location.reload(); }, 2500);
     } catch (e) {
       console.error(e);
-      say('Training failed: ' + (e && e.message ? e.message : e));
+      // Only messages written for people reach the status line; the rest
+      // (library and model errors) are for the log.
+      say('Training did not finish. ' + (e && e.plain ? e.message : friendlyError(navigator.onLine ? 500 : 0)));
       log('Error: ' + (e && e.message ? e.message : e));
       btn.disabled = false; label.textContent = 'Try again';
     }

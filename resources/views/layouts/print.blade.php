@@ -87,28 +87,10 @@
     .bar .fmt select:hover { border-color: #a8a29e; }
     .bar .fmt select:focus { outline: 2px solid #16a34a; outline-offset: 1px; }
 
-    /* -- Preview -------------------------------------------------------- */
-    .prev { max-width: 900px; margin: 0 auto 16px; background: #fff;
-            border: 1.5px solid #e7e5e4; border-radius: 10px; overflow: hidden; }
-    .prev .hd { padding: 11px 16px; border-bottom: 1.5px solid #e7e5e4; }
-    .prev .hd b { font-size: 12px; }
-    .prev .body { padding: 16px; max-height: 460px; overflow: auto; background: #fafaf9; }
-    .prev .body.pdf { padding: 0; max-height: none; }
-    .prev iframe { width: 100%; height: 560px; border: 0; display: block; background: #fff; }
-    .prev .loading { font-size: 12px; color: #78716c; padding: 26px; text-align: center; }
-    .prev pre { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
-                font-size: 11px; line-height: 1.7; white-space: pre; margin: 0; }
-    .prev table { width: 100%; border-collapse: collapse; background: #fff; }
-    .prev th { background: #1c1917; color: #fff; font-size: 10px; text-transform: uppercase;
-               letter-spacing: .05em; padding: 6px 8px; text-align: left; position: sticky; top: 0; }
-    .prev td { padding: 5px 8px; font-size: 11.5px; border-bottom: 1px solid #f5f5f4; }
-    .prev .sheet-note { font-size: 11.5px; color: #78716c; margin-bottom: 10px; }
-    .prev .more { font-size: 11.5px; color: #78716c; padding: 9px 2px 0; }
-
     @media print {
       body { background: #fff; padding: 0; font-size: 11px; }
       .sheet { box-shadow: none; padding: 0; max-width: none; }
-      .bar, .prev { display: none; }
+      .bar { display: none; }
       tr { page-break-inside: avoid; }
     }
   </style>
@@ -132,13 +114,6 @@
         <button type="button" class="print" onclick="window.print()">Print</button>
       @endif
     </div>
-
-    @hasSection('downloads')
-      <div class="prev">
-        <div class="hd"><b>Preview — <span id="prevWhat"></span></b></div>
-        <div class="body" id="prevBody"></div>
-      </div>
-    @endif
   @endunless
 
   @php $brand = \App\Models\MuseumInfo::branding(); @endphp

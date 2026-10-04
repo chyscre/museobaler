@@ -43,8 +43,14 @@
   </div>
 
   @if(!$today['out'])
-    <button id="scanBtn" class="btn btn-green" style="width:100%;margin-top:16px">
-      {{ $today['in'] ? 'Scan to check out' : 'Scan to check in' }}
+    <button id="scanBtn" class="btn btn-green" style="width:100%;margin-top:16px"
+            data-wait="{{ $checkoutWaitSecs }}"
+            @if($checkoutWaitSecs > 0) disabled @endif>
+      @if($checkoutWaitSecs > 0)
+        Check-out opens at {{ $checkoutOpensAt->format('g:i A') }}
+      @else
+        {{ $today['in'] ? 'Scan to check out' : 'Scan to check in' }}
+      @endif
     </button>
   @else
     <div style="margin-top:16px;padding:12px;border-radius:10px;background:var(--green-pale);font-size:13px;font-weight:600;color:var(--green-dark);text-align:center">
@@ -127,6 +133,29 @@
   let scanner = null;
   let busy    = false;
 
+  // Check-out is locked until the shift ends, and for a few minutes after
+  // any check-in. The server enforces both; this just keeps the button
+  // honest about it and unlocks it without a reload. The last stretch is
+  // shown as a countdown so a short wait does not look like a broken button.
+  const wait = parseInt(scanBtn.dataset.wait || '0', 10);
+  if (wait > 0) {
+    const unlockAt = Date.now() + wait * 1000;
+    const label    = scanBtn.textContent.trim();
+    const tick = () => {
+      const left = Math.ceil((unlockAt - Date.now()) / 1000);
+      if (left <= 0) {
+        scanBtn.disabled    = false;
+        scanBtn.textContent = 'Scan to check out';
+        return;
+      }
+      scanBtn.textContent = left <= 300
+        ? 'Check-out opens in ' + Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0')
+        : label;
+      setTimeout(tick, 1000);
+    };
+    tick();
+  }
+
   // Say so on arrival, not after the tap. Somebody standing in the staff
   // room at 7:58 should not have to press a button to learn the address bar
   // is wrong.
@@ -180,8 +209,10 @@
         }),
       });
 
-      const data = await res.json();
-      show(data.message || 'Something went wrong.', data.ok === true);
+      // The scan answers in sentences, refusals included. Only a crash (or
+      // a page that is not JSON) falls back to the generic one.
+      const data = res.status < 500 ? await res.json().catch(() => ({})) : {};
+      show(data.message || friendlyError(res.ok ? 500 : res), data.ok === true);
 
       if (data.ok && !data.noop) {
         await stop();
@@ -189,7 +220,7 @@
         return;
       }
     } catch (e) {
-      show('Could not reach the server. Check your connection.', false);
+      show(friendlyError(), false);
     }
 
     // Left running on failure so an expired code can simply be rescanned.
@@ -284,10 +315,10 @@
         headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
         body: JSON.stringify({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: Math.round(pos.coords.accuracy) }),
       });
-      const data = await res.json();
-      pinSay(data.message || 'Something went wrong.', data.ok === true);
+      const data = res.status < 500 ? await res.json().catch(() => ({})) : {};
+      pinSay(data.message || friendlyError(res.ok ? 500 : res), data.ok === true);
     } catch (e) {
-      pinSay('Could not reach the server. Check your connection.', false);
+      pinSay(friendlyError(), false);
     }
     pinBtn.disabled = false;
   });

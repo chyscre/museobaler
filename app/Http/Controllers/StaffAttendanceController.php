@@ -18,12 +18,6 @@ use Illuminate\Support\Carbon;
 
 class StaffAttendanceController extends Controller
 {
-    /**
-     * Gap enforced between a check-in and the check-out that follows it, so a
-     * staff member who scans twice by reflex does not close their own day.
-     */
-    private const MIN_MINUTES_BEFORE_CHECKOUT = 30;
-
     public function __construct(
         private AttendanceQrService $qr,
         private GeofenceService $geofence,
@@ -81,8 +75,18 @@ class StaffAttendanceController extends Controller
         $from = $today->copy()->startOfMonth();
         $days = $this->status->rangeFor($staff, $from, $today)->reverse();
 
+        $in  = $todayRows->firstWhere('type', 'in');
+        $out = $todayRows->firstWhere('type', 'out');
+        $opensAt = $in && !$out ? $this->status->checkoutOpensAt($staff, $today, $in) : null;
+
         return view('staff-attendance.mine', [
             'today'     => $this->status->summarise($staff, $today, $todayRows),
+            // Seconds rather than a clock time, so the button unlocks on the
+            // server's schedule even when the phone's own clock is off.
+            'checkoutOpensAt'   => $opensAt,
+            'checkoutWaitSecs'  => $opensAt && now()->lessThan($opensAt)
+                ? (int) ceil(now()->diffInSeconds($opensAt))
+                : 0,
             'days'      => $days,
             'monthFrom' => $from,
             // The one screen that has to work in both places. On a phone it
@@ -148,12 +152,25 @@ class StaffAttendanceController extends Controller
 
         $type = $in ? 'out' : 'in';
 
-        if ($type === 'out' && $in->scanned_at->diffInMinutes(now()) < self::MIN_MINUTES_BEFORE_CHECKOUT) {
-            return response()->json([
-                'ok'      => true,
-                'noop'    => true,
-                'message' => 'Already checked in at ' . $in->scanned_at->format('g:i A') . '.',
-            ]);
+        if ($type === 'out') {
+            // A reflex second scan inside the cooldown is answered as the
+            // success it was meant to confirm, not as an error.
+            if ($in->scanned_at->diffInMinutes(now()) < AttendanceStatusService::CHECKOUT_COOLDOWN_MINUTES) {
+                return response()->json([
+                    'ok'      => true,
+                    'noop'    => true,
+                    'message' => 'Already checked in at ' . $in->scanned_at->format('g:i A') . '.',
+                ]);
+            }
+
+            $opensAt = $this->status->checkoutOpensAt($staff, $today, $in);
+
+            if (now()->lessThan($opensAt)) {
+                return response()->json([
+                    'ok'      => false,
+                    'message' => 'Check-out opens at ' . $opensAt->format('g:i A') . '. To leave earlier, ask a colleague to file a correction for your check-out.',
+                ], 422);
+            }
         }
 
         $record = StaffAttendance::create([
@@ -248,16 +265,20 @@ class StaffAttendanceController extends Controller
             ? Carbon::parse($request->input('date'))
             : today();
 
-        $board = $this->status->boardFor($date);
+        // The board answers one question - who came in that day - so it reads
+        // only whether there is a check-in. Late, worked hours and the in/out
+        // times live on each person's month view and the printed DTR.
+        $board = $this->status->boardFor($date)->map(fn ($row) => [
+            ...$row,
+            'status' => $row['in'] ? AttendanceStatusService::PRESENT : AttendanceStatusService::ABSENT,
+        ]);
 
         return view('staff-attendance.index', [
             'date'   => $date,
             'board'  => $board,
             'counts' => [
                 'present' => $board->where('status', AttendanceStatusService::PRESENT)->count(),
-                'late'    => $board->where('status', AttendanceStatusService::LATE)->count(),
                 'absent'  => $board->where('status', AttendanceStatusService::ABSENT)->count(),
-                'manual'  => $board->where('is_manual', true)->count(),
             ],
             'pendingCorrections' => AttendanceCorrection::where('status', 'Pending')->count(),
         ]);

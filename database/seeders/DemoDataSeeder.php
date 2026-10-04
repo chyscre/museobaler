@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\AdmissionPayment;
 use App\Models\Feedback;
 use App\Models\Staff;
 use App\Models\StaffAttendance;
@@ -205,7 +206,7 @@ class DemoDataSeeder extends Seeder
                 $pays  = $type === 'Local' ? 0 : $heads;
                 $paid  = rand(1, 10) > 2;
 
-                VisitGroup::create([
+                $group = VisitGroup::create([
                     'contact_name'   => $first[array_rand($first)] . ' ' . $last[array_rand($last)],
                     'group_type'     => 'Group',
                     'visitor_type'   => $type,
@@ -220,6 +221,11 @@ class DemoDataSeeder extends Seeder
                     'created_at'     => $date->copy()->setTime(rand(9, 15), rand(0, 59)),
                     'updated_at'     => $date,
                 ]);
+
+                // The earnings report reads the ledger, not the group row.
+                if ($group->payment_status === 'Paid') {
+                    AdmissionPayment::forGroup($group, $staff['desk']->staff_id);
+                }
             }
 
             // Plus a handful of individuals.
@@ -228,7 +234,7 @@ class DemoDataSeeder extends Seeder
                 $fee  = Visitor::feeFor($type);
                 $paid = rand(1, 10) > 2;
 
-                Visitor::create([
+                $visitor = Visitor::create([
                     'first_name'     => $first[array_rand($first)],
                     'last_name'      => $last[array_rand($last)],
                     'age'            => rand(16, 68),
@@ -248,6 +254,10 @@ class DemoDataSeeder extends Seeder
                     'created_at'     => $date->copy()->setTime(rand(9, 15), rand(0, 59)),
                     'updated_at'     => $date,
                 ]);
+
+                if ($visitor->payment_status === 'Paid') {
+                    AdmissionPayment::forVisitor($visitor, $staff['desk']->staff_id);
+                }
             }
         }
 
