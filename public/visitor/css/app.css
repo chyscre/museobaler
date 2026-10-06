@@ -1009,12 +1009,19 @@ body.kb-open #toast{bottom:16px}
 .adm-lines{margin-top:10px}
 .adm-line{display:flex;justify-content:space-between;gap:10px;font-size:calc(12px * var(--fs));line-height:1.5;padding:2px 0}
 .adm-line span:last-child{white-space:nowrap;font-variant-numeric:tabular-nums}
-#pending-companions .comp-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(0,0,0,0.06)}
-#pending-companions .comp-label{font-size:calc(12.5px * var(--fs));font-weight:600;color:var(--td);min-width:0}
-#pending-companions .comp-age{font-weight:400;color:var(--tl)}
-#pending-companions .comp-label small{display:block;font-size:calc(10.5px * var(--fs));font-weight:400;color:var(--tl);margin-top:1px}
-#pending-companions .comp-step{display:flex;align-items:center;gap:8px;flex-shrink:0}
-#pending-companions .comp-btn{width:34px;height:34px;border-radius:50%;border:1.5px solid var(--mode-primary);background:var(--w);color:var(--mode-primary);font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
-#pending-companions .comp-btn:active{transform:scale(0.94)}
-#pending-companions .comp-n{min-width:22px;text-align:center;font-weight:700;font-size:calc(15px * var(--fs));color:var(--td);font-variant-numeric:tabular-nums}
+/* "With someone who enters free?" opens the counters, on the details form
+   and (for a returning visitor) the waiting screen. */
+.comp-toggle{display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;border:1.5px dashed var(--es);border-radius:10px;background:var(--field-bg);color:var(--tm);font-family:inherit;font-size:calc(13px * var(--fs));font-weight:600;cursor:pointer;text-align:left}
+.comp-toggle .material-icons-round{font-size:18px;color:var(--mode-secondary)}
+.comp-box{background:var(--ew);border-radius:12px;padding:12px 13px}
+.comp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:calc(12.5px * var(--fs));font-weight:700;color:var(--td);margin-bottom:3px}
+.comp-note{font-size:calc(11.5px * var(--fs));color:var(--tl);line-height:1.5;margin-bottom:6px}
+.comp-box .comp-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(0,0,0,0.06)}
+.comp-box .comp-label{font-size:calc(12.5px * var(--fs));font-weight:600;color:var(--td);min-width:0}
+.comp-box .comp-age{font-weight:400;color:var(--tl)}
+.comp-box .comp-label small{display:block;font-size:calc(10.5px * var(--fs));font-weight:400;color:var(--tl);margin-top:1px}
+.comp-box .comp-step{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.comp-box .comp-btn{width:34px;height:34px;border-radius:50%;border:1.5px solid var(--mode-primary);background:var(--w);color:var(--mode-primary);font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.comp-box .comp-btn:active{transform:scale(0.94)}
+.comp-box .comp-n{min-width:22px;text-align:center;font-weight:700;font-size:calc(15px * var(--fs));color:var(--td);font-variant-numeric:tabular-nums}
 #profile-pass .pass-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:700;letter-spacing:0.14em}
