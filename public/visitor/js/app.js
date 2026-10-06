@@ -1511,6 +1511,7 @@ function confirmSignIn() {
   document.getElementById('vi-email-label').textContent = STATE.email;
   showScreen('s-visitor-info');
   updateFeeBox();
+  paintFormCompanions();
 }
 
 function selectRadioPill(input) {
@@ -1530,6 +1531,7 @@ function selectRadioPill(input) {
       wrap.style.display = withParty ? 'block' : 'none';
       if (!withParty) document.getElementById('vi-group-code').value = '';
     }
+    paintFormCompanions();
   }
 }
 
@@ -1588,6 +1590,7 @@ function _applyAdmissionRules(rules) {
     companion_ids:  Array.isArray(rules.companion_ids) ? rules.companion_ids.map(Number) : [],
     max_companions: Number(rules.max_companions) || 10,
   };
+  paintFormCompanions();
 
   const byTown = ADMISSION_CONFIG.resident_scope === 'aurora';
   const townWrap = document.getElementById('local-town-wrap');
@@ -1719,6 +1722,8 @@ function submitRegistration() {
       // Blank unless they are joining a party the desk signed in. The server
       // decides what the code is worth; the fee is never sent from here.
       group_code:       normaliseGroupCode(document.getElementById('vi-group-code')?.value),
+      // Free people with them: counts per category, priced on the server.
+      companions:       formCompanionsPayload(),
     })
   })
   .then(r => r.json())
@@ -1737,6 +1742,10 @@ function submitRegistration() {
       }
       return;
     }
+
+    // Chosen on the form, so the waiting screen does not offer it again today.
+    STATE.companionsOnForm = localDay();
+    toggleFormCompanions(false);
 
     // SECURITY: the password has been sent; wipe it from memory immediately.
     pendingSignup = null;
@@ -1888,6 +1897,85 @@ function renderAdmissionLines(el, lines) {
     </div>`).join('');
 }
 
+/** The categories a companion may come under: the museum's free ones. */
+function companionCategories() {
+  return (ADMISSION_CONFIG.discounts || [])
+    .filter(d => (ADMISSION_CONFIG.companion_ids || []).includes(Number(d.id)));
+}
+
+/** One −/+ row per category, into `rows`; `step` is the handler's name. */
+function renderCompanionRows(rows, draft, step, prefix) {
+  rows.innerHTML = companionCategories().map(d => `
+    <div class="comp-row">
+      <div class="comp-label">${escapeHtml(d.name)}${d.age_range ? ` <span class="comp-age">(${escapeHtml(d.age_range)})</span>` : ''}
+        <small>₱0.00${d.proof ? ' · bring their ' + escapeHtml(d.proof) : ''}</small></div>
+      <div class="comp-step">
+        <button type="button" class="comp-btn" aria-label="One fewer ${escapeHtml(d.name)}" onclick="${step}(${Number(d.id)}, -1)">−</button>
+        <span class="comp-n" id="${prefix}-${Number(d.id)}">${draft[d.id] || 0}</span>
+        <button type="button" class="comp-btn" aria-label="One more ${escapeHtml(d.name)}" onclick="${step}(${Number(d.id)}, 1)">+</button>
+      </div>
+    </div>`).join('');
+}
+
+/** Move one counter, within the per-visitor ceiling. False if refused. */
+function bumpCompanion(draft, id, delta, prefix) {
+  const total = Object.values(draft).reduce((s, n) => s + n, 0);
+  const max   = ADMISSION_CONFIG.max_companions || 10;
+  if (delta > 0 && total >= max) {
+    showToast(`Up to ${max} people. For more, ask the desk to sign you in as a group.`, 3500);
+    return false;
+  }
+  draft[id] = Math.max(0, (draft[id] || 0) + delta);
+  const n = document.getElementById(prefix + '-' + id);
+  if (n) n.textContent = draft[id];
+  return true;
+}
+
+/** Calendar day on this phone, which is the museum's. */
+function localDay() {
+  return new Date().toLocaleDateString('en-CA');
+}
+
+// ── On the details form, under Visit Type ──
+// Sent with the registration itself (POST /visitors, `companions`), so it
+// works for a password sign-up too, which has no session until the
+// emailed code is typed back.
+let formCompanionDraft = {};
+
+/** The button shows for a walk-in when the museum has free categories. */
+function paintFormCompanions() {
+  const wrap = document.getElementById('form-companions-wrap');
+  if (!wrap) return;
+  const walkIn = (document.querySelector('input[name="vtype"]:checked')?.value || 'Walk-in') === 'Walk-in';
+  const show = walkIn && companionCategories().length > 0;
+  wrap.style.display = show ? 'block' : 'none';
+  if (!show) toggleFormCompanions(false);
+}
+
+function toggleFormCompanions(open) {
+  const box = document.getElementById('form-companions');
+  const btn = document.getElementById('form-companions-toggle');
+  if (!box || !btn) return;
+  if (open === undefined) open = box.style.display === 'none';
+  if (open) renderCompanionRows(document.getElementById('form-companion-rows'), formCompanionDraft, 'stepFormCompanion', 'fcomp-n');
+  else formCompanionDraft = {};   // Remove means none, not "hidden but still sent"
+  box.style.display = open ? 'block' : 'none';
+  btn.style.display = open ? 'none' : 'flex';
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function stepFormCompanion(id, delta) {
+  bumpCompanion(formCompanionDraft, id, delta, 'fcomp-n');
+}
+
+/** What the form sends: only the categories with someone in them. */
+function formCompanionsPayload() {
+  const out = {};
+  Object.entries(formCompanionDraft).forEach(([id, n]) => { if (n > 0) out[id] = n; });
+  return out;
+}
+
+// ── On the waiting screen, for a returning visitor ──
 /** What the steppers currently say, as {category id: heads}. */
 let companionDraft = {};
 let companionSaveTimer = null;
@@ -1897,36 +1985,33 @@ function renderCompanionPicker(show) {
   const rows = document.getElementById('pending-companion-rows');
   if (!box || !rows) return;
 
-  const cats = (ADMISSION_CONFIG.discounts || [])
-    .filter(d => (ADMISSION_CONFIG.companion_ids || []).includes(Number(d.id)));
-  if (!show || !cats.length) { box.style.display = 'none'; return; }
+  // Someone who registered today chose them on the form already.
+  if (!show || !companionCategories().length || STATE.companionsOnForm === localDay()) {
+    box.style.display = 'none';
+    return;
+  }
 
   companionDraft = {};
   (STATE.companions || []).forEach(c => { companionDraft[c.id] = Number(c.count) || 0; });
 
   box.style.display = 'block';
-  rows.innerHTML = cats.map(d => `
-    <div class="comp-row">
-      <div class="comp-label">${escapeHtml(d.name)}${d.age_range ? ` <span class="comp-age">(${escapeHtml(d.age_range)})</span>` : ''}
-        <small>₱0.00${d.proof ? ' · bring their ' + escapeHtml(d.proof) : ''}</small></div>
-      <div class="comp-step">
-        <button type="button" class="comp-btn" aria-label="One fewer ${escapeHtml(d.name)}" onclick="stepCompanion(${Number(d.id)}, -1)">−</button>
-        <span class="comp-n" id="comp-n-${Number(d.id)}">${companionDraft[d.id] || 0}</span>
-        <button type="button" class="comp-btn" aria-label="One more ${escapeHtml(d.name)}" onclick="stepCompanion(${Number(d.id)}, 1)">+</button>
-      </div>
-    </div>`).join('');
+  renderCompanionRows(rows, companionDraft, 'stepCompanion', 'comp-n');
+  // Open already if they have someone counted; the button otherwise.
+  togglePendingCompanions((STATE.companions || []).length > 0);
+}
+
+function togglePendingCompanions(open) {
+  const box = document.getElementById('pending-companions-box');
+  const btn = document.getElementById('pending-companions-toggle');
+  if (!box || !btn) return;
+  if (open === undefined) open = box.style.display === 'none';
+  box.style.display = open ? 'block' : 'none';
+  btn.style.display = open ? 'none' : 'flex';
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
 function stepCompanion(id, delta) {
-  const total = Object.values(companionDraft).reduce((s, n) => s + n, 0);
-  const max   = ADMISSION_CONFIG.max_companions || 10;
-  if (delta > 0 && total >= max) {
-    showToast(`Up to ${max} people. For more, ask the desk to sign you in as a group.`, 3500);
-    return;
-  }
-  companionDraft[id] = Math.max(0, (companionDraft[id] || 0) + delta);
-  const n = document.getElementById('comp-n-' + id);
-  if (n) n.textContent = companionDraft[id];
+  if (!bumpCompanion(companionDraft, id, delta, 'comp-n')) return;
 
   // Saved a moment after the last tap, so five taps are one request.
   const status = document.getElementById('pending-companion-status');

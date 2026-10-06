@@ -105,6 +105,11 @@ class RegisterVisitorRequest extends ApiFormRequest
             // 0/O or 1/I and are compared upper-case, so what the desk read
             // out matches what was typed.
             'group_code'   => ['nullable', 'string', 'regex:/^[A-Za-z2-9]{4,8}$/'],
+            // Free people who came with them, as counts per category id -
+            // the same shape as PUT /visitors/me/companions. Which categories
+            // qualify is the server's call (Admission::companionCounts).
+            'companions'   => ['nullable', 'array'],
+            'companions.*' => ['integer', 'min:0', 'max:' . \App\Models\Visitor::MAX_COMPANIONS],
         ];
     }
 

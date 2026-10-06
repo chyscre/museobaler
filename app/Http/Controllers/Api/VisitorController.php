@@ -103,6 +103,17 @@ class VisitorController extends Controller
             }
         }
 
+        // Free companions picked on the form. Not for a group member: the
+        // group's headcount already covers the party.
+        $companions = $group ? [] : array_filter(array_map('intval', $data['companions'] ?? []));
+        if (array_sum($companions) > Visitor::MAX_COMPANIONS) {
+            return response()->json([
+                'error'   => 'too_many_companions',
+                'field'   => 'companions',
+                'message' => 'That is more than one visitor can bring. Ask the desk to register you as a group.',
+            ], 422);
+        }
+
         // A member owes nothing personally; the party pays.
         $fee = $group ? 0.00 : Visitor::feeFor($type, $discount);
 
@@ -135,6 +146,12 @@ class VisitorController extends Controller
             // visitor who had paid minutes earlier.
             'last_visit'     => now(),
         ]);
+
+        // Unchecked until the desk sees their documents, exactly as if they
+        // had been added from the waiting screen (see companions()).
+        if ($companions) {
+            $visitor->setCompanions($companions);
+        }
 
         // A password sign-up has proved nothing about the inbox yet, so it
         // gets a code and no session. The app shows the code screen, and

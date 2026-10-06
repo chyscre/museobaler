@@ -101,6 +101,52 @@ class CompanionsTest extends TestCase
             ->assertStatus(422)->assertJsonPath('error', 'too_many_companions');
     }
 
+    /** The details form, as the visitor app sends it. */
+    private function signUp(array $companions, array $overrides = [])
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        \App\Support\MailDomain::fakeResolver(fn () => true);
+
+        try {
+            return $this->postJson('/api/v1/visitors', $overrides + [
+                'first_name' => 'Maria', 'last_name' => 'Santos', 'age' => 34, 'sex' => 'Female',
+                'visit_type' => 'Walk-in', 'visitor_type' => 'Tourist',
+                'city' => 'Quezon City', 'province' => 'Metro Manila', 'country' => 'Philippines',
+                'email' => 'maria@example.org',
+                'password' => 'Correct-horse-battery-7', 'password_confirmation' => 'Correct-horse-battery-7',
+                'companions' => $companions,
+            ]);
+        } finally {
+            \App\Support\MailDomain::fakeResolver(null);
+        }
+    }
+
+    public function test_companions_picked_on_the_sign_up_form_are_counted_unchecked(): void
+    {
+        // Before the emailed code is typed, so there is no session yet: the
+        // counts have to ride on the registration itself.
+        $this->signUp([$this->id('Senior citizen') => 1, $this->id('Child') => 2])
+            ->assertCreated()
+            ->assertJsonPath('headcount', 4)
+            ->assertJsonMissingPath('token');
+
+        $holder = Visitor::where('email', 'maria@example.org')->firstOrFail();
+        $rows = Visitor::where('companion_of', $holder->visitor_id)->get();
+        $this->assertCount(3, $rows);
+        $this->assertTrue($rows->every(fn ($c) => !$c->id_verified && (float) $c->admission_fee === 0.0));
+    }
+
+    public function test_the_sign_up_form_keeps_to_the_same_rules_as_the_waiting_screen(): void
+    {
+        $this->signUp([$this->id('Child') => 6, $this->id('Senior citizen') => 6])
+            ->assertStatus(422)->assertJsonPath('error', 'too_many_companions');
+        $this->assertSame(0, Visitor::count());
+
+        // Only free categories; anything else is dropped, as on the waiting screen.
+        $half = AdmissionDiscount::create(['name' => 'Student', 'percent_off' => 20, 'active' => true, 'sort_order' => 9]);
+        $this->signUp([$half->discount_id => 2])->assertCreated()->assertJsonPath('headcount', 1);
+    }
+
     public function test_mark_paid_checks_the_companions_and_puts_them_on_the_receipt(): void
     {
         $holder = Visitor::factory()->create();

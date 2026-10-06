@@ -408,6 +408,26 @@
           <input id="vi-group-code" class="fi" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8" placeholder="e.g. K7PM4X" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.18em;text-transform:uppercase;font-size:calc(16px * var(--fs));">
           <div style="font-size:calc(11px * var(--fs));color:var(--tl);margin-top:7px;line-height:1.5;">If the person who signed your group in at the desk was given a code, enter it here. You will be counted with your group and the group's payment covers you. Leave it blank if you are paying on your own.</div>
         </div>
+        <!-- Free companions: a senior, a PWD, a small child who came with
+             them, counted on this visitor's entry and checked by the desk
+             with their own ID. A button, because most walk-ins have none;
+             tapping it opens the counters. Walk-in only - a group's
+             headcount covers the party. Only the free categories are
+             offered; the server decides which (Admission::companionCategories). -->
+        <div id="form-companions-wrap" style="display:none;margin-top:12px;">
+          <button type="button" id="form-companions-toggle" class="comp-toggle" aria-expanded="false" onclick="toggleFormCompanions()">
+            <span class="material-icons-round">person_add</span>
+            <span>With someone who enters free?</span>
+          </button>
+          <div id="form-companions" class="comp-box" style="display:none;">
+            <div class="comp-head">
+              <span>Accompanying free visitors</span>
+              <button type="button" class="link-btn" onclick="toggleFormCompanions(false)">Remove</button>
+            </div>
+            <div class="comp-note">Staff will check their IDs when they check yours.</div>
+            <div id="form-companion-rows"></div>
+          </div>
+        </div>
       </div>
 
       <div style="margin-bottom:14px;">
@@ -628,16 +648,21 @@
         </div>
       </div>
 
-      <!-- Free companions: a senior, a PWD, a small child who came with
-           them. Counted on this visitor's entry and checked by the desk with
-           their own ID. Only the free categories are offered; the server
-           decides which those are (Admission::companionCategories). Hidden
-           for a group member - the group's headcount covers the party. -->
-      <div id="pending-companions" style="display:none;background:var(--ew);border-radius:12px;padding:12px 13px;margin-bottom:16px;">
-        <div style="font-size:calc(12.5px * var(--fs));font-weight:700;color:var(--td);margin-bottom:3px;">Accompanying free visitors</div>
-        <div style="font-size:calc(11.5px * var(--fs));color:var(--tl);line-height:1.5;margin-bottom:6px;">Anyone with you who enters free? Add them here. Staff will check their IDs when they check yours.</div>
-        <div id="pending-companion-rows"></div>
-        <div id="pending-companion-status" style="font-size:calc(11px * var(--fs));color:var(--tl);margin-top:6px;min-height:1em;"></div>
+      <!-- Free companions, for a returning visitor: a new one picks them on
+           the details form (Visit Type), and this stays hidden for them.
+           The same button-then-counters as there. Hidden for a group
+           member - the group's headcount covers the party. -->
+      <div id="pending-companions" style="display:none;margin-bottom:16px;">
+        <button type="button" id="pending-companions-toggle" class="comp-toggle" aria-expanded="false" onclick="togglePendingCompanions()">
+          <span class="material-icons-round">person_add</span>
+          <span>With someone who enters free?</span>
+        </button>
+        <div id="pending-companions-box" class="comp-box" style="display:none;">
+          <div class="comp-head"><span>Accompanying free visitors</span></div>
+          <div class="comp-note">Staff will check their IDs when they check yours.</div>
+          <div id="pending-companion-rows"></div>
+          <div id="pending-companion-status" style="font-size:calc(11px * var(--fs));color:var(--tl);margin-top:6px;min-height:1em;"></div>
+        </div>
       </div>
 
       <!-- With a group? Someone who registered before the desk signed the
