@@ -1381,8 +1381,12 @@ function showPending(v) {
 
   // The join box is for someone NOT yet in a group. Once they are, the box
   // above explains that the group's payment is what they are waiting on.
+  // Nor for someone who registered today: the form under Visit Type asked
+  // for the code already. A returning visitor never sees that form, so
+  // this is where they join a party.
   const joinBox = document.getElementById('pending-join-group');
-  if (joinBox) joinBox.style.display = withGroup ? 'none' : 'block';
+  const registeredToday = STATE.registeredOn === localDay();
+  if (joinBox) joinBox.style.display = withGroup || registeredToday ? 'none' : 'block';
 
   if (withGroup) {
     const label = STATE.group ? STATE.group.label : 'your group';
@@ -1743,8 +1747,9 @@ function submitRegistration() {
       return;
     }
 
-    // Chosen on the form, so the waiting screen does not offer it again today.
-    STATE.companionsOnForm = localDay();
+    // The form asked about companions and a group code, so the waiting
+    // screen does not ask again today.
+    STATE.registeredOn = localDay();
     toggleFormCompanions(false);
 
     // SECURITY: the password has been sent; wipe it from memory immediately.
@@ -1986,7 +1991,7 @@ function renderCompanionPicker(show) {
   if (!box || !rows) return;
 
   // Someone who registered today chose them on the form already.
-  if (!show || !companionCategories().length || STATE.companionsOnForm === localDay()) {
+  if (!show || !companionCategories().length || STATE.registeredOn === localDay()) {
     box.style.display = 'none';
     return;
   }
