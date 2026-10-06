@@ -7,6 +7,7 @@ use App\Support\GoogleSignIn;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
 use Throwable;
 
@@ -25,16 +26,37 @@ use Throwable;
  */
 class GoogleAuthController extends Controller
 {
+    /**
+     * Where the round trip's state waits for Google to send the visitor back.
+     *
+     * Not the session. The session cookie is SameSite=Strict, and the return
+     * from accounts.google.com is a cross-site navigation, so the browser
+     * leaves it behind: Socialite found no state in a brand-new session and
+     * refused every sign-in as "Google sign-in did not work". This cookie is
+     * Lax - sent on that top-level GET and on nothing cross-site besides -
+     * scoped to /auth/google, and gone after ten minutes or one use, so the
+     * callback is still bound to the browser that started it.
+     */
+    private const STATE_COOKIE = 'google_oauth_state';
+
     public function redirect(): RedirectResponse
     {
         if (!GoogleSignIn::configured()) {
             return $this->toApp(['google_error' => 'unavailable']);
         }
 
+        $state = Str::random(40);
+
         return Socialite::driver('google')
+            ->stateless()
             ->redirectUrl($this->callbackUrl())
             ->scopes(['openid', 'email', 'profile'])
-            ->redirect();
+            ->with(['state' => $state])
+            ->redirect()
+            ->withCookie(cookie(
+                self::STATE_COOKIE, $state, 10, '/auth/google', null,
+                config('session.secure'), true, false, 'lax'
+            ));
     }
 
     public function callback(Request $request): RedirectResponse
@@ -48,11 +70,18 @@ class GoogleAuthController extends Controller
             return $this->toApp(['google_error' => 'cancelled']);
         }
 
+        // SECURITY: the callback must come from the trip this browser began.
+        // A stale or replayed one - the back button, a reload - has no
+        // cookie left to match.
+        $expected = $request->cookie(self::STATE_COOKIE);
+        $state    = $request->query('state');
+        if (!is_string($expected) || !is_string($state) || !hash_equals($expected, $state)) {
+            return $this->toApp(['google_error' => 'failed']);
+        }
+
         try {
-            $google = Socialite::driver('google')->redirectUrl($this->callbackUrl())->user();
+            $google = Socialite::driver('google')->stateless()->redirectUrl($this->callbackUrl())->user();
         } catch (Throwable $e) {
-            // Most often a stale or replayed callback whose state no longer
-            // matches the session - the back button, or a reload.
             report($e);
             return $this->toApp(['google_error' => 'failed']);
         }
@@ -156,6 +185,7 @@ class GoogleAuthController extends Controller
     /** Back to the app, with the answer in the fragment, which no server ever sees. */
     private function toApp(array $fragment): RedirectResponse
     {
-        return redirect()->to(url('/visitor/index.html') . '#' . http_build_query($fragment));
+        return redirect()->to(url('/visitor/index.html') . '#' . http_build_query($fragment))
+            ->withoutCookie(self::STATE_COOKIE, '/auth/google');
     }
 }
