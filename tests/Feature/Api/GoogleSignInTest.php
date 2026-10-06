@@ -48,6 +48,7 @@ class GoogleSignInTest extends TestCase
         ]);
 
         $provider = Mockery::mock(GoogleProvider::class);
+        $provider->shouldReceive('stateless')->andReturnSelf();
         $provider->shouldReceive('redirectUrl')->andReturnSelf();
         $provider->shouldReceive('user')->andReturn($user);
         Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
@@ -66,7 +67,8 @@ class GoogleSignInTest extends TestCase
 
     private function googleCallback(): array
     {
-        return $this->fragment($this->get('/auth/google/callback?code=abc&state=xyz'));
+        return $this->fragment($this->withCookie('google_oauth_state', 'xyz')
+            ->get('/auth/google/callback?code=abc&state=xyz'));
     }
 
     private function exchange(string $code): TestResponse
@@ -85,7 +87,26 @@ class GoogleSignInTest extends TestCase
 
     public function test_the_trip_starts_at_google(): void
     {
-        $this->get('/auth/google')->assertRedirectContains('accounts.google.com');
+        $res = $this->get('/auth/google')->assertRedirectContains('accounts.google.com');
+
+        // The state rides in its own Lax cookie, because the Strict session
+        // cookie does not survive the trip back from Google.
+        parse_str(parse_url($res->headers->get('Location'), PHP_URL_QUERY), $query);
+        $cookie = collect($res->headers->getCookies())->first(fn ($c) => $c->getName() === 'google_oauth_state');
+        $this->assertNotNull($cookie);
+        $this->assertSame('lax', $cookie->getSameSite());
+        $this->assertSame('/auth/google', $cookie->getPath());
+        $this->assertNotEmpty($query['state'] ?? null);
+    }
+
+    public function test_a_return_this_browser_did_not_start_is_refused(): void
+    {
+        $this->googleSays([]);
+
+        $this->assertSame(['google_error' => 'failed'], $this->fragment(
+            $this->get('/auth/google/callback?code=abc&state=xyz')));
+        $this->assertSame(['google_error' => 'failed'], $this->fragment(
+            $this->withCookie('google_oauth_state', 'other')->get('/auth/google/callback?code=abc&state=xyz')));
     }
 
     public function test_someone_new_signs_up_verified_with_no_password(): void
