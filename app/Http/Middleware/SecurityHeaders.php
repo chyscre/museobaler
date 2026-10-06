@@ -105,6 +105,19 @@ class SecurityHeaders
         // this origin may ask, and the browser still asks the person.
         $response->headers->set('Permissions-Policy', 'camera=(self), geolocation=(self), microphone=(), payment=()');
 
+        // Pages are never kept. Laravel's default "no-cache, private" still
+        // lets a phone restore a tab, or step Back, from memory without
+        // asking the server - and the form it brings back carries the CSRF
+        // token of a session that ended when the browser closed or an hour
+        // went by. Signing in from that page was refused as "session
+        // expired" on a page the person had only just looked at. no-store
+        // makes every visit fetch a fresh form; it also keeps an admin page
+        // off the Back button of a shared phone after logging out.
+        // HTML only: files and images set their own caching.
+        if (str_contains((string) $response->headers->get('Content-Type'), 'text/html')) {
+            $response->headers->set('Cache-Control', 'no-store, private');
+        }
+
         // SECURITY: Remove X-Powered-By
         // Hides the PHP version from response headers, reducing information leakage
         // that attackers use to target known vulnerabilities in specific PHP versions.
