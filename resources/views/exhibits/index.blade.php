@@ -262,7 +262,7 @@
           </select>
         </div>
       </div>
-      <div class="fg"><label class="fl">Name</label><input class="fi" name="name" required placeholder="Exhibit name" value="{{ $addFailed ? old('name') : '' }}"></div>
+      <div class="fg"><label class="fl">Title</label><input class="fi" name="name" required placeholder="Exhibit title" value="{{ $addFailed ? old('name') : '' }}"></div>
       <div class="fi-row">
         <div class="fg"><label class="fl">Hall</label>
           {{-- Halls come from the Museum Info page; the floor is the hall's. --}}
@@ -294,7 +294,7 @@
 
       <div class="fi-row">
         <div class="fg"><label class="fl">Languages</label><input class="fi" name="languages" value="{{ $addFailed ? old('languages', 'Filipino,English') : 'Filipino,English' }}"></div>
-        <div class="fg"><label class="fl">Storyline Order</label><input class="fi" type="number" name="storyline_order" value="{{ $addFailed ? old('storyline_order') : '' }}" min="1" placeholder="Leave blank to add it last (#{{ $nextOrder }})"></div>
+        <div class="fg"><label class="fl">Storyline Stop</label><input class="fi" type="number" name="storyline_order" value="{{ $addFailed ? old('storyline_order') : '' }}" min="1" placeholder="Leave blank to add it last (#{{ $nextOrder }})"></div>
       </div>
       <div class="fg">
         <label class="fl">Image <span style="font-weight:400;text-transform:none">(JPG, PNG, GIF or WebP, up to 10 MB)</span></label>

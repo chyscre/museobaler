@@ -21,13 +21,18 @@ class LoginController extends Controller
      *
      * The dashboard is the museum's operations screen and the Tourism office
      * has no access to it, so sending the head of tourism there would greet
-     * her with a 403 every morning. Her job starts at the attendance board.
+     * her with a 403 every morning. Her job starts at the attendance board,
+     * or at the visitor records while staff attendance is switched off.
      */
     public static function homeFor(\App\Models\Staff $user): string
     {
-        return $user->isTourismHead()
+        if (!$user->isTourismHead()) {
+            return route('dashboard');
+        }
+
+        return config('access.staff_attendance')
             ? route('staff-attendance.index')
-            : route('dashboard');
+            : route('records.index');
     }
 
     public function login(Request $request)

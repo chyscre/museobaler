@@ -319,6 +319,8 @@ class ReportController extends Controller
     public function export(Request $request, string $report, string $format)
     {
         abort_unless(ReportBuilder::supports($report, $format), 404);
+        // The attendance reports close with the module; see config/access.php.
+        abort_if(in_array($report, ['dtr', 'staff-attendance'], true) && !config('access.staff_attendance'), 404);
 
         $builder = app(ReportBuilder::class);
 

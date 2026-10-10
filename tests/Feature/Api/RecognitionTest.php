@@ -99,6 +99,21 @@ class RecognitionTest extends TestCase
         $this->assertSame(1, Scan::count());
     }
 
+    public function test_a_preview_frame_finds_the_exhibit_without_logging_a_scan(): void
+    {
+        $bay = $this->bay();
+        $this->exhibit("EXH-B", basename($bay));
+        $v = Visitor::factory()->paid()->create();
+
+        $res = $this->post('/api/v1/recognition', ['frame' => $this->frameOf($bay), 'preview' => '1'], [
+            'Authorization' => 'Bearer ' . $v->issueToken()['token'],
+        ])->assertOk();
+
+        $res->assertJsonPath('exhibit_code', 'EXH-B');
+        $this->assertGreaterThanOrEqual(ImageSearch::HIGH_CONFIDENCE, $res->json('confidence'));
+        $this->assertSame(0, Scan::count());
+    }
+
     public function test_reference_hashes_are_cached_between_requests(): void
     {
         $siege = $this->siege();

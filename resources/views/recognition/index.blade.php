@@ -128,7 +128,7 @@
 
 {{-- Per-exhibit photo counts --}}
 <div class="tbl-wrap" style="margin-bottom:20px">
-  <table class="rc-table">
+  <table class="rc-table" data-dt>
     <colgroup><col><col class="c-code"><col class="c-photos"><col class="c-model"><col class="c-act"></colgroup>
     <thead>
       <tr>
@@ -152,7 +152,7 @@
         <tr>
           <td><div class="name">{{ $r['name'] }}</div>@if($r['sub'])<div class="sub">{{ $r['sub'] }}</div>@endif</td>
           <td><span style="font-weight:700;color:var(--green-dark);font-size:12px">{{ $e->exhibit_code }}</span></td>
-          <td>
+          <td data-order="{{ $r['count'] }}">
             <span class="rc-photos">
               <span class="rc-mini"><div style="width:{{ $r['pct'] }}%;background:{{ $r['tone'] }}"></div></span>
               <span class="n">{{ $r['count'] }}</span>
@@ -171,7 +171,7 @@
       <tr style="background:#fafafa">
         <td><div class="name">{{ $r['name'] }}</div><div class="sub">{{ $r['sub'] }}</div></td>
         <td><span style="font-size:12px;color:var(--text-4)">—</span></td>
-        <td>
+        <td data-order="{{ $r['count'] }}">
           <span class="rc-photos">
             <span class="rc-mini"><div style="width:{{ $r['pct'] }}%;background:{{ $r['tone'] }}"></div></span>
             <span class="n">{{ $r['count'] }}</span>

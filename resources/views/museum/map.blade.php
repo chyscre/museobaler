@@ -292,7 +292,7 @@
         <span style="color:#374151">Archived</span><strong style="color:#9ca3af">{{ $archivedCount }}</strong>
       </div>
       <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:13px">
-        <span style="color:#374151">Storyline Steps</span><strong style="color:#d97706">{{ $storyline->count() }}</strong>
+        <span style="color:#374151">Storyline Stops</span><strong style="color:#d97706">{{ $storyline->count() }}</strong>
       </div>
       <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px">
         <span style="color:#374151">Not yet placed</span><strong style="color:#d97706" id="unplaced-count">0</strong>

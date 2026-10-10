@@ -73,8 +73,13 @@ class ReportsExport extends Command
         // One DTR per person who has hours, not one file called "dtr": a
         // combined sheet would need a name column the printed DTR does not
         // have, and payroll wants them one at a time anyway.
-        foreach (Staff::where('role', Staff::ROLE_ADMIN)->orderBy('name')->get() as $staff) {
-            $jobs['dtr-' . str($staff->name)->slug()] = fn () => $builder->dtr($staff, $from->copy()->startOfMonth());
+        if (config('access.staff_attendance')) {
+            foreach (Staff::where('role', Staff::ROLE_ADMIN)->orderBy('name')->get() as $staff) {
+                $jobs['dtr-' . str($staff->name)->slug()] = fn () => $builder->dtr($staff, $from->copy()->startOfMonth());
+            }
+        } else {
+            // The attendance reports close with the module; see config/access.php.
+            unset($jobs['staff-attendance']);
         }
 
         $failed = 0;

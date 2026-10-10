@@ -127,6 +127,42 @@ class AuditTrail
         return [self::action($a[1], $a[2]), $outcome];
     }
 
+    /**
+     * Headings for the Logs action filter, in the order the list shows them,
+     * each with the words that put an action under it. First match wins, so
+     * "Add recognition photos for exhibit" is Recognition, not Exhibits.
+     */
+    public const CATEGORIES = [
+        'Recognition'          => ['recognition'],
+        'Exhibits'             => ['exhibit', 'gallery'],
+        'Groups'               => ['group'],
+        'Visitors & admission' => ['visitor', 'admission', 'id verified'],
+        'Staff attendance'     => ['check in', 'correction', 'attendance', 'schedule'],
+        'Museum settings'      => ['museum', 'floor map', 'fee', 'discount'],
+        'Accounts & sign-in'   => ['sign in', 'sign out', 'password', 'staff', 'account'],
+    ];
+
+    /** Display order: Exhibits leads, Other trails. */
+    public const CATEGORY_ORDER = [
+        'Exhibits', 'Recognition', 'Visitors & admission', 'Groups',
+        'Staff attendance', 'Museum settings', 'Accounts & sign-in', 'Other',
+    ];
+
+    /** Which heading a kind of action sits under in the filter list. */
+    public static function category(string $kind): string
+    {
+        $k = strtolower($kind);
+        foreach (self::CATEGORIES as $category => $words) {
+            foreach ($words as $w) {
+                if (str_contains($k, $w)) {
+                    return $category;
+                }
+            }
+        }
+
+        return 'Other';
+    }
+
     /** The action without its record number, for grouping in a filter list. */
     public static function kind(?string $action): string
     {

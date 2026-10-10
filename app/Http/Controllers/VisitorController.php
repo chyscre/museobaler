@@ -10,7 +10,7 @@ use App\Models\Scan;
 use App\Models\Visit;
 use App\Models\Visitor;
 use App\Models\VisitGroup;
-use App\Support\DayPage;
+use App\Support\DashboardPeriod;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -49,38 +49,26 @@ class VisitorController extends Controller
             default  => $query->orderByDesc('created_at'),
         };
 
-        // A page is a day at the museum - the logbook read the way the paper
-        // one was, a day at a time. "Oldest first" walks the calendar
-        // forwards; the other sorts order within the day.
-        //
-        // A visitor is on every day they were HERE, not only the day they
-        // registered. Paging on created_at alone put a returning visitor on
-        // their sign-up day and nowhere else, so today's page left out
-        // everyone who had been before - the page looked like today's
-        // logbook and was missing half of it. Registration, the last visit,
-        // every attendance and every row in their visit history each count
-        // as a day they came.
-        $visitorDay = DayPage::using(
-            $query,
-            days: function ($q) {
-                $plain = (clone $q)->reorder();
+        // One period for the whole page - Year / Month / Week / Range, the
+        // dashboard's control - opening on this week. Every tab reads it.
+        $period = DashboardPeriod::fromRequest($request, 'week');
+        $from   = $period->from->toDateString();
+        $to     = $period->to->toDateString();
+        // Date columns compared as dates, so the first and last day count
+        // whatever time part the database keeps.
+        $onDates = fn ($q, string $col) => $q->whereDate($col, '>=', $from)->whereDate($col, '<=', $to);
 
-                return collect()
-                    ->merge((clone $plain)->selectRaw('DATE(created_at) as day')->distinct()->pluck('day'))
-                    ->merge((clone $plain)->whereNotNull('last_visit')->selectRaw('DATE(last_visit) as day')->distinct()->pluck('day'))
-                    ->merge(Attendance::whereIn('visitor_id', (clone $plain)->select('visitors.visitor_id'))
-                        ->distinct()->pluck('visit_date'))
-                    ->merge(Visit::whereIn('visitor_id', (clone $plain)->select('visitors.visitor_id'))
-                        ->distinct()->pluck('visit_date'));
-            },
-            onDay: fn ($q, string $date) => $q->where(fn ($w) => $w
-                ->whereDate('created_at', $date)
-                ->orWhereDate('last_visit', $date)
-                ->orWhereHas('attendances', fn ($a) => $a->whereDate('visit_date', $date))
-                ->orWhereHas('visits', fn ($v) => $v->whereDate('visit_date', $date))),
-            newestFirst: $vsort !== 'oldest',
-        );
-        $visitors   = $visitorDay->rows;
+        // A visitor is in the period if they were HERE during it, not only if
+        // they registered in it. Filtering on created_at alone dropped every
+        // returning visitor, so the list looked like the logbook and was
+        // missing half of it. Registration, the last visit, every attendance
+        // and every row in their visit history each count as a day they came.
+        $visitors = $query->where(fn ($w) => $w
+                ->whereBetween('created_at', $period->bounds())
+                ->orWhereBetween('last_visit', $period->bounds())
+                ->orWhereHas('attendances', fn ($q) => $onDates($q, 'visit_date'))
+                ->orWhereHas('visits', fn ($q) => $onDates($q, 'visit_date')))
+            ->get();
 
         $stats = [
             'total'      => Visitor::count(),
@@ -95,15 +83,14 @@ class VisitorController extends Controller
 
         // ── Scan tab ──────────────────────────────────────────
         $scanStats = Exhibit::with('category')
-            ->withCount('scans')
+            ->withCount(['scans' => fn ($q) => $q->whereBetween('scanned_at', $period->bounds())])
             ->orderByDesc('scans_count')
             ->get();
 
         // ── Attendance tab ────────────────────────────────────
-        $attDate  = $request->input('att_date', today()->toDateString());
-        $attQuery = Attendance::with('visitor')->orderByDesc('created_at');
-        if ($attDate) $attQuery->whereDate('visit_date', $attDate);
-        $attendances  = $attQuery->paginate(30, ['*'], 'att_page')->withQueryString();
+        // Every row in the period; the table pages them in the browser.
+        $attendances  = $onDates(Attendance::with('visitor'), 'visit_date')
+            ->orderByDesc('created_at')->get();
         $todayCount   = Attendance::whereDate('visit_date', today())->count();
         $totalAtt     = Attendance::whereNotNull('visitor_id')->count();
         $anonAtt      = Attendance::whereNull('visitor_id')->count();
@@ -122,10 +109,7 @@ class VisitorController extends Controller
         // a group could be registered and could never be marked paid - every
         // tourist party stayed Unpaid forever and the outstanding figure on
         // the daily report grew with money that had in fact been collected.
-        $groupQuery = VisitGroup::with('registeredBy')->withCount('visitors');
-        if ($gdate = $request->input('gdate')) {
-            $groupQuery->whereDate('visit_date', $gdate);
-        }
+        $groupQuery = $onDates(VisitGroup::with('registeredBy')->withCount('visitors'), 'visit_date');
         match ($request->input('gpay')) {
             'unpaid' => $groupQuery->where('payment_status', 'Unpaid'),
             'paid'   => $groupQuery->where('payment_status', 'Paid'),
@@ -133,7 +117,7 @@ class VisitorController extends Controller
             default  => null,
         };
         $groups = $groupQuery->orderByDesc('visit_date')->orderByDesc('created_at')
-            ->paginate(15, ['*'], 'gpage')->withQueryString();
+            ->get();
 
         $groupStats = [
             'today'       => VisitGroup::whereDate('visit_date', today())->count(),
@@ -145,9 +129,9 @@ class VisitorController extends Controller
         $activeTab = $request->input('tab', 'visitors');
 
         return view('records.index', compact(
-            'visitors', 'visitorDay', 'stats', 'scanStats',
-            'groups', 'groupStats', 'gdate',
-            'attendances', 'todayCount', 'totalAtt', 'anonAtt', 'attDate',
+            'period', 'visitors', 'stats', 'scanStats',
+            'groups', 'groupStats',
+            'attendances', 'todayCount', 'totalAtt', 'anonAtt',
             'chartLabels', 'chartValues', 'activeTab'
         ));
     }

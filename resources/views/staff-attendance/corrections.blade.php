@@ -95,7 +95,7 @@
   @if($corrections->isEmpty())
     <p style="font-size:13px;color:var(--text-3);padding:20px 0;text-align:center">Nothing here.</p>
   @else
-    <table style="width:100%;border-collapse:collapse">
+    <table data-dt style="width:100%;border-collapse:collapse">
       <thead>
         <tr style="border-bottom:1.5px solid var(--border)">
           @foreach(['Staff','Date','Entry','Reason','Filed by','Status',''] as $h)
@@ -107,7 +107,7 @@
         @foreach($corrections as $c)
           <tr style="border-bottom:1px solid var(--border-light)">
             <td style="padding:10px;font-size:13px;font-weight:600">{{ $c->staff->name }}</td>
-            <td style="padding:10px;font-size:13px;color:var(--text-2)">{{ $c->work_date->format('M j, Y') }}</td>
+            <td data-order="{{ $c->work_date->format('Ymd') }}" style="padding:10px;font-size:13px;color:var(--text-2)">{{ $c->work_date->format('M j, Y') }}</td>
             <td style="padding:10px;font-size:13px">
               {{ $c->type === 'in' ? 'In' : 'Out' }} · {{ \Carbon\Carbon::parse($c->requested_time)->format('g:i A') }}
             </td>
@@ -143,7 +143,6 @@
       </tbody>
     </table>
 
-    <div class="pagination" style="margin-top:16px">{{ $corrections->links() }}</div>
   @endif
 </div>
 @endsection

@@ -80,7 +80,7 @@
     </div>
   </div>
 
-  <table style="width:100%;border-collapse:collapse">
+  <table data-dt style="width:100%;border-collapse:collapse">
     <thead>
       <tr style="border-bottom:1.5px solid var(--border)">
         @foreach(['Staff','Role','Shift','Status',''] as $h)

@@ -1,6 +1,6 @@
 @extends('layouts.print')
-@section('title', 'Audit Trail')
-@section('report-title', 'Audit Trail')
+@section('title', 'Activity Log')
+@section('report-title', 'Activity Log')
 @section('report-meta', $from->format('F j, Y') . ' – ' . $to->format('F j, Y'))
 
 @section('downloads')

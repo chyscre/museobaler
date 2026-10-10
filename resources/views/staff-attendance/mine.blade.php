@@ -82,7 +82,7 @@
   <p class="sec-sub">Your own record. Corrections are filed by the museum administrator.</p>
 
   <div class="tbl-scroll">
-  <table style="width:100%;border-collapse:collapse;margin-top:14px">
+  <table data-dt style="width:100%;border-collapse:collapse;margin-top:14px">
     <thead>
       <tr style="border-bottom:1.5px solid var(--border)">
         @foreach(['Date','In','Out','Worked','Status'] as $h)
@@ -93,7 +93,7 @@
     <tbody>
       @foreach($days as $day)
         <tr style="border-bottom:1px solid var(--border-light)">
-          <td style="padding:10px;font-size:13px;color:var(--text-2)">{{ $day['date']->format('D, M j') }}</td>
+          <td data-order="{{ $day['date']->format('Ymd') }}" style="padding:10px;font-size:13px;color:var(--text-2)">{{ $day['date']->format('D, M j') }}</td>
           <td style="padding:10px;font-size:13px">{{ $day['in']?->scanned_at->format('g:i A') ?? '—' }}</td>
           <td style="padding:10px;font-size:13px">{{ $day['out']?->scanned_at->format('g:i A') ?? '—' }}</td>
           <td style="padding:10px;font-size:13px">

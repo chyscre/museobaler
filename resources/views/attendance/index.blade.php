@@ -42,10 +42,10 @@
       <h3 class="sec-title" style="margin-bottom:0">Attendance Log</h3>
       <p style="font-size:12px;color:var(--text-3)">Showing records for {{ \Carbon\Carbon::parse($date)->format('F j, Y') }}</p>
     </div>
-    <span class="badge b-green">{{ $attendances->total() }} records</span>
+    <span class="badge b-green">{{ $attendances->count() }} records</span>
   </div>
 
-  <table style="width:100%;border-collapse:collapse">
+  <table data-dt style="width:100%;border-collapse:collapse">
     <thead>
       <tr style="border-bottom:1.5px solid var(--border)">
         <th style="padding:10px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;text-align:left">#</th>
@@ -59,7 +59,7 @@
     <tbody>
     @forelse($attendances as $i => $a)
       <tr style="border-bottom:1px solid var(--border-light)">
-        <td style="padding:10px;font-size:13px;color:var(--text-3)">{{ $attendances->firstItem() + $i }}</td>
+        <td style="padding:10px;font-size:13px;color:var(--text-3)">{{ $loop->iteration }}</td>
         <td style="padding:10px">
           <div style="font-size:13px;font-weight:600;color:var(--text)">
             {{ $a->visitor_name ?: ($a->visitor ? $a->visitor->full_name : 'Anonymous') }}
@@ -85,7 +85,7 @@
         <td style="padding:10px;font-size:13px;color:var(--text-3)">
           {{ $a->accuracy ? '±' . $a->accuracy . 'm' : '—' }}
         </td>
-        <td style="padding:10px;font-size:13px;color:var(--text-3)">
+        <td data-order="{{ $a->created_at->timestamp }}" style="padding:10px;font-size:13px;color:var(--text-3)">
           {{ $a->created_at->format('h:i A') }}
         </td>
         <td style="padding:10px;text-align:right">
@@ -101,10 +101,6 @@
     @endforelse
     </tbody>
   </table>
-
-  @if($attendances->hasPages())
-  <div style="margin-top:16px">{{ $attendances->links() }}</div>
-  @endif
 </div>
 
 @include('records.partials.details-modal')

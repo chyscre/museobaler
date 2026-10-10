@@ -349,6 +349,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Except on a computer: the fence logs a museum entry, a laptop at home
   // is not one, and the browser would open with a location prompt for it.
   if (!onDesktop()) setTimeout(initGeofence, 3000);
+  // A visit from an earlier day ends here, whatever screen the app opened on.
+  setTimeout(farewellPastVisit, 1200);
 });
 
 // ── PERSIST ──────────────────────────────────────────────────
@@ -2346,7 +2348,14 @@ function tileBg(ex) {
 function renderMostViewed(exhibits) {
   const el = document.getElementById('most-viewed-list');
   if (!el) return;
-  const top = [...exhibits].sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 4);
+  // views is every scan the museum has recorded for the exhibit, from the
+  // same scans table as the admin dashboard (which counts a chosen period;
+  // this is all time). Nothing scanned yet means no ranking to show, so the
+  // section stays hidden rather than dressing up the first four as popular.
+  const top = exhibits.filter(ex => ex.views > 0)
+    .sort((a, b) => b.views - a.views).slice(0, 4);
+  const section = document.getElementById('most-viewed-section');
+  if (section) section.style.display = top.length ? '' : 'none';
   el.innerHTML = top.map(ex => `
     <div onclick="openExhibitCard(${cardPayload(ex)})" style="flex-shrink:0;width:130px;background:var(--w);border-radius:14px;overflow:hidden;box-shadow:var(--sh);cursor:pointer;">
       <div style="height:72px;position:relative;overflow:hidden;${ex.image ? 'background:#000' : (tileBg(ex))};display:flex;align-items:center;justify-content:center;">
@@ -2410,24 +2419,11 @@ function filterCategory(cat) {
 // onScanScreenShown, which showScreen calls for us — so this stays safe to
 // call from anywhere without re-entering itself.
 //
-// Every Scan button lands here, so this is where the pre-scan reminder sits:
-// the camera only starts once the visitor taps Proceed on it. Code that moves
-// to a scan screen on its own (goToNext) goes straight to showScreen instead.
-let _scanCautionMode = null;
-
+// The museum's reminder (barriers, no touching, no video) used to be a sheet
+// here that had to be dismissed before every scan. It now sits on the scan
+// screens themselves, under the viewfinder, so the camera opens straight away.
 function onScanEnter(forceMode) {
-  _scanCautionMode = forceMode || STATE.mode;
-  document.getElementById('scan-caution-sheet').classList.add('open');
-}
-
-function closeScanCaution() {
-  document.getElementById('scan-caution-sheet').classList.remove('open');
-}
-
-function proceedToScan() {
-  const mode = _scanCautionMode || STATE.mode;
-  _scanCautionMode = null;
-  closeScanCaution();
+  const mode = forceMode || STATE.mode;
   showScreen(mode === 'free' ? 's-scan-free' : 's-scan-storyline');
 }
 
@@ -2470,7 +2466,7 @@ function updateStorylineProgress() {
       const nameEl = document.getElementById('sl-next-name');
       const hallEl = document.getElementById('sl-next-hall');
       if (nameEl) nameEl.textContent = nextExhibit.title;
-      if (hallEl) hallEl.textContent = nextExhibit.hall + ' · Step ' + nextExhibit.storyline;
+      if (hallEl) hallEl.textContent = nextExhibit.hall + ' · Stop ' + nextExhibit.storyline;
     } else if (nextBanner && !nextExhibit) {
       nextBanner.innerHTML = '<span class="material-icons-round" style="font-size:18px;color:var(--accent-text)">emoji_events</span><span style="font-size:calc(13px * var(--fs));font-weight:600;color:var(--mode-primary)">You\'ve completed the storyline!</span>';
     }
@@ -2663,7 +2659,7 @@ const ImageSearchEngine = (() => {
       .map(r => {
         const pct  = Math.round(r.confidence * 100);
         const bar  = '█'.repeat(Math.round(pct / 10)).padEnd(10, '·');
-        const flag = r.ignored ? ' (ignored)' : pct >= HIGH_CONF * 100 ? ' ◀ navigate' : pct >= LOW_CONF * 100 ? ' ◀ candidate' : '';
+        const flag = r.ignored ? ' (ignored)' : pct >= HIGH_CONF * 100 ? ' ◀ shows after 2 in a row' : pct >= LOW_CONF * 100 ? ' ◀ keeps a card up' : '';
         return `${bar} ${String(pct).padStart(3)}%  ${r.label}${flag}`;
       });
     el.textContent = `[${engine}]\n` + (lines.join('\n') || '(no predictions)');
@@ -2674,11 +2670,22 @@ const ImageSearchEngine = (() => {
     if (el) el.remove();
   }
 
-  const SAMPLE_MS          = 1500; // TF.js — runs fully on-device, can sample fast
+  // The camera never opens an exhibit by itself any more. Whatever it is
+  // pointed at gets a preview card (title, a line of the description, and a
+  // button to open it), and the card follows the camera: it swaps when a
+  // different exhibit comes into view and goes when nothing known is in frame.
+  // So sampling carries on while a card is up, and is quicker on-device so the
+  // card keeps up with the phone being moved.
+  const SAMPLE_MS          = 800;  // TF.js — runs fully on-device, can sample fast
   const FALLBACK_SAMPLE_MS = 2500; // pHash — network round trip + server work, sample slower
-  const HIGH_CONF  = 0.75;   // ≥ this → auto-navigate
-  const LOW_CONF   = 0.45;   // between LOW and HIGH → show candidate list
-                              // below LOW → ignore entirely
+  // Hard to show, easy to lose. A classifier has to put every frame in some
+  // class, and anything unlike its training pictures (a hand, a phone, a
+  // visitor) can land on an exhibit at a middling score. So a card needs a
+  // strong score on SHOW_FRAMES frames in a row; once up it stays only while
+  // each frame still names that exhibit at KEEP_CONF or better.
+  const HIGH_CONF   = 0.85;  // ≥ this, frame after frame → show the card
+  const LOW_CONF    = 0.6;   // the card's exhibit must stay at least this sure
+  const SHOW_FRAMES = 2;
 
   // ── Label map ──────────────────────────────────────────────────────────────
   // If your Teachable Machine class names ARE your exhibit codes, leave this
@@ -2773,9 +2780,9 @@ const ImageSearchEngine = (() => {
     _videoEl = null;
     _setViewfinderState('idle');
     _removeDebug();
-    // Remove any lingering candidate banner
-    const old = document.getElementById('img-candidates-banner');
-    if (old) old.remove();
+    // The preview card belongs to a running camera; it goes with it.
+    _hidePreview();
+    _hintCount = 0;
   }
 
   // ── Main inference tick ────────────────────────────────────────────────────
@@ -2810,35 +2817,11 @@ const ImageSearchEngine = (() => {
       const top    = sorted[0];
 
       _busy = false;
-
-      if (!top || top.probability < LOW_CONF) {
-        _setViewfinderState('idle');
-        _maybeShowHint();
-        return;
-      }
+      if (!_videoEl) return; // stopped while the model was thinking
 
       // Resolve exhibit code: check label map first, then use class name directly
-      const exhibitCode = _resolveLabel(top.className);
-
-      if (top.probability >= HIGH_CONF) {
-        _setViewfinderState('matched');
-        showToast('Match found!', 800);
-        stop();
-        // On-device match — nothing has been recorded yet, so log it here.
-        setTimeout(() => handleScan(exhibitCode, 'image'), 800);
-      } else {
-        // Between LOW_CONF and HIGH_CONF → show top 3 as candidates
-        _setViewfinderState('idle');
-        const candidates = sorted
-          .filter(p => p.probability >= LOW_CONF)
-          .slice(0, 3)
-          .map(p => ({
-            exhibit_code: _resolveLabel(p.className),
-            name:         p.className,
-            confidence:   p.probability,
-          }));
-        _showCandidates(candidates);
-      }
+      if (top) _consider(_resolveLabel(top.className), top.probability, top.className);
+      else     _consider(null, 0);
     } catch (err) {
       _busy = false;
       _setViewfinderState('idle');
@@ -2865,6 +2848,9 @@ const ImageSearchEngine = (() => {
 
       const form = new FormData();
       form.append('frame', blob, 'frame.jpg');
+      // Only a card is shown for this, so the server must not file it as a
+      // visit; opening the card logs the scan from here.
+      form.append('preview', '1');
       if (STATE.visitorId) form.append('visitor_id', STATE.visitorId);
 
       // A frame on its way up, not an answer coming down: allowed longer than
@@ -2900,28 +2886,13 @@ const ImageSearchEngine = (() => {
         confidence: c.confidence,
       })));
 
-      if (!data || !data.exhibit_code) {
-        _setViewfinderState('idle');
-        _maybeShowHint();
-        return;
-      }
-
-      if (data.confidence >= HIGH_CONF) {
-        _setViewfinderState('matched');
-        showToast('Match found!', 800);
-        stop();
-        // The matcher already wrote the scan row before responding.
-        setTimeout(() => handleScan(data.exhibit_code, 'image', true), 800);
-      } else {
-        _setViewfinderState('idle');
-        // The server rescales its scores onto the same 0–1 meaning the model's
-        // probabilities carry, and already drops anything below this floor, so
-        // both engines can share one threshold. Re-filtering here keeps that
-        // true if the two ever drift apart.
-        const candidates = (data.candidates || []).filter(c => c.confidence >= LOW_CONF);
-        if (candidates.length) _showCandidates(candidates);
-        else _maybeShowHint();
-      }
+      // The server rescales its scores onto the same 0–1 meaning the model's
+      // probabilities carry, so both engines share one pair of thresholds.
+      // The video may have stopped while the frame was in flight.
+      if (!_videoEl) return;
+      if (!data || !data.exhibit_code) { _consider(null, 0); return; }
+      const top = (data.candidates || [])[0];
+      _consider(data.exhibit_code, data.confidence, top && top.name);
     } catch (err) {
       _busy = false;
       _setViewfinderState('idle');
@@ -3002,72 +2973,119 @@ const ImageSearchEngine = (() => {
   }
 
   // ── Hint toast (throttled) ─────────────────────────────────────────────────
+  // Roughly every ten seconds of the camera seeing nothing it knows, whichever
+  // engine is sampling.
   let _hintCount = 0;
   function _maybeShowHint() {
     _hintCount++;
-    if (_hintCount % 5 === 0) {
+    if (_hintCount % (_ready ? 12 : 4) === 0) {
       showToast('No exhibit recognized — try moving closer or improving lighting', 3000);
     }
   }
 
-  // ── Candidate list ─────────────────────────────────────────────────────────
-  function _showCandidates(candidates) {
-    if (!candidates || !candidates.length) return;
+  // ── Preview card ───────────────────────────────────────────────────────────
+  // _shown:  the exhibit code the card is showing now, or null.
+  // _streak: the code that has scored HIGH_CONF on the last _streakN frames,
+  //          working its way up to a card.
+  // _misses: frames in a row that did not back the card's exhibit.
+  let _shown   = null;
+  let _streak  = null;
+  let _streakN = 0;
+  let _misses  = 0;
 
-    const old = document.getElementById('img-candidates-banner');
-    if (old) old.remove();
+  // Frames that do not back the card before it goes. Two on-device (under two
+  // seconds); one for the photo matcher, whose frames are already 2.5s apart.
+  function _missesToClear() { return _ready ? 2 : 1; }
 
-    if (_timer) { clearInterval(_timer); _timer = null; }
+  // Every frame's verdict comes through here, from either engine: the best
+  // exhibit code and how sure the engine is, or null for nothing in frame.
+  function _consider(code, confidence, name) {
+    code = code ? String(code).trim().toUpperCase() : null;
 
-    const banner = document.createElement('div');
-    banner.id = 'img-candidates-banner';
-    banner.style.cssText = [
-      'position:fixed;bottom:80px;left:50%;transform:translateX(-50%)',
-      'background:#1a1a2e;border:1.5px solid rgba(255,255,255,0.15)',
-      'border-radius:16px;padding:14px 16px;max-width:340px;width:90%',
-      'box-shadow:0 8px 32px rgba(0,0,0,.45);z-index:9999',
-    ].join(';');
+    // Does this frame still back the card? Anything else counts against it -
+    // nothing at all, and just as much some other exhibit at any score.
+    if (_shown) {
+      if (code === _shown && confidence >= LOW_CONF) _misses = 0;
+      else if (++_misses >= _missesToClear()) _hidePreview();
+    }
 
-    const title = document.createElement('div');
-    title.style.cssText = 'font-size:11px;font-weight:700;color:rgba(255,255,255,0.5);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em';
-    title.textContent   = 'Did you mean?';
-    banner.appendChild(title);
-
-    candidates.forEach(c => {
-      const btn = document.createElement('button');
-      btn.style.cssText = [
-        'display:flex;width:100%;align-items:center;justify-content:space-between',
-        'padding:10px 12px;margin-bottom:7px',
-        'background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1)',
-        'border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;color:white',
-      ].join(';');
-
-      const pct = Math.round(c.confidence * 100);
-      btn.innerHTML = `<span>${c.name}</span><span style="font-size:calc(11px * var(--fs));color:${pct >= 65 ? '#4ade80' : '#fbbf24'};font-weight:700">${pct}%</span>`;
-      // A candidate the visitor picked was never confident enough for the
-      // server to record on its own, so this one is logged from here.
-      btn.onclick = () => { banner.remove(); stop(); handleScan(c.exhibit_code, 'image'); };
-      banner.appendChild(btn);
-    });
-
-    const dismiss = document.createElement('button');
-    dismiss.style.cssText = 'display:block;width:100%;text-align:center;padding:8px;background:transparent;border:none;cursor:pointer;font-size:12px;color:rgba(255,255,255,0.4);margin-top:2px';
-    dismiss.textContent   = 'None of these — keep scanning';
-    dismiss.onclick = () => {
-      banner.remove();
-      _hintCount = 0;
-      // Resume on whichever engine is actually running — restarting _tick
-      // unconditionally left the photo matcher dead after a dismissal, since
-      // _tick returns immediately when no on-device model is loaded.
-      if (_videoEl) {
-        _timer = _ready
-          ? setInterval(_tick, SAMPLE_MS)
-          : setInterval(_tickFallback, FALLBACK_SAMPLE_MS);
+    // Working towards a (new) card: only strong frames, unbroken.
+    if (code && code !== _shown && confidence >= HIGH_CONF) {
+      _streakN = _streak === code ? _streakN + 1 : 1;
+      _streak  = code;
+      if (_streakN >= SHOW_FRAMES) {
+        _streak = null; _streakN = 0;
+        _showPreview(code, name);
       }
-    };
-    banner.appendChild(dismiss);
+    } else {
+      _streak = null; _streakN = 0;
+    }
 
-    document.body.appendChild(banner);
+    if (_shown || _streak) _hintCount = 0;
+    else _maybeShowHint();
+    _setViewfinderState(_shown ? 'matched' : 'idle');
+  }
+
+  function _findExhibit(code) {
+    return _exhibitCache.find(e =>
+      [e.code, e.id].some(k => k && String(k).toUpperCase() === code)) || null;
+  }
+
+  function _showPreview(code, name) {
+    _shown = code;
+    const ex = _findExhibit(code);
+    // The list is what gives the card its picture and words. It is normally
+    // loaded long before the camera opens; if not, fetch it, and the next
+    // frame of the same exhibit redraws the card in full.
+    if (!ex && !_exhibitCache.length) loadExhibits().then(() => { if (_shown === code) _shown = null; });
+
+    // Inside the viewfinder square, over the bottom of the picture: below it
+    // sit the code box and the progress, and the card must not cover those.
+    const frame = _containerId && document.getElementById(_containerId);
+    const host = frame && frame.parentElement;
+    if (!host) return;
+    let card = document.getElementById('cam-preview');
+    if (card) card.remove();
+
+    card = document.createElement('div');
+    card.id = 'cam-preview';
+    card.setAttribute('role', 'status');
+    card.setAttribute('aria-live', 'polite');
+
+    const title = (ex && ex.title) || name || code;
+    const meta  = ex ? [ex.hall, ex.category].filter(v => v && v !== '—').join(' · ') : '';
+    const thumb = ex && (ex.thumb || ex.image)
+      ? `<div class="cam-preview-thumb" style="background:#000">${exhibitImg(ex, 'width:100%;height:100%;object-fit:cover;')}</div>`
+      : `<div class="cam-preview-thumb" style="${ex ? tileBg(ex) : 'background:var(--mode-secondary)'}"><span class="material-icons-round">${escapeHtml((ex && ex.icon) || 'museum')}</span></div>`;
+
+    card.innerHTML = `
+      <div class="cam-preview-top">
+        ${thumb}
+        <div style="flex:1;min-width:0">
+          <div class="cam-preview-title">${escapeHtml(title)}</div>
+          ${meta ? `<div class="cam-preview-meta">${escapeHtml(meta)}</div>` : ''}
+          ${ex && ex.description ? `<div class="cam-preview-desc">${escapeHtml(ex.description)}</div>` : ''}
+        </div>
+      </div>
+      <button type="button" class="cam-preview-open">
+        <span class="material-icons-round">open_in_full</span>See full details
+      </button>`;
+
+    // Opening it is the visit: logged from here as an image scan, since the
+    // matcher was told this frame was only a preview.
+    card.querySelector('.cam-preview-open').onclick = () => {
+      stop();
+      handleScan(code, 'image');
+    };
+    host.appendChild(card);
+  }
+
+  function _hidePreview() {
+    _shown = null;
+    _streak = null; _streakN = 0;
+    _misses = 0;
+    const card = document.getElementById('cam-preview');
+    if (card) card.remove();
   }
 
   // ── Init ───────────────────────────────────────────────────────────────────
@@ -3353,7 +3371,7 @@ function renderMapPins() {
     });
 
     here.forEach(n => {
-      const code = String(parseInt(String(n.ex.code || '').replace(/\D/g, ''), 10) || '') || '•';
+      const code = mapPinNumber(n.ex);
       const g = svgEl('g', { class: 'free-node', transform: 'translate(' + n.x + ',' + n.y + ')', style: 'cursor:pointer' });
       g.appendChild(svgEl('circle', { r: MAP_PIN_R, fill: '#4A7C2F', stroke: 'white', 'stroke-width': 8 }));
       g.appendChild(svgEl('text', { y: 14, 'text-anchor': 'middle', 'font-size': code.length > 2 ? 32 : 40, 'font-weight': 700, fill: 'white' }, code));
@@ -3363,9 +3381,71 @@ function renderMapPins() {
   });
 }
 
+// What a Free Explore pin says: "EXH-009" reads as "9", the same as on the
+// admin Museum Map; a code with no digits gets a dot.
+function mapPinNumber(ex) {
+  return String(parseInt(String(ex.code || '').replace(/\D/g, ''), 10) || '') || '•';
+}
+
+// Under the plan, every pin on the floor on show as its number and title -
+// the same numbers the pins carry. Free Explore: every exhibit, by code
+// number. Storyline: the stops, in order, ticked once scanned.
+//
+// A row does what its pin does (openExhibitFromMap): an exhibit already
+// scanned opens; one not yet scanned only gets the preview that says to scan
+// its label in the museum. The map is not a way round the scan.
+function renderMapLegend() {
+  const box = document.getElementById('map-legend-free');
+  if (!box) return;
+
+  const storyline = STATE.mode !== 'free';
+  const svg = visibleMapSvg();
+  const floor = svg && svg.id === MAP_FLOORS.second.svgId ? 'second' : 'ground';
+  let here = mapNodes().filter(n => n.floor === floor).map(n => n.ex);
+
+  let numberOf;
+  if (storyline) {
+    here = here.filter(ex => ex.storyline > 0).sort((a, b) => a.storyline - b.storyline);
+    numberOf = ex => String(ex.storyline);
+  } else {
+    const num = ex => { const n = parseInt(mapPinNumber(ex), 10); return isNaN(n) ? Infinity : n; };
+    here.sort((a, b) => num(a) - num(b) || String(a.title).localeCompare(String(b.title)));
+    numberOf = mapPinNumber;
+  }
+  const done = storyline ? getScannedStorylineOrders(_exhibitCache) : [];
+
+  box.innerHTML = '';
+  const head = document.createElement('div');
+  head.className = 'map-legend-head';
+  const noun = storyline ? (here.length === 1 ? ' storyline stop' : ' storyline stops')
+                         : (here.length === 1 ? ' exhibit' : ' exhibits');
+  head.textContent = MAP_FLOORS[floor].label + ' · ' + (here.length || 'No') + noun;
+  box.appendChild(head);
+
+  here.forEach(ex => {
+    const isDone = storyline && done.includes(ex.storyline);
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'map-legend-row';
+    row.innerHTML =
+      '<span class="map-legend-num' + (storyline ? ' is-story' : '') + (isDone ? ' is-done' : '') + '">'
+        + (isDone ? '✓' : escapeHtml(numberOf(ex))) + '</span>' +
+      '<span class="map-legend-text">' +
+        '<span class="map-legend-title">' + escapeHtml(ex.title) + '</span>' +
+        (ex.hall && ex.hall !== '—' ? '<span class="map-legend-hall">' + escapeHtml(ex.hall) + '</span>' : '') +
+      '</span>' +
+      '<span class="material-icons-round" aria-hidden="true">' + (isUnlocked(ex) ? 'chevron_right' : 'lock') + '</span>';
+    row.addEventListener('click', () => openExhibitFromMap(ex));
+    box.appendChild(row);
+  });
+}
+
+// A pin or a legend row. Opening the exhibit from here used to count as
+// scanning it - the visitor could unlock the whole museum from the map
+// without going near a label. Now it is the same as any exhibit card:
+// scanned already, it opens; otherwise the preview, which sends them to scan.
 function openExhibitFromMap(ex) {
-  const code = String(ex.code || ex.id || '').replace(/[^A-Za-z0-9_-]/g, '');
-  if (code) handleScan(code, 'qr', true);
+  openExhibitCard(ex);
 }
 
 function updateMapAfterScan(exhibit) {
@@ -3840,7 +3920,7 @@ function showNextExhibitMapHint(exhibit) {
       <span class="material-icons-round" style="font-size:20px;color:white;">location_on</span>
     </div>
     <div style="flex:1;min-width:0;">
-      <div style="font-size:calc(10px * var(--fs));color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Next Stop · Step ${exhibit.storyline}</div>
+      <div style="font-size:calc(10px * var(--fs));color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Next Stop · ${exhibit.storyline}</div>
       <div style="font-size:calc(13px * var(--fs));font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${exhibit.title}</div>
       <div style="font-size:calc(11px * var(--fs));color:rgba(255,255,255,0.6);margin-top:1px;">${exhibit.hall}${exhibit.floor ? ' · ' + exhibit.floor : ''}</div>
     </div>
@@ -4500,8 +4580,9 @@ function updateMap() {
     }
   } else {
     renderMapPins();
-    if (infoText) infoText.textContent = 'Tap any exhibit pin to view details';
+    if (infoText) infoText.textContent = 'Tap a pin or a name below to view details';
   }
+  renderMapLegend();
 
   // Floor tab colors
   const gndTab = document.getElementById('floor-gnd');
@@ -5280,6 +5361,8 @@ function submitFeedback() {
       return;
     }
     closeFeedback();
+    STATE._feedbackDate = _today();
+    saveState();
     showToast(lang === 'fil' ? 'Maraming salamat sa iyong sagot!' : 'Thank you for your feedback!');
   })
   .catch(() => {
@@ -5732,6 +5815,79 @@ function geofenceUnavailable(err) {
   );
 }
 
+// ── Farewell ─────────────────────────────────────────────────
+// The exit toast in initGeofence() only shows if the app is on screen at the
+// moment the phone crosses the fence, and it almost never is - people pocket
+// the phone before they reach the gate. So the goodbye is said whenever the
+// app next learns the visit is over: on the next open after the visit's day,
+// or on a reopen the same day with the phone already outside the fence. Once
+// per attendance record, whichever comes first.
+
+// Set once the geofence has accepted its first reading since this page load.
+let _geoFirstFix = false;
+
+function _farewellDue() {
+  return !!(STATE._attendanceId && STATE._entryTime && STATE._farewellFor !== STATE._attendanceId);
+}
+
+function showFarewell(mins) {
+  if (!_farewellDue()) return;
+  const fil = STATE.lang === 'fil';
+
+  // Without a live count from the exit itself, the stay runs from arrival to
+  // the last moment the app confirmed them on site.
+  if (mins == null && STATE._lastSeenAt && STATE._lastSeenAt > STATE._entryTime) {
+    mins = Math.round((STATE._lastSeenAt - STATE._entryTime) / 60000);
+  }
+
+  // Exhibits scanned on the visit's own day; STATE.scanned spans every visit
+  // this device has made.
+  const start = new Date(STATE._entryTime); start.setHours(0, 0, 0, 0);
+  const end   = start.getTime() + 86400000;
+  const seen  = (STATE.scanned || []).filter(s => s.scannedAt >= start.getTime() && s.scannedAt < end).length;
+
+  const stats = [];
+  if (mins != null && mins > 0) {
+    const h = Math.floor(mins / 60), m = mins % 60;
+    const span = fil
+      ? [h ? `${h} oras` : '', m ? `${m} minuto` : ''].filter(Boolean).join(' at ')
+      : [h ? `${h} hr${h > 1 ? 's' : ''}` : '', m ? `${m} min${m > 1 ? 's' : ''}` : ''].filter(Boolean).join(' ');
+    stats.push(fil ? `${span} kang nakasama namin` : `You spent ${span} with us`);
+  }
+  if (seen > 0) {
+    stats.push(fil ? `${seen} exhibit ang iyong nakita` : `${seen} exhibit${seen > 1 ? 's' : ''} viewed`);
+  }
+
+  document.getElementById('farewell-title').textContent = fil
+    ? 'Salamat sa pagbisita sa Museo de Baler!'
+    : 'Thanks for visiting Museo de Baler!';
+  document.getElementById('farewell-stats').textContent = stats.length
+    ? stats.join(' · ')
+    : (fil ? 'Sana ay bumalik ka muli.' : 'We hope to see you again.');
+  document.getElementById('farewell-done').textContent = fil ? 'Tapos na' : 'Done';
+
+  // Feedback only on the day itself: the visitor's token runs out with the
+  // day, and only a signed-in visitor can send the survey. Not offered twice.
+  const fb = document.getElementById('farewell-feedback');
+  const canGiveFeedback = STATE.visitorId && STATE.token
+    && STATE._attendanceDate === _today() && STATE._feedbackDate !== _today();
+  fb.style.display = canGiveFeedback ? '' : 'none';
+  document.getElementById('farewell-feedback-label').textContent = fil ? 'Magbigay ng puna' : 'Leave feedback';
+
+  STATE._farewellFor = STATE._attendanceId;
+  saveState();
+  document.getElementById('farewell-sheet').classList.add('open');
+}
+
+function closeFarewell() {
+  document.getElementById('farewell-sheet').classList.remove('open');
+}
+
+// A visit from an earlier day that was never said goodbye to. Called on load.
+function farewellPastVisit() {
+  if (STATE._attendanceDate && STATE._attendanceDate !== _today()) showFarewell(null);
+}
+
 function initGeofence() {
   if (!navigator.geolocation) return;
 
@@ -5758,6 +5914,12 @@ function initGeofence() {
       const dist   = haversineDistance(latitude, longitude, MUSEUM_LAT, MUSEUM_LNG);
       const inside = _geoRelaxed() || dist <= radius;
 
+      // Reopened the same day and already off the grounds: the visit ended
+      // while the app was put away, and this is the first chance to say so.
+      const firstFix = !_geoFirstFix;
+      _geoFirstFix = true;
+      if (firstFix && !inside && _sameVisitInProgress()) showFarewell(null);
+
       if (inside && !_insideGeofence) {
         // ── ENTRY ──────────────────────────────────────────
         _insideGeofence = true;
@@ -5779,8 +5941,9 @@ function initGeofence() {
         _insideGeofence = false;
         const mins = _entryTime ? Math.round((Date.now() - _entryTime) / 60000) : null;
         _entryTime = null;
-        const msg = mins !== null ? `👋 Thanks for visiting! (${mins} min)` : '👋 Thanks for visiting!';
-        showToast(msg, 3500);
+        STATE._lastSeenAt = Date.now();
+        saveState();
+        showFarewell(mins);
         logAttendanceExit(mins);
       }
     },
@@ -5843,6 +6006,11 @@ function markLastSeen() {
 
   const aid = STATE._attendanceId;
   if (!aid) return;
+
+  // Kept on the device too, so the farewell can tell them how long they
+  // stayed when it is shown on a later open.
+  STATE._lastSeenAt = Date.now();
+  saveState();
 
   apiFetch(`${API_BASE}/attendance/${aid}`, {
     method: 'PATCH',

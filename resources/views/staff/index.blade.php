@@ -71,14 +71,14 @@
       <option value="Active">Active</option><option value="Inactive">Inactive</option>
     </select>
   </x-fctl>
-  <span id="staffCount" class="fcount"></span>
+  {{-- The count and paging are under the table (DataTables). --}}
 </div>
 
 <div class="tbl-wrap">
-  <table>
+  <table id="staffTable" data-dt>
     <thead>
       <tr>
-        <th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Password</th><th>Created</th><th>Actions</th>
+        <th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Password</th><th>Created</th><th data-dt-skip>Actions</th>
       </tr>
     </thead>
     <tbody id="staffTbody">
@@ -105,7 +105,7 @@
           @endif
         @endif
       </td>
-      <td>{{ $s->created_at ? \Carbon\Carbon::parse($s->created_at)->format('M j, Y') : '—' }}</td>
+      <td data-order="{{ $s->created_at ? \Carbon\Carbon::parse($s->created_at)->timestamp : 0 }}">{{ $s->created_at ? \Carbon\Carbon::parse($s->created_at)->format('M j, Y') : '—' }}</td>
       <td>
         <div style="display:flex;gap:6px">
           <button class="btn btn-outline btn-xs" onclick="openStaffEditModal({{ $s->staff_id }})">
@@ -241,20 +241,20 @@ function copyCred(){
   }
 }
 
-function filterStaff(){
-  const q=document.getElementById('staffSearch').value.toLowerCase();
+// Role and Status narrow the table through DataTables, so its paging,
+// and "Showing x of y" follow the same rows.
+DataTable.ext.search.push(function(settings, data, index){
+  const api=new DataTable.Api(settings);
+  if(api.table().node().id!=='staffTable')return true;
+  const r=api.row(index).node();
   const role=document.getElementById('staffRole').value;
   const status=document.getElementById('staffStatus').value;
-  const rows=Array.from(document.querySelectorAll('#staffTbody tr'));
-  let visible=0;
-  rows.forEach(r=>{
-    const match=(!q||r.dataset.name.includes(q))&&(!role||r.dataset.role===role)&&(!status||r.dataset.status===status);
-    r.style.display=match?'':'none';
-    if(match)visible++;
-  });
-  document.getElementById('staffCount').textContent=visible+' staff member'+(visible!==1?'s':'');
+  return (!role||r.dataset.role===role)&&(!status||r.dataset.status===status);
+});
+function filterStaff(){
+  const t=document.getElementById('staffTable');
+  if(t._dt)t._dt.search(document.getElementById('staffSearch').value).draw();
 }
-filterStaff();
 document.getElementById('addModal').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open')});
 
 @if($errors->any() && old('_form') === 'add_staff')

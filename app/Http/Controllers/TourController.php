@@ -39,8 +39,7 @@ class TourController extends Controller
         $tours = Tour::with(['guide', 'visitor', 'group'])
             ->whereBetween('started_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
             ->orderByDesc('started_at')
-            ->paginate(25)
-            ->withQueryString();
+            ->get();
 
         return view('tours.index', [
             'tours'  => $tours,
@@ -66,16 +65,23 @@ class TourController extends Controller
 
         $guide = Staff::findOrFail($data['guide_staff_id']);
 
+        // Only someone who can guide: an active museum staff account.
+        if (!$guide->status || $guide->role !== Staff::ROLE_ADMIN) {
+            return back()->with('error', "{$guide->name} cannot be assigned as a guide.");
+        }
+
         // Assigning a guide who has not checked in today would put a tour on
         // someone who is not at the museum, and the Tourism office reads both
-        // numbers side by side.
-        $isPresent = StaffAttendance::where('staff_id', $guide->staff_id)
-            ->whereDate('work_date', today())
-            ->where('type', 'in')
-            ->exists();
+        // numbers side by side. Only while staff attendance is switched on.
+        if (config('access.staff_attendance')) {
+            $isPresent = StaffAttendance::where('staff_id', $guide->staff_id)
+                ->whereDate('work_date', today())
+                ->where('type', 'in')
+                ->exists();
 
-        if (!$isPresent) {
-            return back()->with('error', "{$guide->name} has not checked in today.");
+            if (!$isPresent) {
+                return back()->with('error', "{$guide->name} has not checked in today.");
+            }
         }
 
         [$kind, $id] = array_pad(explode(':', $data['subject'], 2), 2, null);
@@ -128,6 +134,15 @@ class TourController extends Controller
      */
     private function availableGuides()
     {
+        // With staff attendance switched off there is no check-in to go by,
+        // so every active museum staff account can be assigned.
+        if (!config('access.staff_attendance')) {
+            return Staff::where('status', true)
+                ->where('role', Staff::ROLE_ADMIN)
+                ->orderBy('name')
+                ->get();
+        }
+
         $checkedIn = StaffAttendance::whereDate('work_date', today())
             ->where('type', 'in')
             ->pluck('staff_id');

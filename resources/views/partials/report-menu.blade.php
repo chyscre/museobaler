@@ -11,6 +11,8 @@
     $reports  array of ['label' =>, 'url' =>, 'csv' => ?url]
     $mode     'date' for a single day, 'range' for from/to (default 'range')
     $id       unique per page — two menus on one page would collide
+    $from, $to  optional starting dates for range mode (default: this month
+              so far); pages with a period bar pass the period shown
 --}}
 @php
   $mode ??= 'range';
@@ -37,11 +39,11 @@
         <div class="rm-range">
           <div>
             <label class="rm-lbl">From</label>
-            <x-date-field class="rm-from" block label="From" :value="today()->startOfMonth()" />
+            <x-date-field class="rm-from" block label="From" :value="$from ?? today()->startOfMonth()" />
           </div>
           <div>
             <label class="rm-lbl">To</label>
-            <x-date-field class="rm-to" block label="To" :value="today()" />
+            <x-date-field class="rm-to" block label="To" :value="$to ?? today()" />
           </div>
         </div>
       @endif

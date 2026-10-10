@@ -50,11 +50,19 @@
 {{-- Assign --}}
 <div class="card card-p-lg" style="margin-bottom:22px">
   <h3 class="sec-title">Assign a guide</h3>
-  <p class="sec-sub">Only staff who have checked in today can be assigned.</p>
+  @if(config('access.staff_attendance'))
+    <p class="sec-sub">Only staff who have checked in today can be assigned.</p>
+  @else
+    <p class="sec-sub">Any active museum staff member can be assigned.</p>
+  @endif
 
   @if($guides->isEmpty())
     <div class="alert" style="background:#fffbeb;color:#92400e;margin-top:12px">
-      No guide has checked in today, so there is nobody to assign. Check the staff attendance board.
+      @if(config('access.staff_attendance'))
+        No guide has checked in today, so there is nobody to assign. Check the staff attendance board.
+      @else
+        There is no active museum staff account to assign.
+      @endif
     </div>
   @else
     <form method="POST" action="{{ route('tours.store') }}" style="margin-top:14px">
@@ -115,13 +123,13 @@
 <div class="card card-p-lg">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
     <h3 class="sec-title" style="margin-bottom:0">Tours {{ $from->format('M j') }} – {{ $to->format('M j, Y') }}</h3>
-    <span class="badge b-gray">{{ $tours->total() }} total</span>
+    <span class="badge b-gray">{{ $tours->count() }} total</span>
   </div>
 
   @if($tours->isEmpty())
     <p style="font-size:13px;color:var(--text-3);padding:20px 0;text-align:center">No guided tours in this range.</p>
   @else
-    <table style="width:100%;border-collapse:collapse">
+    <table data-dt style="width:100%;border-collapse:collapse">
       <thead>
         <tr style="border-bottom:1.5px solid var(--border)">
           @foreach(['Date','Guide','Type','For','Pax','Duration'] as $h)
@@ -132,7 +140,7 @@
       <tbody>
         @foreach($tours as $tour)
           <tr style="border-bottom:1px solid var(--border-light)">
-            <td style="padding:10px;font-size:13px;color:var(--text-2)">{{ $tour->started_at?->format('M j, g:i A') }}</td>
+            <td data-order="{{ $tour->started_at?->timestamp }}" style="padding:10px;font-size:13px;color:var(--text-2)">{{ $tour->started_at?->format('M j, g:i A') }}</td>
             <td style="padding:10px;font-size:13px;font-weight:600">{{ $tour->guide?->name ?? '—' }}</td>
             <td style="padding:10px"><span class="badge b-blue">{{ $tour->tour_type }}</span></td>
             <td style="padding:10px;font-size:13px;color:var(--text-2)">
@@ -151,7 +159,6 @@
       </tbody>
     </table>
 
-    <div class="pagination" style="margin-top:16px">{{ $tours->links() }}</div>
   @endif
 </div>
 @endsection

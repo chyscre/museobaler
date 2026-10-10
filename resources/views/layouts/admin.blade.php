@@ -10,6 +10,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="{{ asset('js/vendor/datatables/dataTables.dataTables.min.css') }}">
+  <script src="{{ asset('js/vendor/datatables/dataTables.min.js') }}"></script>
   @vite(['resources/css/app.css'])
   @stack('styles')
 </head>
@@ -38,10 +40,13 @@
            exhibits, the map, clocking in. --}}
       @if(auth()->user()->isTourismHead())
 
+        {{-- Staff attendance is switched off; see config/access.php. --}}
+        @if(config('access.staff_attendance'))
         <a href="{{ route('staff-attendance.index') }}" class="nav-item {{ request()->routeIs('staff-attendance.*') || request()->routeIs('corrections.*') ? 'active' : '' }}">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           <span>Staff Attendance</span>
         </a>
+        @endif
         <a href="{{ route('staff.index') }}" class="nav-item {{ request()->routeIs('staff.*') ? 'active' : '' }}">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           <span>Staff</span>
@@ -83,8 +88,10 @@
         </a>
         <a href="{{ route('logs.index') }}" class="nav-item {{ request()->routeIs('logs.*') ? 'active' : '' }}">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-          <span>Logs</span>
+          <span>Activity Log</span>
         </a>
+        {{-- Staff attendance is switched off; see config/access.php. --}}
+        @if(config('access.staff_attendance'))
         <a href="{{ route('staff-attendance.index') }}" class="nav-item {{ request()->routeIs('staff-attendance.*') || request()->routeIs('corrections.*') ? 'active' : '' }}">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           <span>Staff Attendance</span>
@@ -93,6 +100,7 @@
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 16 11 18 15 14"/></svg>
           <span>My Attendance</span>
         </a>
+        @endif
         <a href="{{ route('feedback.index') }}" class="nav-item {{ request()->routeIs('feedback.*') || request()->routeIs('survey.*') ? 'active' : '' }}">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <span>Feedback</span>
@@ -477,5 +485,7 @@
   document.addEventListener('visibilitychange', function(){ if (!document.hidden && _lastPoll) pollNotifications(false); });
   @endif
 </script>
+{{-- Lists: see public/js/datatables-init.js. --}}
+<script src="{{ asset('js/datatables-init.js') }}"></script>
 </body>
 </html>

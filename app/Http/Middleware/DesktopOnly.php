@@ -62,6 +62,16 @@ class DesktopOnly
         'logout',
     ];
 
+    /**
+     * While staff attendance is switched off, the museum pin is set from
+     * Museum Info instead of My Attendance - and it still has to be set from
+     * a phone, whose GPS is real where a desktop's is a Wi-Fi guess.
+     */
+    private const PIN_ROUTES = [
+        'museum.index',
+        'museum.update',
+    ];
+
     public function handle(Request $request, Closure $next): Response
     {
         if (!config('access.desktop_only', true)) {
@@ -72,7 +82,9 @@ class DesktopOnly
             return $next($request);
         }
 
-        if ($request->routeIs(self::PHONE_ROUTES)) {
+        $attendance = config('access.staff_attendance');
+
+        if ($request->routeIs(self::PHONE_ROUTES) || (!$attendance && $request->routeIs(self::PIN_ROUTES))) {
             return $next($request);
         }
 
@@ -89,8 +101,11 @@ class DesktopOnly
         // clock in, so there is no phone screen that belongs to them at all -
         // they get told plainly instead of being redirected in a circle.
         if ($user && !$user->isTourismHead()) {
-            return redirect()->route('my.attendance')
-                ->with('error', 'The admin panel is only available on a computer. On your phone you can check in and out.');
+            return $attendance
+                ? redirect()->route('my.attendance')
+                    ->with('error', 'The admin panel is only available on a computer. On your phone you can check in and out.')
+                : redirect()->route('museum.index')
+                    ->with('error', 'The admin panel is only available on a computer. On your phone you can set the museum pin.');
         }
 
         return response()->view('errors.desktop-only', [], 403);

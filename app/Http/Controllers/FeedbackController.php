@@ -31,7 +31,7 @@ class FeedbackController extends Controller
             default   => $query->orderByDesc('submitted_at'),
         };
 
-        $feedback = $query->paginate(20)->withQueryString();
+        $feedback = $query->get();
 
         // The headline CSM number, over everything ever filed. The dated
         // version is on the report.

@@ -1,0 +1,416 @@
+// Museo de Baler - generated from the live database schema
+
+Table museum_halls {
+  hall_id bigint [pk]
+  name "varchar(255)"
+  floor "varchar(255)"
+  description "varchar(255)"
+  icon "varchar(255)"
+  sort_order int
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table categories {
+  category_id bigint [pk]
+  name "varchar(255)"
+  description text
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table exhibits {
+  exhibit_id bigint [pk]
+  exhibit_code "varchar(255)" [unique]
+  name "varchar(255)"
+  description text
+  fun_facts text
+  category_id bigint
+  hall_id bigint
+  map_x "decimal(5,2)"
+  map_y "decimal(5,2)"
+  authors "varchar(255)"
+  languages "varchar(255)"
+  source_language "varchar(10)"
+  storyline_order int
+  image "varchar(255)"
+  qr_file "varchar(255)"
+  status "tinyint(1)"
+  date_published date
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table exhibit_translations {
+  translation_id bigint [pk]
+  exhibit_id bigint
+  language_code "varchar(10)"
+  language_label "varchar(255)"
+  title "varchar(255)"
+  description text
+  fun_facts text
+  audio_file "varchar(255)"
+  audio_made_at timestamp
+  audio_text_hash "varchar(40)"
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table exhibit_images {
+  image_id bigint [pk]
+  exhibit_id bigint
+  filename "varchar(255)"
+  caption "varchar(255)"
+  sort_order int
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table exhibit_training_images {
+  training_image_id bigint [pk]
+  exhibit_id bigint
+  filename "varchar(255)"
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table visit_groups {
+  group_id bigint [pk]
+  join_code "varchar(8)"
+  group_name "varchar(255)"
+  group_type enum
+  contact_name "varchar(255)"
+  contact_phone "varchar(255)"
+  visitor_type enum
+  city "varchar(255)"
+  province "varchar(255)"
+  country "varchar(255)"
+  headcount int
+  local_count int
+  discounts json
+  paying_count int
+  total_fee "decimal(10,2)"
+  payment_status enum
+  paid_at timestamp
+  refunded_amount "decimal(10,2)"
+  refunded_at timestamp
+  refunded_by bigint
+  visit_date date
+  registered_by bigint
+  notes text
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table visitors {
+  visitor_id bigint [pk]
+  group_id bigint
+  companion_of bigint
+  first_name "varchar(255)"
+  last_name "varchar(255)"
+  middle_name "varchar(255)"
+  age int
+  sex enum
+  visitor_type enum
+  admission_fee "decimal(8,2)"
+  discount_id bigint
+  discount_name "varchar(80)"
+  discount_percent tinyint
+  payment_status enum
+  paid_at timestamp
+  id_verified "tinyint(1)"
+  verified_at timestamp
+  verified_by bigint
+  visit_type enum
+  city "varchar(255)"
+  barangay "varchar(100)"
+  province "varchar(255)"
+  country "varchar(255)"
+  email "varchar(255)"
+  email_verified_at timestamp
+  password "varchar(255)"
+  api_token "varchar(64)"
+  token_expires_at timestamp
+  auth_provider "varchar(255)"
+  google_id "varchar(64)" [unique]
+  source enum
+  registered_by bigint
+  explore_mode "varchar(255)"
+  last_visit timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table visits {
+  visit_id bigint [pk]
+  visitor_id bigint
+  visit_date date
+  arrived_at timestamp
+  group_id bigint
+  joined_group_at timestamp
+  headcount smallint
+  companions json
+  visitor_type "varchar(20)"
+  visit_type "varchar(20)"
+  discount_id bigint
+  discount_name "varchar(80)"
+  discount_percent tinyint
+  admission_fee "decimal(10,2)"
+  payment_status "varchar(20)"
+  paid_at timestamp
+  id_verified "tinyint(1)"
+  verified_at timestamp
+  source "varchar(20)"
+  backfilled "tinyint(1)"
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table visitor_email_verifications {
+  id bigint [pk]
+  visitor_id bigint [unique]
+  code_hash "varchar(64)"
+  attempts tinyint
+  expires_at timestamp
+  sent_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table visitor_password_resets {
+  id bigint [pk]
+  visitor_id bigint [unique]
+  code_hash "varchar(64)"
+  token_hash "varchar(64)"
+  attempts tinyint
+  expires_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table attendances {
+  attendance_id bigint [pk]
+  visitor_id bigint
+  visitor_name "varchar(255)"
+  latitude "decimal(10,7)"
+  longitude "decimal(10,7)"
+  accuracy int
+  method "varchar(255)"
+  visit_date date
+  created_at timestamp
+  updated_at timestamp
+  exited_at timestamp
+  duration_mins int
+}
+
+Table scans {
+  scan_id bigint [pk]
+  exhibit_id bigint
+  visitor_id bigint
+  language_code "varchar(10)"
+  scan_type enum
+  scanned_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table bookmarks {
+  bookmark_id bigint [pk]
+  visitor_id bigint
+  exhibit_id bigint
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table admission_discounts {
+  discount_id bigint [pk]
+  name "varchar(80)"
+  proof "varchar(150)"
+  percent_off tinyint
+  min_age tinyint
+  max_age tinyint
+  active "tinyint(1)"
+  sort_order int
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table admission_payments {
+  payment_id bigint [pk]
+  reference "varchar(24)" [unique]
+  kind enum
+  payer enum
+  visitor_id bigint
+  visit_id bigint
+  group_id bigint
+  payer_name "varchar(255)"
+  visitor_type "varchar(20)"
+  headcount int
+  visitor_ids json
+  amount "decimal(10,2)"
+  breakdown json
+  recorded_at timestamp
+  recorded_by bigint
+  backfilled "tinyint(1)"
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table tours {
+  tour_id bigint [pk]
+  guide_staff_id bigint
+  tour_type enum
+  visitor_id bigint
+  group_id bigint
+  headcount int
+  started_at timestamp
+  ended_at timestamp
+  notes text
+  created_by bigint
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table feedback {
+  feedback_id bigint [pk]
+  visitor_id bigint
+  tour_id bigint
+  staff_id bigint
+  first_name "varchar(255)"
+  last_name "varchar(255)"
+  middle_name "varchar(255)"
+  rating tinyint
+  guide_rating tinyint
+  attributed_by enum
+  comment text
+  client_type enum
+  region "varchar(60)"
+  submitted_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table survey_questions {
+  question_id bigint [pk]
+  code "varchar(32)" [unique]
+  section enum
+  scale enum
+  text_fil text
+  text_en text
+  hint_fil "varchar(255)"
+  hint_en "varchar(255)"
+  options json
+  show_if json
+  allow_na "tinyint(1)"
+  default_na "tinyint(1)"
+  required "tinyint(1)"
+  locked "tinyint(1)"
+  is_active "tinyint(1)"
+  sort_order int
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table feedback_answers {
+  answer_id bigint [pk]
+  feedback_id bigint
+  question_id bigint
+  code "varchar(32)"
+  value tinyint
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table staff {
+  staff_id bigint [pk]
+  name "varchar(255)"
+  email "varchar(255)" [unique]
+  password "varchar(255)"
+  must_change_password "tinyint(1)"
+  password_changed_at timestamp
+  role enum
+  status "tinyint(1)"
+  remember_token "varchar(100)"
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table museum_info {
+  info_id bigint [pk]
+  name "varchar(255)"
+  tagline "varchar(255)"
+  story text
+  story2 text
+  address "varchar(255)"
+  hours "varchar(255)"
+  closed_on "varchar(255)"
+  phone "varchar(255)"
+  email "varchar(255)"
+  report_logo "varchar(255)"
+  report_header_image "varchar(255)"
+  admission_fee "decimal(8,2)"
+  resident_scope "varchar(20)"
+  admission "varchar(255)"
+  latitude "decimal(10,7)"
+  longitude "decimal(10,7)"
+  geofence_radius_m int
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table logs {
+  log_id bigint [pk]
+  user_id bigint
+  user_name "varchar(255)"
+  role "varchar(255)"
+  action "varchar(255)"
+  details text
+  ip_address "varchar(255)"
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table notifications {
+  notif_id bigint [pk]
+  title "varchar(255)"
+  body text
+  type "varchar(255)"
+  is_active "tinyint(1)"
+  created_at timestamp
+  updated_at timestamp
+}
+
+Ref: exhibits.category_id > categories.category_id
+Ref: exhibits.hall_id > museum_halls.hall_id
+Ref: exhibit_translations.exhibit_id > exhibits.exhibit_id
+Ref: exhibit_images.exhibit_id > exhibits.exhibit_id
+Ref: exhibit_training_images.exhibit_id > exhibits.exhibit_id
+Ref: visit_groups.refunded_by > staff.staff_id
+Ref: visit_groups.registered_by > staff.staff_id
+Ref: visitors.group_id > visit_groups.group_id
+Ref: visitors.companion_of > visitors.visitor_id
+Ref: visitors.discount_id > admission_discounts.discount_id
+Ref: visitors.verified_by > staff.staff_id
+Ref: visitors.registered_by > staff.staff_id
+Ref: visits.visitor_id > visitors.visitor_id
+Ref: visits.group_id > visit_groups.group_id
+Ref: visitor_email_verifications.visitor_id > visitors.visitor_id
+Ref: visitor_password_resets.visitor_id > visitors.visitor_id
+Ref: attendances.visitor_id > visitors.visitor_id
+Ref: scans.exhibit_id > exhibits.exhibit_id
+Ref: scans.visitor_id > visitors.visitor_id
+Ref: bookmarks.visitor_id > visitors.visitor_id
+Ref: bookmarks.exhibit_id > exhibits.exhibit_id
+Ref: admission_payments.visitor_id > visitors.visitor_id
+Ref: admission_payments.visit_id > visits.visit_id
+Ref: admission_payments.group_id > visit_groups.group_id
+Ref: admission_payments.recorded_by > staff.staff_id
+Ref: tours.guide_staff_id > staff.staff_id
+Ref: tours.visitor_id > visitors.visitor_id
+Ref: tours.group_id > visit_groups.group_id
+Ref: tours.created_by > staff.staff_id
+Ref: feedback.visitor_id > visitors.visitor_id
+Ref: feedback.tour_id > tours.tour_id
+Ref: feedback.staff_id > staff.staff_id
+Ref: feedback_answers.feedback_id > feedback.feedback_id
+Ref: feedback_answers.question_id > survey_questions.question_id

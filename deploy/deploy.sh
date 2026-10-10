@@ -84,6 +84,10 @@ for dir in images/exhibits images/training images/branding audio visitor/model; 
   if [ -z "$(ls -A "$SHARED/public/$dir" 2>/dev/null)" ] && [ -d "$NEW/public/$dir" ]; then
     cp -a "$NEW/public/$dir/." "$SHARED/public/$dir/" 2>/dev/null || true
   fi
+  # PHP-FPM runs as www-data and writes here (uploads, recognition photos,
+  # the trained model); mkdir leaves 755, which it can read but not write.
+  # Found 2026-10-09 with images/training at museo:www-data 755.
+  chmod 775 "$SHARED/public/$dir" 2>/dev/null || true
   rm -rf "$NEW/public/$dir"
   ln -sfn "$SHARED/public/$dir" "$NEW/public/$dir"
 done

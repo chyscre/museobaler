@@ -14,7 +14,9 @@ Options -Indexes
 
     # Exhibit media is served only by the signed API proxy. Leaving these
     # files directly addressable would bypass the visitor admission gate.
-    RewriteRule ^(?:images/exhibits|audio)(?:/|$) - [R=404,L]
+    # Recognition photos are staff-only, served by /training-image/ behind
+    # the panel login; directly addressable, anyone could fetch them.
+    RewriteRule ^(?:images/exhibits|images/training|audio)(?:/|$) - [R=404,L]
 
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .

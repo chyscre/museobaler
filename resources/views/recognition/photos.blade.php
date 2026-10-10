@@ -6,6 +6,10 @@
 .rp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
 .rp-thumb{position:relative;border-radius:8px;overflow:hidden;background:var(--border-light);aspect-ratio:1}
 .rp-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+/* A photo whose file is not on the server: say so rather than show a
+   broken-image icon. Remove it and shoot again. */
+.rp-missing img{display:none}
+.rp-missing::before{content:"File missing";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;font-size:11px;font-weight:600;color:var(--red);background:#fef2f2;border:1px dashed #fca5a5;border-radius:8px}
 .rp-del{position:absolute;top:4px;right:4px;background:rgba(220,38,38,.85);border:none;border-radius:50%;width:24px;height:24px;color:#fff;cursor:pointer;font-size:13px;line-height:24px;text-align:center;padding:0}
 /* Select mode: the x gives way to a tick box on every photo; tapping the
    photo toggles it. Big enough for a thumb. */
@@ -124,7 +128,7 @@
     <div class="rp-grid" id="rpGrid">
       @forelse($photos as $p)
       <div class="rp-thumb" data-photo-id="{{ $p->training_image_id }}">
-        <img src="{{ $p->url }}" alt="" loading="lazy">
+        <img src="{{ $p->url }}" alt="" loading="lazy" onerror="this.parentNode.classList.add('rp-missing')">
         <label class="rp-pick"><input type="checkbox" value="{{ $p->training_image_id }}"></label>
         <form method="POST" action="{{ route('recognition.photo.destroy', $p) }}" data-rp-delete>
           @csrf @method('DELETE')

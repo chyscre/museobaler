@@ -215,24 +215,27 @@ Route::middleware(['auth', 'throttle:panel', 'password.rotate', 'desktop'])->gro
         Route::post('/tours',            [TourController::class, 'store'])->name('tours.store');
         Route::post('/tours/{tour}/end', [TourController::class, 'end'])->name('tours.end');
 
-        // Filing an attendance correction. Museum staff were on site and can
-        // vouch for a colleague; the Tourism office was not, so she reviews
-        // rather than files — otherwise one person could do both halves.
-        Route::post('/attendance/corrections', [AttendanceCorrectionController::class, 'store'])->name('corrections.store');
+        // Staff attendance — switched off; see config/access.php.
+        Route::middleware('staff.attendance')->group(function () {
+            // Filing an attendance correction. Museum staff were on site and can
+            // vouch for a colleague; the Tourism office was not, so she reviews
+            // rather than files — otherwise one person could do both halves.
+            Route::post('/attendance/corrections', [AttendanceCorrectionController::class, 'store'])->name('corrections.store');
 
-        // Own attendance. Only museum staff clock in.
-        Route::get('/my/attendance',       [StaffAttendanceController::class, 'mine'])->name('my.attendance');
-        Route::post('/my/attendance/scan', [StaffAttendanceController::class, 'scan'])->name('my.attendance.scan');
-        // Sets the museum pin from a phone's GPS. Museum Info is a desktop
-        // page, and a desktop's idea of where it is comes from Wi-Fi, which
-        // once put the pin 1.8 km from the door.
-        Route::post('/my/attendance/pin',  [StaffAttendanceController::class, 'setPin'])->name('my.attendance.pin');
+            // Own attendance. Only museum staff clock in.
+            Route::get('/my/attendance',       [StaffAttendanceController::class, 'mine'])->name('my.attendance');
+            Route::post('/my/attendance/scan', [StaffAttendanceController::class, 'scan'])->name('my.attendance.scan');
+            // Sets the museum pin from a phone's GPS. Museum Info is a desktop
+            // page, and a desktop's idea of where it is comes from Wi-Fi, which
+            // once put the pin 1.8 km from the door.
+            Route::post('/my/attendance/pin',  [StaffAttendanceController::class, 'setPin'])->name('my.attendance.pin');
 
-        // The staff-room screen. Left running on a tablet; the code it shows
-        // rotates every 60 seconds so a photo of it is worthless.
-        Route::get('/attendance/kiosk',      [StaffAttendanceController::class, 'kiosk'])->name('attendance.kiosk');
-        Route::get('/attendance/kiosk/qr',   [StaffAttendanceController::class, 'kioskQr'])->name('attendance.kiosk.qr');
-        Route::get('/attendance/kiosk/tick', [StaffAttendanceController::class, 'kioskTick'])->name('attendance.kiosk.tick');
+            // The staff-room screen. Left running on a tablet; the code it shows
+            // rotates every 60 seconds so a photo of it is worthless.
+            Route::get('/attendance/kiosk',      [StaffAttendanceController::class, 'kiosk'])->name('attendance.kiosk');
+            Route::get('/attendance/kiosk/qr',   [StaffAttendanceController::class, 'kioskQr'])->name('attendance.kiosk.qr');
+            Route::get('/attendance/kiosk/tick', [StaffAttendanceController::class, 'kioskTick'])->name('attendance.kiosk.tick');
+        });
 
         // Visitor geofence check-ins from the visitor app — a different table
         // from staff attendance entirely.
@@ -266,20 +269,24 @@ Route::middleware(['auth', 'throttle:panel', 'password.rotate', 'desktop'])->gro
 
         Route::get('/logs', [LogController::class, 'index'])->name('logs.index');
 
-        Route::get('/staff-attendance',         [StaffAttendanceController::class, 'index'])->name('staff-attendance.index');
-        Route::get('/staff-attendance/{staff}', [StaffAttendanceController::class, 'show'])->name('staff-attendance.show');
+        // Staff attendance — switched off; see config/access.php.
+        Route::middleware('staff.attendance')->group(function () {
+            Route::get('/staff-attendance',         [StaffAttendanceController::class, 'index'])->name('staff-attendance.index');
+            Route::get('/staff-attendance/{staff}', [StaffAttendanceController::class, 'show'])->name('staff-attendance.show');
 
-        // Both roles read the corrections list. Filing one is museum work
-        // (further down); approving one is Tourism's (further down still).
-        Route::get('/attendance/corrections',  [AttendanceCorrectionController::class, 'index'])->name('corrections.index');
+            // Both roles read the corrections list. Filing one is museum work
+            // (further down); approving one is Tourism's (further down still).
+            Route::get('/attendance/corrections',  [AttendanceCorrectionController::class, 'index'])->name('corrections.index');
+
+            Route::get('/reports/dtr/{staff}', [ReportController::class, 'dtr'])->name('reports.dtr');
+            Route::get('/reports/staff-attendance', [ReportController::class, 'staffAttendance'])->name('reports.staff-attendance');
+        });
 
         // The individual reports keep their routes; there is no longer a
         // hub page listing them. Each is reached from the section it belongs
         // to — the logbook from Records, the DTR from Staff Attendance.
         Route::get('/reports/logbook',     [ReportController::class, 'logbook'])->name('reports.logbook');
-        Route::get('/reports/dtr/{staff}', [ReportController::class, 'dtr'])->name('reports.dtr');
-        Route::get('/reports/staff-attendance', [ReportController::class, 'staffAttendance'])->name('reports.staff-attendance');
-        Route::get('/reports/visitors',    [ReportController::class, 'visitors'])->name('reports.visitors');
+        Route::get('/reports/visitors',   [ReportController::class, 'visitors'])->name('reports.visitors');
         Route::get('/reports/earnings',    [ReportController::class, 'earnings'])->name('reports.earnings');
         Route::get('/reports/feedback',    [ReportController::class, 'feedback'])->name('reports.feedback');
         Route::get('/reports/exhibits',    [ReportController::class, 'exhibits'])->name('reports.exhibits');
@@ -333,10 +340,13 @@ Route::middleware(['auth', 'throttle:panel', 'password.rotate', 'desktop'])->gro
         // someone is correcting a spelling.
         Route::post('/staff/{staff}/reset-password', [StaffController::class, 'resetPassword'])->name('staff.reset-password');
 
-        Route::get('/staff-attendance/{staff}/schedule',  [StaffAttendanceController::class, 'schedules'])->name('staff-attendance.schedule');
-        Route::post('/staff-attendance/{staff}/schedule', [StaffAttendanceController::class, 'saveSchedules'])->name('staff-attendance.schedule.save');
+        // Staff attendance — switched off; see config/access.php.
+        Route::middleware('staff.attendance')->group(function () {
+            Route::get('/staff-attendance/{staff}/schedule',  [StaffAttendanceController::class, 'schedules'])->name('staff-attendance.schedule');
+            Route::post('/staff-attendance/{staff}/schedule', [StaffAttendanceController::class, 'saveSchedules'])->name('staff-attendance.schedule.save');
 
-        Route::post('/attendance/corrections/{correction}/review', [AttendanceCorrectionController::class, 'review'])->name('corrections.review');
+            Route::post('/attendance/corrections/{correction}/review', [AttendanceCorrectionController::class, 'review'])->name('corrections.review');
+        });
 
         // The audit trail stays Tourism-only: it is the record of what
         // everyone else did, including the museum staff it is kept on.

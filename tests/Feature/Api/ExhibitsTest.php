@@ -7,6 +7,7 @@ use App\Models\Exhibit;
 use App\Models\ExhibitImage;
 use App\Models\ExhibitTranslation;
 use App\Models\MuseumHall;
+use App\Models\Scan;
 use App\Models\Visitor;
 use App\Models\VisitGroup;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -240,6 +241,23 @@ class ExhibitsTest extends TestCase
             ->assertJsonPath('gallery.1.caption', 'B')
             ->assertJsonPath('next_id', $second->exhibit_id)
             ->assertJsonPath('scan_count', 0);
+    }
+
+    public function test_the_list_carries_each_exhibits_scan_count_for_most_viewed(): void
+    {
+        $busy  = $this->exhibit(['storyline_order' => 1]);
+        $quiet = $this->exhibit(['storyline_order' => 2, 'name' => 'Church Model']);
+        $v = Visitor::factory()->paid()->create();
+        foreach (['qr', 'image', 'qr'] as $type) {
+            Scan::create(['exhibit_id' => $busy->exhibit_id, 'visitor_id' => $v->visitor_id, 'scan_type' => $type]);
+        }
+
+        $this->getJson('/api/v1/exhibits', $this->token($v))
+            ->assertOk()
+            ->assertJsonPath('0.exhibit_code', $busy->exhibit_code)
+            ->assertJsonPath('0.scan_count', 3)
+            ->assertJsonPath('1.exhibit_code', $quiet->exhibit_code)
+            ->assertJsonPath('1.scan_count', 0);
     }
 
     public function test_an_unknown_code_is_a_404_with_not_found(): void
