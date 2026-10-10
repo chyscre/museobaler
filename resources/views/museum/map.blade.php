@@ -61,6 +61,13 @@
       <svg id="map-svg" class="map-svg" data-floor="ground" viewBox="0 0 1660 1000" width="100%">
         <!-- Outer walls -->
         <polygon points="235,35 570,35 570,10 1020,10 1020,55 1640,55 1640,945 1030,945 1030,980 640,980 640,945 10,945 10,125 235,125" fill="#D9C9A3" stroke="#2C1810" stroke-width="8" stroke-linejoin="round"/>
+        <!-- Halls, as the museum's framed floor plan divides the 1st floor -->
+        <g pointer-events="none" fill-opacity="0.28">
+          <path d="M235,40 L565,40 L565,370 L100,370 L100,130 L235,130 Z M100,460 L620,460 L620,940 L100,940 Z M1022,58 L1077,58 L1077,378 L1022,378 Z" fill="#B8860B"/>
+          <rect x="14" y="130" width="86" height="811" fill="#8E44AD"/>
+          <rect x="1083" y="58" width="554" height="402" fill="#2E86C1"/>
+          <path d="M1083,460 L1637,460 L1637,670 L1083,670 Z M1520,380 L1637,380 L1637,460 L1520,460 Z" fill="#27AE60"/>
+        </g>
         <!-- Stairs block with comfort room -->
         <rect x="570" y="10" width="450" height="370" fill="#6E3A1E" stroke="#2C1810" stroke-width="5"/>
         <text x="795" y="110" text-anchor="middle" font-size="30" font-weight="700" fill="#fff" letter-spacing="3">STAIRS</text>
@@ -143,6 +150,14 @@
         <!-- You are here (the framed plan by the entrance) -->
         <rect x="800" y="605" width="40" height="40" fill="#E03A2F" stroke="#2C1810" stroke-width="2"/>
         <text x="820" y="592" text-anchor="middle" font-size="17" font-weight="700" fill="#C0392B">YOU ARE HERE</text>
+        <!-- Hall names -->
+        <g pointer-events="none" font-weight="700" fill="#2C1810" stroke="#F3EBD9" stroke-width="6" paint-order="stroke" text-anchor="middle" letter-spacing="1">
+          <text x="400" y="240" font-size="28">TANGIBLE</text><text x="400" y="274" font-size="28">COLLECTION</text>
+          <text x="450" y="550" font-size="28">TANGIBLE</text><text x="450" y="584" font-size="28">COLLECTION</text>
+          <text transform="translate(66,815) rotate(-90)" font-size="24">CHURCH HERITAGE</text>
+          <text x="1400" y="320" font-size="30">PEOPLE OF BALER</text>
+          <text x="1390" y="525" font-size="28">CULTURE AND TRADITIONS</text>
+        </g>
         <!-- Layers the script fills in -->
         <polyline class="story-path" data-path="ground" points="" fill="none" stroke="#D4A800" stroke-width="7" stroke-dasharray="18,14" stroke-linejoin="round"/>
         <g data-pins="ground"></g>
@@ -175,6 +190,11 @@
           <rect x="318" y="715" width="35" height="35"/><rect x="1398" y="715" width="35" height="35"/>
           <rect x="648" y="715" width="35" height="35"/><rect x="1078" y="715" width="35" height="35"/>
           <rect x="623" y="440" width="35" height="35"/><rect x="1078" y="440" width="35" height="35"/>
+        </g>
+        <!-- The whole 2nd floor is one hall -->
+        <g pointer-events="none" font-weight="700" fill="#fff" text-anchor="middle">
+          <text x="875" y="600" font-size="46" letter-spacing="4">ART GALLERY</text>
+          <text x="875" y="645" font-size="22" letter-spacing="2">ENTIRE 2ND FLOOR</text>
         </g>
         <!-- Walkway direction across the gallery -->
         <line x1="395" y1="410" x2="1355" y2="410" stroke="#C0392B" stroke-width="3" marker-start="url(#arr-rev)" marker-end="url(#arr)"/>
