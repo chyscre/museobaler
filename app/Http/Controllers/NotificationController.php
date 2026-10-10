@@ -33,6 +33,10 @@ use Illuminate\Support\Collection;
  */
 class NotificationController extends Controller
 {
+    /** How each event is dated in the panel: the day as well as the time,
+     *  so an item left open overnight still says when it happened. */
+    private const STAMP = 'M j, Y · g:i A';
+
     public function poll(Request $request)
     {
         $today  = today()->toDateString();
@@ -75,7 +79,7 @@ class NotificationController extends Controller
                 'id'      => 'att_' . $a->attendance_id,
                 'type'    => 'attendance',
                 'message' => ($a->visitor_name ?: 'An anonymous visitor') . ' checked in',
-                'time'    => $a->created_at?->format('h:i A') ?? '',
+                'time'    => $a->created_at?->format(self::STAMP) ?? '',
                 'at'      => $a->created_at?->timestamp ?? 0,
                 'url'     => $records('attendance'),
             ]);
@@ -91,7 +95,7 @@ class NotificationController extends Controller
                 'type'    => 'visitor',
                 'message' => $v->full_name . ' registered'
                     . ($v->visitor_type ? ' (' . $v->visitor_type . ')' : ''),
-                'time'    => $v->created_at?->format('h:i A') ?? '',
+                'time'    => $v->created_at?->format(self::STAMP) ?? '',
                 'at'      => $v->created_at?->timestamp ?? 0,
                 'url'     => $records('visitors'),
             ]);
@@ -102,7 +106,7 @@ class NotificationController extends Controller
                 'type'    => 'visitor',
                 'message' => ($g->group_name ?: $g->contact_name ?: 'A group') . ' registered'
                     . ' — party of ' . (int) $g->headcount,
-                'time'    => $g->created_at?->format('h:i A') ?? '',
+                'time'    => $g->created_at?->format(self::STAMP) ?? '',
                 'at'      => $g->created_at?->timestamp ?? 0,
                 'url'     => $records('visitors'),
             ]);
@@ -112,7 +116,7 @@ class NotificationController extends Controller
                 'id'      => 'paid_' . $v->visitor_id . '_' . $v->paid_at?->timestamp,
                 'type'    => 'payment',
                 'message' => $v->full_name . ' paid ₱' . number_format((float) $v->admission_fee, 2),
-                'time'    => $v->paid_at?->format('h:i A') ?? '',
+                'time'    => $v->paid_at?->format(self::STAMP) ?? '',
                 'at'      => $v->paid_at?->timestamp ?? 0,
                 'url'     => $records('visitors'),
             ]);
@@ -123,7 +127,7 @@ class NotificationController extends Controller
                 'type'    => 'id_check',
                 'message' => $v->full_name . "'s residency ID was verified"
                     . ($v->verifiedBy ? ' by ' . $v->verifiedBy->name : ''),
-                'time'    => $v->verified_at?->format('h:i A') ?? '',
+                'time'    => $v->verified_at?->format(self::STAMP) ?? '',
                 'at'      => $v->verified_at?->timestamp ?? 0,
                 'url'     => $records('visitors'),
             ]);
@@ -134,7 +138,7 @@ class NotificationController extends Controller
                 'type'    => 'feedback',
                 'message' => ($f->visitor?->full_name ?: 'A visitor') . ' left feedback'
                     . ($f->rating ? ' — ' . str_repeat('★', (int) $f->rating) : ''),
-                'time'    => $f->submitted_at?->format('h:i A') ?? '',
+                'time'    => $f->submitted_at?->format(self::STAMP) ?? '',
                 'at'      => $f->submitted_at?->timestamp ?? 0,
                 'url'     => route('feedback.show', $f->feedback_id),
             ]);
@@ -144,7 +148,7 @@ class NotificationController extends Controller
                 'id'      => 'scan_' . $s->scan_id,
                 'type'    => 'scan',
                 'message' => ($s->visitor?->full_name ?: 'A guest') . ' scanned ' . ($s->exhibit->name ?? 'an exhibit'),
-                'time'    => $s->scanned_at?->format('h:i A') ?? '',
+                'time'    => $s->scanned_at?->format(self::STAMP) ?? '',
                 'at'      => $s->scanned_at?->timestamp ?? 0,
                 'url'     => $s->exhibit
                     ? route('exhibits.show', $s->exhibit->exhibit_id)
@@ -167,7 +171,7 @@ class NotificationController extends Controller
                 'type'       => 'visitor',
                 'message'    => $visit->visitor->full_name . ' is back for another visit'
                     . ($visit->visitor_type ? ' (' . $visit->visitor_type . ')' : ''),
-                'time'       => $visit->created_at?->format('h:i A') ?? '',
+                'time'       => $visit->created_at?->format(self::STAMP) ?? '',
                 'at'         => $visit->created_at?->timestamp ?? 0,
                 'url'        => $records('visitors'),
             ]);
@@ -206,6 +210,8 @@ class NotificationController extends Controller
                     'message'    => $unpaid
                         ? $name . ' owes ₱' . number_format((float) $v->admission_fee, 2)
                         : $name . ' needs a residency ID check',
+                    // When the task arose: the visitor's latest arrival.
+                    'time'       => ($v->last_visit ?? $v->created_at)?->format(self::STAMP) ?? '',
                     'action'     => $unpaid ? 'Mark Paid' : 'Verify ID',
                     'action_url' => $unpaid
                         ? route('visitors.mark-paid', $v->visitor_id)

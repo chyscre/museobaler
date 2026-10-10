@@ -316,7 +316,10 @@
               ? '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'
               : '<path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/>')
           + '</svg></span>'
-          + '<a href="' + esc(p.url) + '" style="flex:1;min-width:0;font-size:12px;color:var(--text);text-decoration:none;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(p.message) + '</a>'
+          + '<a href="' + esc(p.url) + '" style="flex:1;min-width:0;text-decoration:none">'
+          + '<div style="font-size:12px;color:var(--text);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(p.message) + '</div>'
+          + (p.time ? '<div style="font-size:10px;color:var(--text-3);margin-top:2px">' + esc(p.time) + '</div>' : '')
+          + '</a>'
           + '<button type="button" class="btn ' + (isPay ? 'btn-green' : 'btn-outline') + ' btn-xs" style="flex-shrink:0"'
           + ' onclick="runAdmissionAction(\'' + esc(p.action_url) + '\')">' + esc(p.action) + '</button>'
           + '</div>';

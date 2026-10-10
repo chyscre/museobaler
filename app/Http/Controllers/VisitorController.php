@@ -91,7 +91,10 @@ class VisitorController extends Controller
         // Every row in the period; the table pages them in the browser.
         $attendances  = $onDates(Attendance::with('visitor'), 'visit_date')
             ->orderByDesc('created_at')->get();
-        $todayCount   = Attendance::whereDate('visit_date', today())->count();
+        // Today's ids let the tab badge count only check-ins this staff
+        // member has not seen yet, rather than the whole day every time.
+        $todayIds     = Attendance::whereDate('visit_date', today())->pluck('attendance_id');
+        $todayCount   = $todayIds->count();
         $totalAtt     = Attendance::whereNotNull('visitor_id')->count();
         $anonAtt      = Attendance::whereNull('visitor_id')->count();
 
@@ -131,7 +134,7 @@ class VisitorController extends Controller
         return view('records.index', compact(
             'period', 'visitors', 'stats', 'scanStats',
             'groups', 'groupStats',
-            'attendances', 'todayCount', 'totalAtt', 'anonAtt',
+            'attendances', 'todayCount', 'todayIds', 'totalAtt', 'anonAtt',
             'chartLabels', 'chartValues', 'activeTab'
         ));
     }
