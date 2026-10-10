@@ -35,6 +35,9 @@ class NotificationBellTest extends TestCase
         $this->assertNotEmpty($items, 'today\'s activity should populate the panel on login');
         $this->assertSame('Ana Reyes checked in', $items[0]['message']);
         $this->assertNotSame('', $items[0]['time']);
+        // Dated, not just a clock time, so an item left open overnight still
+        // says which day it happened.
+        $this->assertStringStartsWith(today()->format('M j, Y'), $items[0]['time']);
     }
 
     public function test_unpaid_and_unverified_visitors_surface_as_pending_actions(): void

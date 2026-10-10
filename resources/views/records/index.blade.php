@@ -54,9 +54,8 @@
   <button class="tab-btn {{ $activeTab === 'attendance' ? 'active' : '' }}" onclick="switchTab('attendance',this)">
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;display:inline;vertical-align:middle;margin-right:5px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
     Attendance
-    @if($todayCount > 0)
-      <span style="background:var(--green);color:white;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;margin-left:4px">{{ $todayCount }}</span>
-    @endif
+    {{-- Filled in by the script below: check-ins since this tab was last opened. --}}
+    <span id="attNewBadge" title="New check-ins since you last opened this tab" style="display:none;background:var(--green);color:white;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;margin-left:4px"></span>
   </button>
 </div>
 
@@ -603,12 +602,33 @@ function switchTab(tab, btn){
   history.replaceState(null, '', url);
   // A period change should land back on this tab.
   document.querySelectorAll('.period-bar input[name=tab]').forEach(i => i.value = tab);
-  // Clear attendance badge when tab is opened
-  if (tab === 'attendance') {
-    var badge = btn.querySelector('span');
-    if (badge) badge.remove();
-  }
+  if (tab === 'attendance') markAttendanceSeen();
 }
+
+// Attendance tab badge: today's check-ins this staff member has not seen yet.
+// Opening the tab marks everything up to the newest check-in as seen, so the
+// number clears and only comes back when someone new arrives. Remembered per
+// account in this browser; if storage is blocked it falls back to today's total.
+var ATT_TODAY_IDS = @json($todayIds);
+var ATT_SEEN_KEY  = 'mdb.attSeen.{{ auth()->id() }}';
+function markAttendanceSeen() {
+  var newest = ATT_TODAY_IDS.length ? Math.max.apply(null, ATT_TODAY_IDS) : 0;
+  try {
+    var seen = parseInt(localStorage.getItem(ATT_SEEN_KEY) || '0', 10) || 0;
+    if (newest > seen) localStorage.setItem(ATT_SEEN_KEY, String(newest));
+  } catch (e) {}
+  document.getElementById('attNewBadge').style.display = 'none';
+}
+(function () {
+  var badge = document.getElementById('attNewBadge');
+  if (@json($activeTab) === 'attendance') { markAttendanceSeen(); return; }
+  var fresh;
+  try {
+    var seen = parseInt(localStorage.getItem(ATT_SEEN_KEY) || '0', 10) || 0;
+    fresh = ATT_TODAY_IDS.filter(function (id) { return id > seen; }).length;
+  } catch (e) { fresh = ATT_TODAY_IDS.length; }
+  if (fresh > 0) { badge.textContent = fresh; badge.style.display = ''; }
+})();
 
 // Attendance chart
 var chartEl = document.getElementById('chartAttendance');
