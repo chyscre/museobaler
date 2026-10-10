@@ -37,3 +37,8 @@ Thumbs.db
 !/public/images/qr/.gitkeep
 !/public/images/branding/.gitkeep
 !/public/audio/.gitkeep
+
+# Thesis manuscript files - kept on disk, not in the repo
+docs/Chapter*.docx
+docs/Museo-de-Baler-Defense-Sheet.*
+docs/museobaler_database.txt
