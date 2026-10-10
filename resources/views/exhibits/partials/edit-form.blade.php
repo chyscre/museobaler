@@ -55,7 +55,7 @@
                   </select>
                 </div>
               </div>
-              <div class="fg"><label class="fl">Name</label><input class="fi" name="name" value="{{ $exhibit->name }}" required></div>
+              <div class="fg"><label class="fl">Title</label><input class="fi" name="name" value="{{ $exhibit->name }}" required></div>
               <div class="fg"><label class="fl">Authors</label><input class="fi" name="authors" value="{{ $exhibit->authors }}" placeholder="e.g. Dr. Juan Dela Cruz"></div>
               <div class="fg"><label class="fl">Description</label><textarea class="fi" name="description" rows="4" data-autogrow placeholder="Exhibit description…">{{ $exhibit->description }}</textarea></div>
               <div class="fg" style="margin-bottom:0"><label class="fl">Fun Facts <span style="font-weight:400;text-transform:none;font-size:11px">(one per line)</span></label><textarea class="fi" name="fun_facts" rows="3" data-autogrow placeholder="Enter each fun fact on a new line…">{{ $exhibit->fun_facts }}</textarea></div>
@@ -96,7 +96,7 @@
                 @endforeach
               </select>
             </div>
-            <div class="fg" style="margin-bottom:0"><label class="fl">Storyline Order</label><input class="fi" type="number" name="storyline_order" value="{{ $exhibit->storyline_order }}" min="0"></div>
+            <div class="fg" style="margin-bottom:0"><label class="fl">Storyline Stop</label><input class="fi" type="number" name="storyline_order" value="{{ $exhibit->storyline_order }}" min="0"></div>
             <div class="fg" style="margin-bottom:0"><label class="fl">Languages</label><input class="fi" name="languages" value="{{ $exhibit->languages }}" placeholder="Filipino,English"></div>
           </div>
         </div>

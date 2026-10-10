@@ -33,7 +33,7 @@
 @endif
 
 <div class="card card-p-lg">
-  <table style="width:100%;border-collapse:collapse">
+  <table data-dt style="width:100%;border-collapse:collapse">
     <thead>
       <tr style="border-bottom:1.5px solid var(--border)">
         @foreach(['Date','Shift','In','Out','Worked','Status'] as $h)
@@ -44,7 +44,7 @@
     <tbody>
       @foreach($days as $day)
         <tr style="border-bottom:1px solid var(--border-light);{{ $day['date']->isWeekend() ? 'background:var(--border-light)' : '' }}">
-          <td style="padding:10px;font-size:13px;color:var(--text-2)">{{ $day['date']->format('D, M j') }}</td>
+          <td data-order="{{ $day['date']->format('Ymd') }}" style="padding:10px;font-size:13px;color:var(--text-2)">{{ $day['date']->format('D, M j') }}</td>
           <td style="padding:10px;font-size:12px;color:var(--text-3)">
             @if($day['schedule'] && !$day['schedule']->is_rest_day)
               {{ \Carbon\Carbon::parse($day['schedule']->shift_start)->format('g:i A') }}–{{ \Carbon\Carbon::parse($day['schedule']->shift_end)->format('g:i A') }}

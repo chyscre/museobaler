@@ -4,6 +4,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Staff attendance module
+    |--------------------------------------------------------------------------
+    |
+    | Clocking in, the staff-room kiosk, schedules, corrections, the DTR and
+    | the staff attendance report. Built at the Tourism office's request but
+    | outside the study's scope, so it is switched off: every page and link is
+    | hidden and its addresses answer 404. The code and the tables are kept,
+    | untouched, so turning this back on restores the module as it was.
+    |
+    */
+
+    'staff_attendance' => (bool) env('STAFF_ATTENDANCE', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Desktop-only admin panel
     |--------------------------------------------------------------------------
     |

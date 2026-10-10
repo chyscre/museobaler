@@ -323,6 +323,9 @@
   </div>
 </div>
 
+{{-- Staff attendance is switched off; see config/access.php. The script
+     further down finds no #checkinPanel and does nothing. --}}
+@if(config('access.staff_attendance'))
 <div style="display:grid;gap:14px">
 
   {{-- ── Staff check-in code ─────────────────────────────────── --}}
@@ -372,6 +375,7 @@
   </details>
 
 </div>
+@endif
 
 {{-- Today's entries --}}
 <div class="card card-p-lg" style="margin-top:18px">

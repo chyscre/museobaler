@@ -63,8 +63,19 @@ class Recognition
         $label = $exhibit ? $exhibit->exhibit_code : self::BACKGROUND;
         $name  = Str::slug($label) . '_' . time() . '_' . Str::lower(Str::random(6)) . '.jpg';
 
-        imagejpeg($img, $dir . '/' . $name, 85);
+        // imagejpeg() only warns when it cannot write, and the caller used to
+        // record the photo anyway - a row with no file, shown as a broken
+        // image in the grid and skipped by training. Refuse instead, so the
+        // upload says what went wrong.
+        $saved = @imagejpeg($img, $dir . '/' . $name, 85);
         imagedestroy($img);
+
+        if (!$saved || !is_file($dir . '/' . $name)) {
+            throw new RuntimeException(
+                'The server could not save the photo: the folder ' . self::DIR
+                . ' is not writable by the web server.'
+            );
+        }
 
         return $name;
     }

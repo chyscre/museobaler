@@ -66,6 +66,15 @@ class ExhibitController extends Controller
      * defaults say things like "The image field must not be greater than
      * 10240 kilobytes", which reads as a bug rather than an instruction.
      */
+    /**
+     * What the form calls the columns whose names differ, so an error reads
+     * "The title field is required" rather than naming the database column.
+     */
+    private const ATTRIBUTES = [
+        'name'            => 'title',
+        'storyline_order' => 'storyline stop',
+    ];
+
     private const MESSAGES = [
         'exhibit_code.unique' => 'That exhibit code is already used by another exhibit. Pick a different one.',
         'image.image'         => 'The picture must be an image file (JPG, PNG, GIF or WebP).',
@@ -93,7 +102,7 @@ class ExhibitController extends Controller
             'storyline_order' => 'nullable|integer|min:0',
             'image'        => self::IMAGE_RULE,
             't_audio.*'    => self::AUDIO_RULE,
-        ], self::MESSAGES);
+        ], self::MESSAGES, self::ATTRIBUTES);
 
         $data = $request->only([
             'exhibit_code', 'name', 'description', 'fun_facts',
@@ -164,7 +173,7 @@ class ExhibitController extends Controller
             'gallery_images.*.image' => self::MESSAGES['images.*.image'],
             'gallery_images.*.mimes' => self::MESSAGES['images.*.mimes'],
             'gallery_images.*.max'   => self::MESSAGES['images.*.max'],
-        ]);
+        ], self::ATTRIBUTES);
 
         $data = $request->only([
             'exhibit_code', 'name', 'description', 'fun_facts',

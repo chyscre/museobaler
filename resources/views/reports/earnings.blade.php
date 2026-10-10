@@ -23,10 +23,10 @@
   @endif
 </div>
 
-<h2>By payment type</h2>
+<h2>Individual and group</h2>
 <table>
   <thead><tr>
-    <th>Payment type</th><th style="width:100px">Transactions</th><th style="width:80px">People</th>
+    <th>Paid as</th><th style="width:100px">Transactions</th><th style="width:80px">People</th>
     <th style="width:120px">Collected</th><th style="width:110px">Refunded</th><th style="width:120px">Net</th>
   </tr></thead>
   <tbody>
@@ -88,8 +88,8 @@
 <h2>Transactions</h2>
 <table>
   <thead><tr>
-    <th style="width:128px">Txn No.</th><th style="width:118px">When</th><th>Paid by</th>
-    <th style="width:78px">Type</th><th style="width:52px">People</th>
+    <th style="width:140px">Transaction No.</th><th style="width:118px">When</th><th>Paid by</th>
+    <th style="width:78px">Paid as</th><th style="width:52px">People</th>
     <th style="width:105px">Amount</th><th style="width:120px">Recorded by</th>
   </tr></thead>
   <tbody>

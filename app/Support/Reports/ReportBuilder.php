@@ -319,16 +319,16 @@ class ReportBuilder
             filename: 'earnings-' . $from->toDateString() . '-to-' . $to->toDateString(),
             sections: [
                 new ReportSection('By payment type',
-                    ['Payment type', 'Transactions', 'People', 'Collected', 'Refunded', 'Net'], $payerRows,
+                    ['Paid as', 'Transactions', 'People', 'Collected', 'Refunded', 'Net'], $payerRows,
                     ['TOTAL', $t['transactions'], $t['headcount'], $t['collected'], $t['refunded'], $t['net']],
                     [1, 2, 3, 4, 5]),
                 new ReportSection($e['monthly'] ? 'Month by month' : 'Day by day',
-                    [$e['monthly'] ? 'Month' : 'Date', 'Individual txns', 'Individual net', 'Group txns', 'Group net', 'Refunded', 'Net'],
+                    [$e['monthly'] ? 'Month' : 'Date', 'Individual transactions', 'Individual net', 'Group transactions', 'Group net', 'Refunded', 'Net'],
                     $periodRows,
                     ['TOTAL', $ind['transactions'], $ind['net'], $grp['transactions'], $grp['net'], $t['refunded'], $t['net']],
                     [1, 2, 3, 4, 5, 6]),
                 new ReportSection('Transactions',
-                    ['Txn No.', 'Date', 'Time', 'Payment type', 'Kind', 'Paid by', 'Visitor type', 'People', 'Amount', 'Recorded by', 'Breakdown', 'Visitor IDs'],
+                    ['Transaction No.', 'Date', 'Time', 'Paid as', 'Kind', 'Paid by', 'Visitor type', 'People', 'Amount', 'Recorded by', 'Breakdown', 'Visitor IDs'],
                     $txnRows,
                     ['', '', '', '', '', 'TOTAL', '', '', $t['net'], '', '', ''],
                     [7, 8]),
@@ -546,7 +546,7 @@ class ReportBuilder
 
         return new ReportDataset(
             key: 'audit',
-            title: 'Audit Trail',
+            title: 'Activity Log',
             meta: $from->format('F j, Y') . ' - ' . $to->format('F j, Y'),
             filename: 'audit-log-' . $from->toDateString() . '-to-' . $to->toDateString(),
             sections: [new ReportSection(

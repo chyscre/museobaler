@@ -79,20 +79,20 @@
         <option value="lowest"  {{ request('sort')==='lowest'?'selected':'' }}>Sort: Lowest Rating</option>
       </select>
     </x-fctl>
-    <span id="fbCount" class="fcount"></span>
+    {{-- The count and paging are under the table (DataTables). --}}
   </div>
 </form>
 
 <div class="tbl-wrap">
-  <table>
+  <table data-dt>
     <thead><tr>
-      <th>Name</th><th>Rating</th><th>Survey</th><th>Feedback</th><th>Date</th><th>Action</th>
+      <th>Name</th><th>Rating</th><th>Survey</th><th>Feedback</th><th>Date</th><th data-dt-skip>Action</th>
     </tr></thead>
     <tbody>
     @forelse($feedback as $fb)
     <tr>
       <td style="white-space:nowrap;font-weight:600">{{ $fb->visitor?->full_name ?: '—' }}</td>
-      <td style="color:var(--gold);letter-spacing:1px">{{ str_repeat('★', $fb->rating) }}{{ str_repeat('☆', 5 - $fb->rating) }}</td>
+      <td data-order="{{ $fb->rating }}" style="color:var(--gold);letter-spacing:1px">{{ str_repeat('★', $fb->rating) }}{{ str_repeat('☆', 5 - $fb->rating) }}</td>
       <td style="font-size:12px;color:var(--text-3);white-space:nowrap">
         @php $sqd = $fb->answers->filter(fn ($a) => str_starts_with($a->code, 'SQD') && $a->value !== null); @endphp
         @if($sqd->isNotEmpty())
@@ -104,7 +104,7 @@
         @endif
       </td>
       <td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px;color:var(--text-3)">{{ $fb->comment }}</td>
-      <td style="white-space:nowrap;font-size:12px;color:var(--text-3)">{{ \Carbon\Carbon::parse($fb->submitted_at)->format('M j, Y') }}</td>
+      <td data-order="{{ \Carbon\Carbon::parse($fb->submitted_at)->timestamp }}" style="white-space:nowrap;font-size:12px;color:var(--text-3)">{{ \Carbon\Carbon::parse($fb->submitted_at)->format('M j, Y') }}</td>
       <td>
         <button class="btn btn-outline btn-xs" onclick="openFeedbackModal({{ $fb->feedback_id }})">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -117,10 +117,6 @@
     @endforelse
     </tbody>
   </table>
-  <div class="tbl-foot">
-    <span class="tbl-count">{{ $feedback->total() }} responses</span>
-    <div>{{ $feedback->links() }}</div>
-  </div>
 </div>
 
 <!-- Feedback Detail Modal -->

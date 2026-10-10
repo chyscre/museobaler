@@ -3,68 +3,33 @@
 
 @section('content')
 {{-- Period. One control for the whole page: every tile, chart and table
-     below reads the same dates, so they can be compared side by side. It
-     sits in the header beside Export and Print, the two things it changes,
-     with what is being shown under the title. Only the inputs the chosen
-     period needs are drawn; switching period submits and the server fills in
-     a sensible default for the new one. --}}
-<div class="ph dash-head">
+     below reads the same dates, so they can be compared side by side. It sits
+     beside Generate Report - see components/period-bar.
+
+     Generate Report hands the same dates to the museum's own reports, which
+     carry the letterhead and save as CSV / Excel / Word / PDF. The old
+     Print Report printed this screen, sidebar and all, cut off at the edge;
+     the old Export CSV was a second, unbranded copy of the same figures. --}}
+<div class="ph">
   <div class="ph-left">
     <h2>Dashboard</h2>
     <p>Showing <strong>{{ $period->label() }}</strong></p>
   </div>
   <div class="ph-right">
-    <form method="GET" action="{{ route('dashboard') }}" class="dash-period">
-      {{-- Carries the current period when a picker submits the form; a
-           period button sends its own value after this one, and the last
-           value of a repeated name is the one PHP keeps. --}}
-      <input type="hidden" name="period" value="{{ $period->period }}">
-      <div class="seg" role="group" aria-label="Report period">
-        @foreach(['year' => 'Year', 'month' => 'Month', 'week' => 'Week', 'range' => 'Range'] as $value => $label)
-        <button type="submit" name="period" value="{{ $value }}" class="seg-btn {{ $period->period === $value ? 'on' : '' }}"
-                aria-pressed="{{ $period->period === $value ? 'true' : 'false' }}"
-                title="{{ \App\Support\DashboardPeriod::PERIODS[$value] }}">{{ $label }}</button>
-        @endforeach
-      </div>
-
-      @if(in_array($period->period, ['year', 'month']))
-      <select class="fsel" name="year" onchange="this.form.submit()" aria-label="Year">
-        @foreach($years as $y)
-        <option value="{{ $y }}" {{ $period->from->year === $y ? 'selected' : '' }}>{{ $y }}</option>
-        @endforeach
-      </select>
-      @endif
-
-      @if($period->period === 'month')
-      <select class="fsel" name="month" onchange="this.form.submit()" aria-label="Month">
-        @foreach(range(1, 12) as $m)
-        <option value="{{ $m }}" {{ $period->from->month === $m ? 'selected' : '' }}>{{ \Illuminate\Support\Carbon::create(2000, $m, 1)->format('F') }}</option>
-        @endforeach
-      </select>
-      @endif
-
-      @if($period->period === 'week')
-      <label class="dash-period-lbl" for="dpWeek">Week of</label>
-      <x-date-field id="dpWeek" name="week" :value="$period->from" submit />
-      @endif
-
-      @if($period->period === 'range')
-      <x-date-field id="dpFrom" name="from" :value="$period->from" submit label="From" />
-      <label class="dash-period-lbl" for="dpTo">to</label>
-      <x-date-field id="dpTo" name="to" :value="$period->to" submit />
-      @endif
-
-      <noscript><button class="btn btn-outline btn-sm">Apply</button></noscript>
-    </form>
-    <span class="ph-sep" aria-hidden="true"></span>
-    <button class="btn btn-gold btn-sm" onclick="exportDashboardCSV()">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Export CSV
-    </button>
-    <button class="btn btn-outline btn-sm" onclick="window.print()">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-      Print Report
-    </button>
+    <x-period-bar :period="$period" :action="route('dashboard')" />
+    @include('partials.report-menu', [
+      'id'      => 'dashReportMenu',
+      'mode'    => 'range',
+      'from'    => $period->from,
+      'to'      => $period->to->copy()->min(today()),
+      'reports' => [
+        ['label' => 'Visitors & admission', 'note' => 'Headcount and fees collected',     'url' => route('reports.visitors')],
+        ['label' => 'Earnings & revenue',   'note' => 'Individual vs group, by date',     'url' => route('reports.earnings')],
+        ['label' => 'Exhibit engagement',   'note' => 'Which exhibits were scanned most', 'url' => route('reports.exhibits')],
+        ['label' => 'Feedback & CSM',       'note' => 'Ratings and what visitors wrote',  'url' => route('reports.feedback'), 'csv' => route('reports.feedback.csv')],
+        ['label' => 'Daily logbook',        'note' => 'Who came in, hour by hour',        'url' => route('reports.logbook'), 'csv' => route('reports.logbook.csv')],
+      ],
+    ])
   </div>
 </div>
 
@@ -237,11 +202,6 @@
 @push('scripts')
 @php
   $chartUrl = route('dashboard.chart.visitors', $period->query());
-  $csvData = [
-    'categories' => $categories->map(fn ($c) => [$c->name, $c->total])->values(),
-    'top'        => $topExhibits->values()->map(fn ($ex, $i) => [$i + 1, $ex->name, $ex->scans_count]),
-    'low'        => $lowExhibits->values()->map(fn ($ex, $i) => [$i + 1, $ex->name, $ex->scans_count]),
-  ];
 @endphp
 <script>
 async function loadCharts() {
@@ -255,36 +215,5 @@ async function loadCharts() {
 }
 loadCharts();
 
-function exportDashboardCSV() {
-  const csvData = @json($csvData);
-  const rows = [
-    ['Period', @json($period->label())],
-    [''],
-    ['Metric','Value'],
-    ['Visitors', @json($stats['visitors'])],
-    ['Attendance', @json($stats['attendance'])],
-    ['QR Scans', @json($stats['scans'])],
-    ['Feedback', @json($stats['feedback'])],
-    ['Average Rating', @json($stats['avg_rating'] ?: 'N/A')],
-    [''],
-    ['Scans by Category',''],
-    ['Category','Scans'],
-    ...csvData.categories,
-    [''],
-    ['Most Scanned Exhibits',''],
-    ['Rank','Exhibit','Scans'],
-    ...csvData.top,
-    [''],
-    ['Least Scanned Exhibits',''],
-    ['Rank','Exhibit','Scans'],
-    ...csvData.low,
-  ];
-  const csv = rows.map(r => r.map(c => '"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
-  const a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-  a.download = 'dashboard_' + @json(\Illuminate\Support\Str::slug($period->label())) + '.csv';
-  a.click();
-  toast('CSV exported', 'gold');
-}
 </script>
 @endpush

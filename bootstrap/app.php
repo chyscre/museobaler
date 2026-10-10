@@ -5,7 +5,18 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Session\TokenMismatchException;
+use Illuminate\Support\Env;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
+
+// .env is read into $_ENV/$_SERVER only, never putenv(). Laragon runs
+// thread-safe PHP inside Apache, where the process environment is shared by
+// every thread: a page firing dozens of requests at once (the recognition
+// photo grid) had some of them read a half-written environment, lose
+// APP_KEY or the session settings, and answer 500 or bounce to login. The
+// superglobals are per request. On the server config is cached, so this
+// changes nothing there - and caching config locally is not the fix,
+// because then the test suite runs against the real database.
+Env::disablePutenv();
 
 // SECURITY: proxies trusted to send X-Forwarded-* headers.
 //
@@ -81,6 +92,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role'            => \App\Http\Middleware\EnsureRole::class,
             'password.rotate' => \App\Http\Middleware\RequirePasswordChange::class,
             'desktop'         => \App\Http\Middleware\DesktopOnly::class,
+            'staff.attendance' => \App\Http\Middleware\StaffAttendanceEnabled::class,
             'visitor.auth'    => \App\Http\Middleware\AuthenticateVisitor::class,
             'visitor.cleared' => \App\Http\Middleware\EnsureVisitorCleared::class,
         ]);

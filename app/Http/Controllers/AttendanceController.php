@@ -17,7 +17,7 @@ class AttendanceController extends Controller
             $query->whereDate('visit_date', $date);
         }
 
-        $attendances  = $query->paginate(30)->withQueryString();
+        $attendances  = $query->get();
         $todayCount   = Attendance::whereDate('visit_date', today())->count();
         $totalCount   = Attendance::count();
 

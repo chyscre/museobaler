@@ -335,7 +335,11 @@
              same row for staff check-in, so an inaccurate pin here stops the
              whole team clocking in. Worth saying out loud on the screen that
              edits it. --}}
-        One pin, two uses. A visitor is counted as "present" once their phone reports GPS coordinates within this radius of it, and staff can only check in or out from inside the same circle. Set it wrong and nobody can clock in.
+        @if(config('access.staff_attendance'))
+          One pin, two uses. A visitor is counted as "present" once their phone reports GPS coordinates within this radius of it, and staff can only check in or out from inside the same circle. Set it wrong and nobody can clock in.
+        @else
+          A visitor is counted as "present" once their phone reports GPS coordinates within this radius of it. Set it wrong and visitors at the museum are not counted.
+        @endif
       </div>
       <div class="fi-row">
         <div class="fg"><label class="fl">Latitude</label><input class="fi" name="latitude" type="text" inputmode="decimal" value="{{ $info->latitude }}" placeholder="e.g. 15.7604405"></div>
@@ -595,7 +599,7 @@ document.getElementById('museumForm').addEventListener('submit', function () {
         // A laptop has no GPS: its position is a Wi-Fi/IP guess that has
         // landed 1.8 km from the door. Warn hard, and point at the phone.
         say(acc > 100
-          ? 'Filled in, but only accurate to about ' + acc + 'm — a computer guesses its position from Wi-Fi. Set the pin from a phone instead: My Attendance → Set museum pin.'
+          ? 'Filled in, but only accurate to about ' + acc + 'm — a computer guesses its position from Wi-Fi. ' + @json(config('access.staff_attendance') ? 'Set the pin from a phone instead: My Attendance → Set museum pin.' : 'Set the pin from a phone instead: open Museum Info on your phone at the entrance, use this button there, and save.')
           : 'Filled in — accurate to about ' + acc + 'm. Save to apply.', acc > 100 ? 'bad' : 'good');
       },
       function (err) {

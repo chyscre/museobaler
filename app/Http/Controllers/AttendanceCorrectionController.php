@@ -36,7 +36,7 @@ class AttendanceCorrectionController extends Controller
         }
 
         return view('staff-attendance.corrections', [
-            'corrections' => $query->paginate(25)->withQueryString(),
+            'corrections' => $query->get(),
             'status'      => $status,
             'pendingCount'=> AttendanceCorrection::where('status', 'Pending')->count(),
             // Only museum staff can have an attendance record corrected.

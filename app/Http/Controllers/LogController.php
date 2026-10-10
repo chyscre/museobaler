@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Log;
 use App\Support\AuditTrail;
-use App\Support\DayPage;
+use App\Support\DashboardPeriod;
 use Illuminate\Http\Request;
 
 class LogController extends Controller
@@ -28,6 +28,16 @@ class LogController extends Controller
             ->groupBy(fn ($a) => AuditTrail::kind($a))
             ->sortKeys();
 
+        // Staff attendance is switched off (see config/access.php): its
+        // entries stay in the table but leave the list and the filter.
+        $hidden = [];
+        if (!config('access.staff_attendance')) {
+            $attendance = $kinds->filter(fn ($actions, $kind) => AuditTrail::category($kind) === 'Staff attendance');
+            $hidden = $attendance->flatten()->all();
+            $kinds  = $kinds->diffKeys($attendance);
+            $query->whereNotIn('action', $hidden);
+        }
+
         if ($action = $request->input('action')) {
             $query->whereIn('action', $kinds->get($action, collect([$action]))->all());
         }
@@ -36,16 +46,20 @@ class LogController extends Controller
             $query->where('user_name', $user);
         }
 
-        // A page is a day: the audit trail is read as "what happened on
-        // Tuesday", and a hundred-row page split a busy day in half. The day
-        // picker is the only date control; a From/To range used to sit in the
-        // filter bar beside it, two ways to say the same thing.
-        $day     = DayPage::of($query->orderByDesc('created_at'), 'created_at');
-        $logs    = $day->rows;
-        $actions = $kinds->keys();
-        $users   = Log::distinct()->whereNotNull('user_name')->orderBy('user_name')->pluck('user_name');
-        $total   = Log::count();
+        // The same Year / Month / Week / Range control as the dashboard,
+        // opening on this week. Every row in the period comes back; the
+        // table pages them in the browser.
+        $period  = DashboardPeriod::fromRequest($request, 'week');
+        $logs    = $query->whereBetween('created_at', $period->bounds())
+            ->orderByDesc('created_at')->get();
 
-        return view('logs.index', compact('day', 'logs', 'actions', 'users', 'total'));
+        // The filter list in labelled sections, Exhibits first.
+        $actions = $kinds->keys()
+            ->groupBy(fn ($kind) => AuditTrail::category($kind))
+            ->sortBy(fn ($kinds, $category) => array_search($category, AuditTrail::CATEGORY_ORDER, true));
+        $users   = Log::distinct()->whereNotNull('user_name')->orderBy('user_name')->pluck('user_name');
+        $total   = Log::whereNotIn('action', $hidden)->count();
+
+        return view('logs.index', compact('period', 'logs', 'actions', 'users', 'total'));
     }
 }

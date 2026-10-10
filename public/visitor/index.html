@@ -28,7 +28,7 @@
      which overrides the icon size. -->
 <link rel="preload" href="./fonts/material-icons-round.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="./css/fonts.css?v=21">
-<link rel="stylesheet" href="./css/app.css?v=27">
+<link rel="stylesheet" href="./css/app.css?v=29">
 <!-- Device fit: real viewport height, safe areas, soft keyboard. Runs before
      anything else measures the layout. -->
 <script src="./js/viewport.js?v=21"></script>
@@ -822,9 +822,9 @@
         </div>
         <span class="material-icons-round" style="font-size:20px;color:rgba(255,255,255,0.8);">chevron_right</span>
       </div>
-      <div style="margin-bottom:18px;">
+      <div id="most-viewed-section" style="margin-bottom:18px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-          <div style="font-family:'Young Serif',serif;font-size:calc(16px * var(--fs));color:var(--td);">Most Viewed</div>
+          <div style="font-family:'Young Serif',serif;font-size:calc(16px * var(--fs));color:var(--td);">Most Scanned</div>
           <span style="font-size:calc(12px * var(--fs));color:var(--accent-text);font-weight:600;cursor:pointer;" onclick="showScreen('s-home-exhibits')">See all</span>
         </div>
         <div id="most-viewed-list" style="display:flex;gap:12px;overflow-x:auto;padding-bottom:4px;"></div>
@@ -890,6 +890,17 @@
       </div>
     </div>
     <div style="flex:1;display:flex;flex-direction:column;padding:16px;gap:14px;overflow-y:auto;">
+      <div class="scan-reminder" role="note">
+        <div class="scan-reminder-icons" aria-hidden="true">
+          <span class="material-icons-round">do_not_step</span>
+          <span class="material-icons-round">do_not_touch</span>
+          <span class="material-icons-round">videocam_off</span>
+        </div>
+        <div>
+          <div class="scan-reminder-title">Museum reminder</div>
+          <p>Stay behind safety barriers, do not touch exhibits, and refrain from video recording.</p>
+        </div>
+      </div>
       <!-- Camera / QR area — square viewfinder -->
       <div style="background:#111;border-radius:16px;overflow:hidden;padding:16px;flex-shrink:0;">
         <!-- Square outer frame with corner brackets -->
@@ -936,7 +947,7 @@
         <div style="flex:1;min-width:0">
           <div style="font-size:calc(10px * var(--fs));color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Scan Next</div>
           <div id="sl-next-name" style="font-size:calc(13px * var(--fs));font-weight:700;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Siege of Baler Diorama</div>
-          <div id="sl-next-hall" style="font-size:calc(11px * var(--fs));color:rgba(255,255,255,0.6)">Hall A · Step 1</div>
+          <div id="sl-next-hall" style="font-size:calc(11px * var(--fs));color:rgba(255,255,255,0.6)">Hall A · Stop 1</div>
         </div>
         <span class="material-icons-round" style="font-size:18px;color:rgba(255,255,255,0.4)">chevron_right</span>
       </div>
@@ -984,6 +995,17 @@
       </div>
     </div>
     <div style="flex:1;display:flex;flex-direction:column;padding:16px;gap:14px;overflow-y:auto;">
+      <div class="scan-reminder" role="note">
+        <div class="scan-reminder-icons" aria-hidden="true">
+          <span class="material-icons-round">do_not_step</span>
+          <span class="material-icons-round">do_not_touch</span>
+          <span class="material-icons-round">videocam_off</span>
+        </div>
+        <div>
+          <div class="scan-reminder-title">Museum reminder</div>
+          <p>Stay behind safety barriers, do not touch exhibits, and refrain from video recording.</p>
+        </div>
+      </div>
       <!-- Camera / QR area — square viewfinder -->
       <div style="background:#111;border-radius:16px;overflow:hidden;padding:16px;flex-shrink:0;">
         <div style="position:relative;width:100%;aspect-ratio:1/1;background:#000;border-radius:12px;overflow:hidden;">
@@ -1252,7 +1274,7 @@
         <div id="map-sl-fill" style="width:14%;height:100%;background:var(--gm);border-radius:2px;"></div>
       </div>
     </div>
-    <div style="flex:1;overflow:hidden;background:#F0EBE0;position:relative;display:flex;flex-direction:column;">
+    <div id="map-stage" style="flex:0 1 auto;overflow:hidden;background:#F0EBE0;position:relative;display:flex;flex-direction:column;">
       <!-- Map controls float over the plan as bare glyphs; they sit outside
            the scroller so they stay put while the plan pans underneath. -->
       <div class="map-ctl map-ctl-zoom" role="group" aria-label="Map view">
@@ -1260,7 +1282,7 @@
         <button type="button" id="map-zoom-out" class="map-ico" onclick="zoomMap(-1)" aria-label="Zoom out" title="Zoom out"><span class="material-icons-round">remove</span></button>
         <button type="button" class="map-ico map-ico-center" onclick="recenterMap()" aria-label="Re-center map" title="Re-center"><span class="material-icons-round">my_location</span></button>
       </div>
-      <div id="map-scroll" style="flex:1;overflow:auto">
+      <div id="map-scroll" style="flex:0 1 auto;overflow:auto">
       <!-- Floor plans are the same drawing as the admin Museum Map; pins are
            placed by JS from each exhibit's saved map_x/map_y. -->
       <svg id="map-svg-ground" data-floor="ground" viewBox="0 0 1660 1000" width="100%" style="display:block;background:#E8D9B8;font-family:sans-serif">
@@ -1465,10 +1487,14 @@
         var o2 = document.getElementById('floor-2nd');
         if (og) { og.style.color = n===1 ? activeColor : 'var(--tl)'; og.style.borderBottom = n===1 ? '2px solid ' + activeColor : 'none'; og.style.fontWeight = n===1 ? '700' : '400'; }
         if (o2) { o2.style.color = n===2 ? activeColor : 'var(--tl)'; o2.style.borderBottom = n===2 ? '2px solid ' + activeColor : 'none'; o2.style.fontWeight = n===2 ? '700' : '400'; }
+        if (typeof renderMapLegend === 'function') renderMapLegend();
       }
       </script>
     </div>
     </div>
+    <!-- Number + title for every pin on the floor on show, in either mode.
+         Filled by renderMapLegend in js/app.js. -->
+    <div id="map-legend-free" aria-label="Exhibits on this floor"></div>
     <div id="map-info-bar" style="background:var(--w);padding:10px 16px;display:flex;align-items:center;gap:8px;border-top:1px solid var(--es);flex-shrink:0;">
       <span class="material-icons-round" style="font-size:16px;color:var(--accent-text);">info</span>
       <span id="map-info-text" style="font-size:calc(12px * var(--fs));color:var(--tm);">Follow the gold path to complete the storyline</span>
@@ -2201,27 +2227,6 @@
 </div>
 
 <!-- ══════════════════════════════════════════
-     PRE-SCAN REMINDER
-     Shown each time a Scan button is tapped, before the camera starts.
-     Tapping outside closes it without opening the scanner.
-══════════════════════════════════════════ -->
-<div id="scan-caution-sheet" class="sheet-overlay" onclick="if(event.target===this)closeScanCaution()">
-  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="scan-caution-title">
-    <div class="sheet-handle"></div>
-    <div class="scan-caution-icons" aria-hidden="true">
-      <span class="material-icons-round">do_not_step</span>
-      <span class="material-icons-round">do_not_touch</span>
-      <span class="material-icons-round">videocam_off</span>
-    </div>
-    <div id="scan-caution-title" style="font-family:'Young Serif',serif;font-size:calc(18px * var(--fs));color:var(--td);text-align:center;margin-bottom:8px;">A quick reminder</div>
-    <div style="font-size:calc(13.5px * var(--fs));color:var(--tm);text-align:center;line-height:1.6;margin-bottom:20px;">Stay behind safety barriers, do not touch exhibits, and refrain from video recording while exploring.</div>
-    <button class="btn btn-green btn-full" style="font-size:calc(15px * var(--fs));padding:14px;" onclick="proceedToScan()">
-      <span class="material-icons-round">qr_code_scanner</span>Proceed to Camera
-    </button>
-  </div>
-</div>
-
-<!-- ══════════════════════════════════════════
      LOGOUT CONFIRM SHEET
 ══════════════════════════════════════════ -->
 <div id="logout-sheet" class="sheet-overlay">
@@ -2236,6 +2241,22 @@
       <span class="material-icons-round">logout</span>Yes, Sign Out
     </button>
     <button class="btn btn-outline btn-full" style="font-size:calc(15px * var(--fs));padding:14px;" onclick="document.getElementById('logout-sheet').classList.remove('open')">Cancel</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     FAREWELL SHEET — once per visit, after it ends
+══════════════════════════════════════════ -->
+<div id="farewell-sheet" class="sheet-overlay" onclick="if (event.target === this) closeFarewell()">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div style="text-align:center;font-size:44px;line-height:1;margin-bottom:12px;">👋</div>
+    <div id="farewell-title" style="font-family:'Young Serif',serif;font-size:calc(19px * var(--fs));color:var(--td);text-align:center;margin-bottom:8px;"></div>
+    <div id="farewell-stats" style="font-size:calc(13px * var(--fs));color:var(--tl);text-align:center;line-height:1.6;margin-bottom:20px;"></div>
+    <button id="farewell-feedback" class="btn btn-green btn-full" style="margin-bottom:10px;font-size:calc(15px * var(--fs));padding:14px;" onclick="closeFarewell(); openFeedback();">
+      <span class="material-icons-round">rate_review</span><span id="farewell-feedback-label"></span>
+    </button>
+    <button id="farewell-done" class="btn btn-outline btn-full" style="font-size:calc(15px * var(--fs));padding:14px;" onclick="closeFarewell()"></button>
   </div>
 </div>
 
@@ -2311,7 +2332,7 @@
      are all in css/app.css. Inlined after the stylesheet they also outranked
      its dark-mode overrides, which is why the pills stayed light in dark mode. -->
 
-<script src="./js/app.js?v=29"></script>
+<script src="./js/app.js?v=33"></script>
 
 <!-- Did the app actually start?
 

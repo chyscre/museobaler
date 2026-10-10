@@ -61,7 +61,7 @@ class DashboardController extends Controller
 
         $categories = $this->categoryScans($period);
 
-        $years = $this->years();
+        $years = DashboardPeriod::years();
 
         return view('dashboard.index', compact(
             'period', 'stats', 'topExhibits', 'lowExhibits', 'fbDist', 'categories', 'years'
@@ -109,14 +109,5 @@ class DashboardController extends Controller
             ->groupBy('categories.category_id', 'categories.name')
             ->orderByDesc('total')
             ->get();
-    }
-
-    /** Years offered in the dropdowns: from the first visitor to this one. */
-    private function years(): array
-    {
-        $first = Visitor::min('created_at');
-        $start = $first ? (int) substr((string) $first, 0, 4) : today()->year;
-
-        return range(today()->year, min($start, today()->year));
     }
 }

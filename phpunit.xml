@@ -42,6 +42,10 @@
         <env name="ATTENDANCE_GEOFENCE" value="true"/>
         <env name="VISITOR_GEOFENCE" value="true"/>
         <env name="ADMIN_DESKTOP_ONLY" value="true"/>
+        <!-- Staff attendance is switched off in the app, but its code is kept,
+             so the suite keeps proving it works. StaffAttendanceOffTest
+             covers the switched-off panel. -->
+        <env name="STAFF_ATTENDANCE" value="true"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

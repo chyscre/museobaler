@@ -31,7 +31,7 @@
             </select>
           </div>
         </div>
-        <div class="fg"><label class="fl">Name</label><input class="fi" name="name" value="{{ $exhibit->name }}" required></div>
+        <div class="fg"><label class="fl">Title</label><input class="fi" name="name" value="{{ $exhibit->name }}" required></div>
         <div class="fi-row">
           <div class="fg"><label class="fl">Hall</label>
             <select class="fi" name="hall_id">
@@ -47,7 +47,7 @@
         <div class="fg"><label class="fl">Fun Facts <span style="font-weight:400;font-size:11px">(one per line)</span></label><textarea class="fi" name="fun_facts" rows="4" data-autogrow>{{ $exhibit->fun_facts }}</textarea></div>
         <div class="fi-row">
           <div class="fg"><label class="fl">Languages</label><input class="fi" name="languages" value="{{ $exhibit->languages }}"></div>
-          <div class="fg"><label class="fl">Storyline Order</label><input class="fi" type="number" name="storyline_order" value="{{ $exhibit->storyline_order }}" min="0"></div>
+          <div class="fg"><label class="fl">Storyline Stop</label><input class="fi" type="number" name="storyline_order" value="{{ $exhibit->storyline_order }}" min="0"></div>
         </div>
         <div class="fg"><label class="fl">Image</label>
           @if($exhibit->image)

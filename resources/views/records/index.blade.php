@@ -15,11 +15,16 @@
 <div class="ph">
   <div class="ph-left">
     <h2>Records</h2>
+    <p>Showing <strong>{{ $period->label() }}</strong></p>
   </div>
   <div class="ph-right">
+    <x-period-bar :period="$period" :action="route('records.index')"
+      :keep="array_merge(request()->only(['search', 'vtype', 'visit', 'adm', 'vsort', 'gpay']), ['tab' => $activeTab])" />
     @include('partials.report-menu', [
       'id'      => 'recordsReportMenu',
       'mode'    => 'range',
+      'from'    => $period->from,
+      'to'      => $period->to->copy()->min(today()),
       'reports' => [
         ['label' => 'Daily logbook',        'note' => 'Who came in, hour by hour',        'url' => route('reports.logbook'), 'csv' => route('reports.logbook.csv')],
         ['label' => 'Visitors & admission', 'note' => 'Headcount and fees collected',     'url' => route('reports.visitors')],
@@ -115,6 +120,7 @@
   @endif
 
   <form method="GET" action="{{ route('records.index') }}">
+    <x-period-fields :period="$period" />
     <div class="fbar">
       <div class="search-box">
         <svg class="si" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -155,10 +161,9 @@
     </div>
   </form>
 
-  <x-day-nav :day="$visitorDay" unit="visitor" />
 
   <div class="tbl-wrap">
-    <table>
+    <table data-dt>
       <thead><tr>
         <th>Name</th><th>Age</th><th>Sex</th>
         <th>Visit Type</th><th>Visitor Type</th><th>Last Visit</th><th>Location</th>
@@ -172,7 +177,7 @@
           {{-- Every day they came, kept apart from the row above, which only
                describes the latest visit. A first-timer has nothing to show. --}}
           @if($v->visits->count() > 1)
-            <details class="visit-history">
+            <details class="visit-history dt-noexport">
               <summary>{{ $v->visits->count() }} visits</summary>
               <ul>
                 @foreach($v->visits as $visit)
@@ -192,7 +197,7 @@
         <td>{{ $v->sex ?? '—' }}</td>
         <td><span class="badge b-blue">{{ $v->visit_type }}</span></td>
         <td><span class="badge {{ $v->visitor_type==='Local'?'b-green':($v->visitor_type==='Tourist'?'b-gold':'b-purple') }}">{{ $v->visitor_type }}</span></td>
-        <td>{{ $v->last_visit ? \Carbon\Carbon::parse($v->last_visit)->format('M j, Y') : '—' }}</td>
+        <td data-order="{{ $v->last_visit ? \Carbon\Carbon::parse($v->last_visit)->timestamp : 0 }}">{{ $v->last_visit ? \Carbon\Carbon::parse($v->last_visit)->format('M j, Y') : '—' }}</td>
         <td style="white-space:nowrap">{{ $v->location ?: '—' }}</td>
         {{-- One column, because "has the fee been settled" and "will the app
              open for them" are the same question. The badge answers it; the
@@ -242,10 +247,17 @@
           @php
             $state = $v->clearance();
           @endphp
-          {{-- Every row, everyone who can see Records: read-only. For the day
-               this page shows, not the visitor's latest visit. --}}
+          {{-- Every row, everyone who can see Records: read-only. For their
+               latest day inside the period shown, not their latest visit
+               ever. --}}
+          @php
+            $shownDay = collect([$v->last_visit, $v->created_at])
+              ->merge($v->visits->pluck('visit_date'))
+              ->filter(fn ($d) => $d && $d->between($period->from, $period->to))
+              ->max();
+          @endphp
           <button type="button" class="btn btn-outline btn-xs" style="margin-right:4px"
-                  data-details="{{ route('records.details.visitor', ['visitor' => $v, 'date' => $visitorDay->date?->toDateString()]) }}"
+                  data-details="{{ route('records.details.visitor', ['visitor' => $v, 'date' => $shownDay?->toDateString()]) }}"
                   data-title="Visit details">View Details</button>
           @if(auth()->user()->isTourismHead())
             {{-- View Details only. --}}
@@ -280,7 +292,7 @@
         </td>
       </tr>
       @empty
-      <tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-3)">No visitors registered on this day.</td></tr>
+      <tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-3)">No visitors in this period.</td></tr>
       @endforelse
       </tbody>
     </table>
@@ -316,20 +328,20 @@
 
   <form method="GET" action="{{ route('records.index') }}" class="fbar">
     <input type="hidden" name="tab" value="groups">
-    <x-date-field name="gdate" :value="$gdate ?? null" submit label="Group date" />
+    <x-period-fields :period="$period" />
     <select class="fsel" name="gpay" onchange="this.form.submit()">
       <option value="">All payments</option>
       <option value="unpaid" {{ request('gpay') === 'unpaid' ? 'selected' : '' }}>Unpaid</option>
       <option value="paid"   {{ request('gpay') === 'paid'   ? 'selected' : '' }}>Paid</option>
       <option value="free"   {{ request('gpay') === 'free'   ? 'selected' : '' }}>Free (locals)</option>
     </select>
-    @if(request()->hasAny(['gdate', 'gpay']))
-      <a href="{{ route('records.index', ['tab' => 'groups']) }}" class="btn btn-outline btn-sm">Clear</a>
+    @if(request()->filled('gpay'))
+      <a href="{{ route('records.index', array_merge($period->query(), ['tab' => 'groups'])) }}" class="btn btn-outline btn-sm">Clear</a>
     @endif
   </form>
 
   <div class="tbl-wrap">
-    <table>
+    <table data-dt>
       <thead>
         <tr>
           {{-- Eight columns, not eleven: the signer, the app joins and the fee
@@ -342,7 +354,7 @@
       <tbody>
       @forelse($groups as $g)
       <tr>
-        <td style="white-space:nowrap">{{ $g->visit_date->format('M j, Y') }}<div style="font-size:11px;color:var(--text-3)">{{ $g->created_at->format('g:i A') }}</div></td>
+        <td data-order="{{ $g->visit_date->format('Ymd') }}{{ $g->created_at->format('His') }}" style="white-space:nowrap">{{ $g->visit_date->format('M j, Y') }}<div style="font-size:11px;color:var(--text-3)">{{ $g->created_at->format('g:i A') }}</div></td>
         <td style="font-weight:600">
           {{ $g->label }}
           <div style="font-size:11px;font-weight:500;color:var(--text-3)">{{ $g->group_type }}{{ $g->city ? ' · ' . $g->city : '' }}</div>
@@ -413,23 +425,19 @@
         </td>
       </tr>
       @empty
-      <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-3)">No groups registered{{ request()->hasAny(['gdate','gpay']) ? ' for that filter' : ' yet' }}.</td></tr>
+      <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-3)">No groups registered{{ request()->filled('gpay') ? ' for that filter' : '' }} in this period.</td></tr>
       @endforelse
       </tbody>
     </table>
-    <div class="tbl-foot">
-      <span class="tbl-count">{{ $groups->total() }} groups</span>
-      <div>{{ $groups->links() }}</div>
-    </div>
   </div>
 </div>
 
 <!-- Scan Records -->
 <div id="tab-scans" class="inner-panel {{ $activeTab === 'scans' ? 'active' : '' }}">
   <div class="tbl-wrap">
-    <table>
+    <table data-dt>
       <thead><tr>
-        <th>Exhibit Name</th><th>Category</th><th>Floor</th><th>Hall</th><th>Total Scans</th>
+        <th>Exhibit Title</th><th>Category</th><th>Floor</th><th>Hall</th><th>Total Scans</th>
       </tr></thead>
       <tbody>
       @foreach($scanStats as $ex)
@@ -481,22 +489,18 @@
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
       <div>
         <h3 class="sec-title" style="margin-bottom:0">Attendance Log</h3>
-        <p style="font-size:12px;color:var(--text-3)">Showing: {{ \Carbon\Carbon::parse($attDate)->format('F j, Y') }}</p>
+        <p style="font-size:12px;color:var(--text-3)">Showing: {{ $period->label() }}</p>
       </div>
-      <form method="GET" style="display:flex;gap:8px;align-items:center">
-        <input type="hidden" name="tab" value="attendance">
-        <x-date-field name="att_date" :value="$attDate" submit label="Date" />
-        <span class="badge b-green">{{ $attendances->total() }} records</span>
-      </form>
+      <span class="badge b-green">{{ $attendances->count() }} records</span>
     </div>
-    <table style="width:100%;border-collapse:collapse">
+    <table data-dt style="width:100%;border-collapse:collapse">
       <thead>
         <tr style="border-bottom:1.5px solid var(--border)">
           <th style="padding:9px 10px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;text-align:left">#</th>
           <th style="padding:9px 10px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;text-align:left">Visitor</th>
           <th style="padding:9px 10px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;text-align:left">Method</th>
           <th style="padding:9px 10px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;text-align:left">Accuracy</th>
-          <th style="padding:9px 10px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;text-align:left">Time In</th>
+          <th style="padding:9px 10px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;text-align:left">Date &amp; Time In</th>
           <th style="padding:9px 10px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;text-align:left">Duration</th>
           <th></th>
         </tr>
@@ -504,7 +508,7 @@
       <tbody>
       @forelse($attendances as $i => $a)
         <tr style="border-bottom:1px solid var(--border-light)">
-          <td style="padding:9px 10px;font-size:13px;color:var(--text-3)">{{ $attendances->firstItem() + $i }}</td>
+          <td style="padding:9px 10px;font-size:13px;color:var(--text-3)">{{ $loop->iteration }}</td>
           <td style="padding:9px 10px">
             @if($a->visitor)
               <div style="font-size:13px;font-weight:600;color:var(--text)">{{ $a->visitor->full_name }}</div>
@@ -523,7 +527,7 @@
             </span>
           </td>
           <td style="padding:9px 10px;font-size:13px;color:var(--text-3)">{{ $a->accuracy ? '±'.$a->accuracy.'m' : '—' }}</td>
-          <td style="padding:9px 10px;font-size:13px;color:var(--text-3)">{{ $a->created_at->format('h:i A') }}</td>
+          <td data-order="{{ $a->created_at->timestamp }}" style="padding:9px 10px;font-size:13px;color:var(--text-3)">{{ $a->created_at->format('M j, Y') }}<div style="font-size:11px;color:var(--text-4)">{{ $a->created_at->format('h:i A') }}</div></td>
           <td style="padding:9px 10px;font-size:13px;color:var(--text-3)">
             @if($a->duration_mins !== null)
               {{ $a->duration_mins }} min
@@ -538,13 +542,10 @@
           </td>
         </tr>
       @empty
-        <tr><td colspan="7" style="padding:32px;text-align:center;color:var(--text-3);font-size:13px">No attendance records for this date.</td></tr>
+        <tr><td colspan="7" style="padding:32px;text-align:center;color:var(--text-3);font-size:13px">No attendance records in this period.</td></tr>
       @endforelse
       </tbody>
     </table>
-    @if($attendances->hasPages())
-      <div style="margin-top:14px">{{ $attendances->links() }}</div>
-    @endif
   </div>
 </div>
 
@@ -600,6 +601,8 @@ function switchTab(tab, btn){
   var url = new URL(window.location);
   url.searchParams.set('tab', tab);
   history.replaceState(null, '', url);
+  // A period change should land back on this tab.
+  document.querySelectorAll('.period-bar input[name=tab]').forEach(i => i.value = tab);
   // Clear attendance badge when tab is opened
   if (tab === 'attendance') {
     var badge = btn.querySelector('span');

@@ -33,10 +33,13 @@ class ExhibitController extends Controller
         $exhibits = Exhibit::query()
             ->where('status', true)
             ->with(['category', 'museumHall', 'translations' => fn ($q) => $q->where('language_code', $lang)])
+            // The app's "Most Viewed" ranks by this. Without it every exhibit
+            // arrived on zero and the row was just the first four in order.
+            ->withCount('scans')
             ->orderBy('storyline_order')
             ->orderBy('name')
             ->get()
-            ->map(fn (Exhibit $e) => $this->summary($e, $request));
+            ->map(fn (Exhibit $e) => $this->summary($e, $request) + ['scan_count' => $e->scans_count]);
 
         return response()->json($exhibits);
     }

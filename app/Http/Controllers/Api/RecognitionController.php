@@ -25,6 +25,7 @@ class RecognitionController extends Controller
         $request->validate([
             // 1 MB: a phone's downscaled viewfinder frame, not a photo.
             'frame' => ['required', 'file', 'max:1024', 'mimetypes:image/jpeg,image/png,image/gif,image/webp'],
+            'preview' => ['sometimes', 'boolean'],
         ]);
 
         $frame = @imagecreatefromstring((string) file_get_contents($request->file('frame')->getRealPath()));
@@ -47,7 +48,12 @@ class RecognitionController extends Controller
         // a row per sample and made engagement figures meaningless; a weaker
         // match is a suggestion, and if the visitor picks one from the list
         // the app logs that itself.
-        if ($top['confidence'] >= ImageSearch::HIGH_CONFIDENCE) {
+        //
+        // preview: the app keeps the camera running and only shows a card for
+        // whatever it is pointed at, so even a strong match is not a visit
+        // until the visitor opens it - and the app logs that open. Builds
+        // that still open the exhibit on the spot do not send it.
+        if ($top['confidence'] >= ImageSearch::HIGH_CONFIDENCE && !$request->boolean('preview')) {
             Scan::create([
                 'exhibit_id' => $top['exhibit_id'],
                 'visitor_id' => $request->user('visitor')->visitor_id,

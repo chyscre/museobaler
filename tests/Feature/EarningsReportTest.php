@@ -163,7 +163,7 @@ class EarningsReportTest extends TestCase
         $page = $this->withHeader('User-Agent', self::LAPTOP)->actingAs($desk)->get(route('reports.earnings'));
 
         $page->assertOk();
-        $page->assertSee('By payment type');
+        $page->assertSee('Individual and group');
         $page->assertSee('MDB-' . today()->format('Ymd') . '-0001');
         $page->assertSee('MDB-' . today()->format('Ymd') . '-0002');
         $page->assertSee('PHP ' . number_format(4 * $this->fee, 2));
@@ -196,7 +196,7 @@ class EarningsReportTest extends TestCase
         $csv  = ltrim($as->get(route('reports.export', ['report' => 'earnings', 'format' => 'csv']))->streamedContent(), "\xEF\xBB\xBF");
         $rows = array_map('str_getcsv', array_filter(explode("\n", trim($csv))));
 
-        $this->assertSame('Txn No.', $rows[0][0]);
+        $this->assertSame('Transaction No.', $rows[0][0]);
         $this->assertCount(2, $rows);
         $this->assertSame('MDB-' . today()->format('Ymd') . '-0001', $rows[1][0]);
         $this->assertSame('Individual', $rows[1][3]);

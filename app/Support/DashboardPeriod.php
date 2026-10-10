@@ -21,6 +21,10 @@ use Illuminate\Support\Carbon;
  * Anything missing or unreadable falls back to the current year, week or
  * month rather than to an error page: these are dropdowns, and a half-filled
  * one should still show something sensible.
+ *
+ * Records and Logs filter their tables by the same control. They open on the
+ * current week rather than the year: that includes today, which is what the
+ * desk looks for first, and keeps the list short.
  */
 class DashboardPeriod
 {
@@ -40,11 +44,11 @@ class DashboardPeriod
         public readonly Carbon $to,
     ) {}
 
-    public static function fromRequest(Request $request): self
+    public static function fromRequest(Request $request, string $default = 'year'): self
     {
         $period = array_key_exists($request->query('period'), self::PERIODS)
             ? $request->query('period')
-            : 'year';
+            : $default;
 
         $year = (int) $request->query('year', today()->year);
         if ($year < 2000 || $year > today()->year + 1) {
@@ -123,6 +127,15 @@ class DashboardPeriod
                     ? $this->from->format('M j').' – '.$this->to->format('M j, Y')
                     : $this->from->format('M j, Y').' – '.$this->to->format('M j, Y')),
         };
+    }
+
+    /** Years offered in the dropdowns: this one back to the first visitor. */
+    public static function years(): array
+    {
+        $first = \App\Models\Visitor::min('created_at');
+        $start = $first ? (int) substr((string) $first, 0, 4) : today()->year;
+
+        return range(today()->year, min($start, today()->year));
     }
 
     /** Whether the trend chart counts per day or per month. */
