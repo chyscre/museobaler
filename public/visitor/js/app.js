@@ -341,14 +341,15 @@ document.addEventListener('DOMContentLoaded', () => {
     showScreen(rulesAcknowledged() ? 's-register' : 's-welcome');
   }
 
-  // Geofence runs for everyone — registered or not. Config is fetched
-  // immediately so it has the full 3s head start to resolve before
-  // initGeofence() reads MUSEUM_LAT/MUSEUM_LNG/GEOFENCE_RADIUS; if it hasn't
-  // resolved by then, the hardcoded defaults above are used instead.
-  _loadMuseumConfig();
+  // Geofence runs for everyone — registered or not. It waits for the
+  // museum's own pin as well as the 3s pause: a reading judged against the
+  // hardcoded fallback could put a visitor standing in the hall kilometres
+  // away, and a slow connection used to let it. If the config fails, the
+  // fallback is all there is and the fence starts with it.
+  const museumConfig = _loadMuseumConfig();
   // Except on a computer: the fence logs a museum entry, a laptop at home
   // is not one, and the browser would open with a location prompt for it.
-  if (!onDesktop()) setTimeout(initGeofence, 3000);
+  if (!onDesktop()) setTimeout(() => museumConfig.finally(initGeofence), 3000);
   // A visit from an earlier day ends here, whatever screen the app opened on.
   setTimeout(farewellPastVisit, 1200);
 });
@@ -5696,7 +5697,7 @@ let MUSEUM_LNG      = 121.56169583726937;
 let GEOFENCE_RADIUS  = 150; // meters — production
 
 function _loadMuseumConfig() {
-  apiFetch(`${API_BASE}/museum`)
+  return apiFetch(`${API_BASE}/museum`)
     .then(r => r.json())
     .then(data => {
       const info = data && data.info;
@@ -5914,11 +5915,20 @@ function initGeofence() {
       const dist   = haversineDistance(latitude, longitude, MUSEUM_LAT, MUSEUM_LNG);
       const inside = _geoRelaxed() || dist <= radius;
 
+      // Leaving needs more proof than arriving. Indoors a reading drifts by
+      // its whole accuracy, so one whose centre lands just past the fence
+      // says nothing about whether the phone moved - and a phone lying still
+      // on a table may not report again for minutes, so a single drifted
+      // reading used to stand as "left" while the visitor was in the hall.
+      // Outside means outside even at the near edge of the reading's own
+      // uncertainty. Walking out, the fix is sharp and this is barely later.
+      const outside = !_geoRelaxed() && dist > radius + Math.min(accuracy || 0, radius);
+
       // Reopened the same day and already off the grounds: the visit ended
       // while the app was put away, and this is the first chance to say so.
       const firstFix = !_geoFirstFix;
       _geoFirstFix = true;
-      if (firstFix && !inside && _sameVisitInProgress()) showFarewell(null);
+      if (firstFix && outside && _sameVisitInProgress()) showFarewell(null);
 
       if (inside && !_insideGeofence) {
         // ── ENTRY ──────────────────────────────────────────
@@ -5937,7 +5947,7 @@ function initGeofence() {
         if (resuming) markPresent();
         logAttendance(latitude, longitude, Math.round(accuracy));
 
-      } else if (!inside && _insideGeofence) {
+      } else if (outside && _insideGeofence) {
         // ── EXIT ───────────────────────────────────────────
         _insideGeofence = false;
         const mins = _entryTime ? Math.round((Date.now() - _entryTime) / 60000) : null;
