@@ -1004,6 +1004,10 @@ function veBack() {
 // traded here for either a session or, for someone new, a sign-up token.
 function startGoogleSignIn() {
   showLoading(true);
+  // The page is about to unload for Google's screen, which markLastSeen()
+  // would otherwise report as the visitor putting the app away - leaving a
+  // "last seen" on a visitor who never moved.
+  _leavingForSignIn = true;
   window.location.href = `${PUBLIC_BASE}/auth/google`;
 }
 
@@ -5771,6 +5775,11 @@ function haversineDistance(lat1, lng1, lat2, lng2) {
 
 let _geofenceWatchId = null;
 let _insideGeofence  = false;
+// Set while the page unloads for Google sign-in: a trip through the
+// museum's own sign-in is not the visitor leaving. Cleared if the browser
+// brings this page back from its cache (the back button on Google's screen).
+let _leavingForSignIn = false;
+window.addEventListener('pageshow', () => { _leavingForSignIn = false; });
 let _entryTime       = null;
 
 // How much vaguer than the fence a position fix may be before it is ignored.
@@ -6013,7 +6022,7 @@ function logAttendance(lat, lng, accuracy) {
 // visitor who backgrounds the app repeatedly extends their visit rather than
 // truncating it.
 function markLastSeen() {
-  if (!_insideGeofence || !_entryTime) return;
+  if (!_insideGeofence || !_entryTime || _leavingForSignIn) return;
 
   const aid = STATE._attendanceId;
   if (!aid) return;
