@@ -184,6 +184,35 @@ class AttendanceTest extends TestCase
         $this->assertSame(95, $row->fresh()->duration_mins);
     }
 
+    public function test_reopening_the_app_inside_clears_last_seen(): void
+    {
+        $v   = Visitor::factory()->create();
+        $h   = $this->token($v);
+        $row = Attendance::create(['visitor_id' => $v->visitor_id, 'method' => 'geofence', 'visit_date' => today()]);
+
+        // Put away, then opened again in the hall.
+        $this->patchJson("/api/v1/attendance/{$row->attendance_id}", ['event' => 'exit', 'duration_mins' => 40], $h)->assertOk();
+        $this->assertNotNull($row->fresh()->exited_at);
+
+        $this->patchJson("/api/v1/attendance/{$row->attendance_id}", ['event' => 'present'], $h)->assertOk();
+        $this->assertNull($row->fresh()->exited_at);
+        $this->assertSame(40, $row->fresh()->duration_mins);
+
+        // An anonymous phone, by its handle; without it, nothing.
+        $anon = Attendance::create(['method' => 'geofence', 'visit_date' => today()]);
+        $anon->forceFill(['exited_at' => now()])->save();
+        $this->patchJson("/api/v1/attendance/{$anon->attendance_id}", ['event' => 'present'])->assertOk();
+        $this->assertNotNull($anon->fresh()->exited_at);
+        $this->patchJson("/api/v1/attendance/{$anon->attendance_id}", ['event' => 'present', 'handle' => $this->handle($anon)])->assertOk();
+        $this->assertNull($anon->fresh()->exited_at);
+
+        // Yesterday's visit is over, however the phone is held today.
+        $old = Attendance::create(['visitor_id' => $v->visitor_id, 'method' => 'geofence', 'visit_date' => today()->subDay()]);
+        $old->forceFill(['exited_at' => now()->subDay()])->save();
+        $this->patchJson("/api/v1/attendance/{$old->attendance_id}", ['event' => 'present'], $h)->assertOk();
+        $this->assertNotNull($old->fresh()->exited_at);
+    }
+
     public function test_an_unknown_id_or_a_bad_coordinate_is_handled(): void
     {
         $this->patchJson('/api/v1/attendance/999999', ['event' => 'exit'])->assertOk()->assertJsonPath('claimed', false);

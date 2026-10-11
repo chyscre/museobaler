@@ -120,8 +120,9 @@ class AttendanceController extends Controller
     }
 
     /**
-     * PATCH /api/v1/attendance/{id} - an exit, or a registration claiming
-     * the anonymous row the fence made earlier.
+     * PATCH /api/v1/attendance/{id} - an exit, the app back open inside the
+     * fence, or a registration claiming the anonymous row the fence made
+     * earlier.
      *
      * Somebody else's record is answered as a no-op rather than an error:
      * the app treats this call as fire-and-forget, and a 403 would tell a
@@ -130,7 +131,7 @@ class AttendanceController extends Controller
     public function update(Request $request, int $id): JsonResponse
     {
         $data = $request->validate([
-            'event'         => ['nullable', 'in:claim,exit'],
+            'event'         => ['nullable', 'in:claim,exit,present'],
             // A visit cannot last longer than a day, and this value is kept
             // if it is the largest ever sent, so an absurd one sticks.
             'duration_mins' => ['nullable', 'integer', 'min:0', 'max:1440'],
@@ -166,6 +167,20 @@ class AttendanceController extends Controller
                 $row->duration_mins = max((int) $row->duration_mins, (int) $data['duration_mins']);
             }
             $row->save();
+
+            return response()->json(['ok' => true]);
+        }
+
+        if (($data['event'] ?? null) === 'present') {
+            // The app is open again inside the fence. Without this, the
+            // "last seen" left by the previous time it was put away stood
+            // while the visitor was plainly still here. Today's visit only -
+            // yesterday's is over however the phone is held now. The
+            // duration is kept: it is the longest stay the app has reported.
+            if ($row->visit_date->isToday() && $row->exited_at !== null) {
+                $row->exited_at = null;
+                $row->save();
+            }
 
             return response()->json(['ok' => true]);
         }

@@ -56,6 +56,11 @@ class NotificationController extends Controller
             'items'            => $items,
             'pending'          => $this->pending(),
             'today_attendance' => Attendance::whereDate('visit_date', $today)->count(),
+            // An anonymous check-in that signs in is an update, not a new
+            // event, so nothing above would mention it. This count moving is
+            // how the panel learns to refresh the row that still says
+            // Anonymous.
+            'today_named'      => Attendance::whereDate('visit_date', $today)->whereNotNull('visitor_id')->count(),
             // A plain datetime string, not toISOString(): the ISO form is always
             // UTC, which would sit 8 hours behind the timestamps actually stored
             // in the database and make every poll re-fetch the same rows.
