@@ -85,6 +85,21 @@ class RecordsPeriodTest extends TestCase
             ->assertDontSee('name="page"', false);
     }
 
+    public function test_a_visitor_back_inside_reads_still_inside_not_an_old_duration(): void
+    {
+        $desk = Staff::factory()->administrator()->create();
+        $v = Visitor::factory()->create(['first_name' => 'Wanderer', 'last_visit' => now()]);
+        // The app was put away once (12 minutes recorded), then opened again
+        // inside the fence, which clears exited_at and keeps the duration.
+        $a = Attendance::create(['visitor_id' => $v->visitor_id, 'method' => 'geofence', 'visit_date' => today()]);
+        $a->forceFill(['duration_mins' => 12, 'exited_at' => null])->save();
+
+        $this->actingAs($desk)->get('/records?tab=attendance')
+            ->assertOk()
+            ->assertSee('Still inside')
+            ->assertDontSee('12 min');
+    }
+
     public function test_logs_read_by_period_with_the_date_on_every_row(): void
     {
         $tourism = Staff::factory()->tourismHead()->create();

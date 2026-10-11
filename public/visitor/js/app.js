@@ -5953,7 +5953,12 @@ function initGeofence() {
         saveState();
 
         if (!resuming) showToast('🏛️ Welcome to Museo de Baler!', 3500);
-        if (resuming) markPresent();
+        // Said now and again over the next minute: the page that was just
+        // closed or reloaded sent a keepalive "last seen" on its way out, and
+        // if that lands after a single "present" it wins - the panel then
+        // reads "last seen" about a visitor standing in the hall. Same
+        // schedule as coming back from the background (visibilitychange).
+        if (resuming) [0, 2000, 20000, 60000].forEach(ms => setTimeout(markPresent, ms));
         logAttendance(latitude, longitude, Math.round(accuracy));
 
       } else if (outside && _insideGeofence) {
