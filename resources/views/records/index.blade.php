@@ -528,7 +528,12 @@
           <td style="padding:9px 10px;font-size:13px;color:var(--text-3)">{{ $a->accuracy ? '±'.$a->accuracy.'m' : '—' }}</td>
           <td data-order="{{ $a->created_at->timestamp }}" style="padding:9px 10px;font-size:13px;color:var(--text-3)">{{ $a->created_at->format('M j, Y') }}<div style="font-size:11px;color:var(--text-4)">{{ $a->created_at->format('h:i A') }}</div></td>
           <td style="padding:9px 10px;font-size:13px;color:var(--text-3)">
-            @if($a->duration_mins !== null)
+            {{-- Today with no "last seen" is someone still here, even if an
+                 earlier put-away left a duration behind: the app clears the
+                 last-seen time when it is opened again inside the fence. --}}
+            @if($a->visit_date->isToday() && $a->exited_at === null)
+              <span style="color:var(--green-dark);font-size:11px">● Still inside</span>
+            @elseif($a->duration_mins !== null)
               {{ $a->duration_mins }} min
             @elseif($a->exited_at)
               {{ \Carbon\Carbon::parse($a->created_at)->diffInMinutes($a->exited_at) }} min
