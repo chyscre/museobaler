@@ -267,6 +267,7 @@
   var _allNotifs = [];
   var _pending   = [];
   var _lastPoll  = null; // set after first poll
+  var _named     = null; // today's named check-ins, as of the last poll
   var POLL_URL   = '{{ route("notifications.poll") }}';
 
   // Built from named routes rather than hardcoded strings so they stay correct
@@ -424,6 +425,12 @@
 
         _pending = data.pending || [];
 
+        // A check-in gaining a name - an anonymous visitor signing in - is
+        // not a new event, so it never toasts. Refresh quietly instead, but
+        // only when nothing below is about to refresh anyway.
+        var namedChanged = _named !== null && data.today_named !== _named;
+        _named = data.today_named;
+
         if (isInit) {
           // Fill the panel with everything that has happened today and mark it
           // seen, so a fresh login shows the day's activity without firing a
@@ -473,6 +480,8 @@
           if (refresh && !acts.length) {
             setTimeout(function(){ window.location.reload(); }, 1500);
           }
+        } else if (namedChanged && onRefreshPage()) {
+          window.location.reload();
         }
       })
       .catch(function(){});

@@ -5934,6 +5934,7 @@ function initGeofence() {
         saveState();
 
         if (!resuming) showToast('🏛️ Welcome to Museo de Baler!', 3500);
+        if (resuming) markPresent();
         logAttendance(latitude, longitude, Math.round(accuracy));
 
       } else if (!inside && _insideGeofence) {
@@ -6027,8 +6028,28 @@ function markLastSeen() {
   }).catch(() => {});
 }
 
+// The other half of markLastSeen(): the app is open again with the phone
+// inside the fence, so the "last seen" the server was left with the last time
+// it was put away no longer holds. Without this the panel kept saying "last
+// seen on site" about a visitor holding the app open in the hall.
+function markPresent() {
+  if (!_insideGeofence || !_sameVisitInProgress()) return;
+
+  apiFetch(`${API_BASE}/attendance/${STATE._attendanceId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      event:  'present',
+      handle: STATE._attendanceHandle || undefined,
+    })
+  }).catch(() => {});
+}
+
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') markLastSeen();
+  // Back from the background still inside: say so. If the phone has since
+  // left, the next position fix reports the exit as before.
+  else markPresent();
 });
 // pagehide covers the cases visibilitychange misses — notably Safari on iOS,
 // where a swipe back to the home screen can skip straight to teardown.

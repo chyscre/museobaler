@@ -40,6 +40,20 @@ class NotificationBellTest extends TestCase
         $this->assertStringStartsWith(today()->format('M j, Y'), $items[0]['time']);
     }
 
+    public function test_a_check_in_gaining_a_name_moves_the_named_count(): void
+    {
+        // Signing in turns an Anonymous row into a name without making a new
+        // event; this count is how the panel knows to refresh.
+        $admin = Staff::factory()->create(['role' => 'Administrator']);
+        $row   = Attendance::create(['visit_date' => today()->toDateString(), 'method' => 'geofence']);
+
+        $this->actingAs($admin)->getJson(route('notifications.poll'))->assertJsonPath('today_named', 0);
+
+        $row->forceFill(['visitor_id' => Visitor::factory()->create()->visitor_id])->save();
+
+        $this->actingAs($admin)->getJson(route('notifications.poll'))->assertJsonPath('today_named', 1);
+    }
+
     public function test_unpaid_and_unverified_visitors_surface_as_pending_actions(): void
     {
         $admin = Staff::factory()->create(['role' => 'Administrator']);
