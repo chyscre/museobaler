@@ -6059,7 +6059,16 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') markLastSeen();
   // Back from the background still inside: say so. If the phone has since
   // left, the next position fix reports the exit as before.
-  else markPresent();
+  //
+  // Not once, and not at once: a phone can hold the "last seen" sent on the
+  // way out (it is a keepalive request) until the app is back, and if that
+  // lands after this one it wins - which is exactly what switching to the
+  // mail app for the sign-up code did. Saying it again over the next minute
+  // outlasts any such straggler. Not a standing heartbeat: every phone on
+  // the museum Wi-Fi shares one address and one API rate limit.
+  else [2000, 20000, 60000].forEach(ms => setTimeout(() => {
+    if (document.visibilityState === 'visible') markPresent();
+  }, ms));
 });
 // pagehide covers the cases visibilitychange misses — notably Safari on iOS,
 // where a swipe back to the home screen can skip straight to teardown.
