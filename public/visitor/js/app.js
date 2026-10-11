@@ -6112,6 +6112,12 @@ function claimAttendance(visitorId, visitorName) {
   .then(r => r.json())
   .then(data => {
     if (data.ok && data.claimed) {
+      // Folded into the visit they already had today (this phone had
+      // forgotten it): carry on with that one from here.
+      if (data.attendance_id && data.attendance_id !== STATE._attendanceId) {
+        STATE._attendanceId     = data.attendance_id;
+        STATE._attendanceHandle = data.handle || null;
+      }
       // The id is deliberately kept rather than cleared. markLastSeen() needs
       // it to keep extending dwell time, and dropping it here meant a visitor
       // stopped being tracked the moment they registered. Re-claiming is
