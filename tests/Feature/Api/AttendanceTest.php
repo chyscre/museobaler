@@ -81,6 +81,28 @@ class AttendanceTest extends TestCase
         $this->assertNotNull($row->fresh()->exited_at);
     }
 
+    public function test_a_phone_that_forgot_the_visit_merges_into_it_on_sign_in(): void
+    {
+        // Signed in this morning, then the phone's data was cleared: it
+        // arrives again as an anonymous phone and signs in. Today's visit is
+        // still theirs - one row, present, and the phone now holds that row.
+        $v    = Visitor::factory()->create();
+        $h    = $this->token($v);
+        $mine = Attendance::create(['visitor_id' => $v->visitor_id, 'method' => 'geofence', 'visit_date' => today()]);
+        $mine->forceFill(['exited_at' => now()->subHour(), 'duration_mins' => 5])->save();
+        $anon = Attendance::create(['method' => 'geofence', 'visit_date' => today()]);
+
+        $this->patchJson("/api/v1/attendance/{$anon->attendance_id}", ['handle' => $this->handle($anon)], $h)
+            ->assertOk()
+            ->assertJsonPath('claimed', true)
+            ->assertJsonPath('attendance_id', $mine->attendance_id)
+            ->assertJsonPath('handle', $this->handle($mine));
+
+        $this->assertSame(1, Attendance::count());
+        $this->assertNull($mine->fresh()->exited_at);
+        $this->assertSame(5, $mine->fresh()->duration_mins);
+    }
+
     public function test_a_body_claiming_to_be_someone_else_is_recorded_as_nobody(): void
     {
         $me    = Visitor::factory()->create();

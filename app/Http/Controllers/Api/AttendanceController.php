@@ -203,6 +203,33 @@ class AttendanceController extends Controller
             return response()->json(['ok' => true, 'claimed' => false]);
         }
 
+        // They already have today's visit: the phone forgot it (site data
+        // cleared, another browser) and arrived again as nobody. One visitor
+        // is one visit a day - the unique key says so, and claiming this row
+        // used to fail on it with a 500, leaving the old visit's "last seen"
+        // standing. The phone's arrival folds into the visit they already
+        // have, which is present again, and the phone carries on with it.
+        $own = Attendance::query()
+            ->where('visitor_id', $visitor->visitor_id)
+            ->whereDate('visit_date', today())
+            ->first();
+
+        if ($own !== null) {
+            $own->exited_at = null;
+            if ($row->duration_mins !== null) {
+                $own->duration_mins = max((int) $own->duration_mins, (int) $row->duration_mins);
+            }
+            $own->save();
+            $row->delete();
+
+            return response()->json([
+                'ok'            => true,
+                'claimed'       => true,
+                'attendance_id' => (int) $own->attendance_id,
+                'handle'        => self::handleFor((int) $own->attendance_id),
+            ]);
+        }
+
         // `method` is left alone: it records how the arrival was detected.
         // Claiming used to overwrite it with 'registered', which the
         // attendance screen read as "not geofence" and labelled Manual.
