@@ -79,10 +79,20 @@ class AttendanceController extends Controller
             $existing = Attendance::query()
                 ->where('visitor_id', $visitor->visitor_id)
                 ->whereDate('visit_date', today())
-                ->value('attendance_id');
+                ->first();
 
             if ($existing !== null) {
-                return $this->logged((int) $existing, true);
+                // An arrival just passed the fence above, so they are here
+                // now, whatever "last seen" an earlier hour of the day left.
+                // This is the path a phone takes when it no longer remembers
+                // the visit (signed out and back in, another browser), and it
+                // used to hand the old row back with that "last seen" intact.
+                if ($existing->exited_at !== null) {
+                    $existing->exited_at = null;
+                    $existing->save();
+                }
+
+                return $this->logged((int) $existing->attendance_id, true);
             }
         }
 
