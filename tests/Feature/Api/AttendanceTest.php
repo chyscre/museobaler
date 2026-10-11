@@ -58,6 +58,29 @@ class AttendanceTest extends TestCase
         $this->assertSame(1, Attendance::count());
     }
 
+    public function test_arriving_again_the_same_day_clears_last_seen(): void
+    {
+        // A phone that forgot the visit (signed out and back in) arrives
+        // again: the same row comes back, and it is no longer "last seen".
+        $this->pin();
+        $v   = Visitor::factory()->create();
+        $h   = $this->token($v);
+        $row = Attendance::create(['visitor_id' => $v->visitor_id, 'method' => 'geofence', 'visit_date' => today()]);
+        $row->forceFill(['exited_at' => now()->subHour(), 'duration_mins' => 5])->save();
+
+        $this->postJson('/api/v1/attendance', ['latitude' => 15.760440, 'longitude' => 121.561695, 'accuracy' => 12], $h)
+            ->assertOk()
+            ->assertJsonPath('attendance_id', $row->attendance_id);
+        $this->assertNull($row->fresh()->exited_at);
+        $this->assertSame(5, $row->fresh()->duration_mins);
+
+        // From off the grounds the fence refuses first, and nothing changes.
+        $row->refresh()->forceFill(['exited_at' => now()->subHour()])->save();
+        $this->postJson('/api/v1/attendance', ['latitude' => 15.4, 'longitude' => 121.0, 'accuracy' => 12], $h)
+            ->assertStatus(422);
+        $this->assertNotNull($row->fresh()->exited_at);
+    }
+
     public function test_a_body_claiming_to_be_someone_else_is_recorded_as_nobody(): void
     {
         $me    = Visitor::factory()->create();
