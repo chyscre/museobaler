@@ -22,6 +22,15 @@ use Symfony\Component\HttpFoundation\Response;
  * outstanding - the visitor is standing at the desk and needs to know
  * whether to pay or to show an ID. It reveals nothing an attacker could use,
  * since a token is required to get this far.
+ *
+ * This is also what unlocks an exhibit after a scan: clearance counts only
+ * for today (Visitor::clearance() wants paid_at / verified_at to be today),
+ * so yesterday's payment opens nothing. There is deliberately no location
+ * check per scan. Indoor fixes in the stone building are vaguer than the
+ * fence (see GeofenceService::visitorCheck()), and scans made with no signal
+ * are queued on the phone and sent later, when a fix would be meaningless.
+ * The known gap: a visitor cleared in the morning keeps access until
+ * midnight. tests/Feature/Api/ScanLockTest.php pins the behaviour.
  */
 class EnsureVisitorCleared
 {
