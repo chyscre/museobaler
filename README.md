@@ -71,10 +71,25 @@ is not in Baler; production ignores both.
 Optional: `GEMINI_API_KEY` (Google AI Studio) for AI translations and
 narration. Without it those buttons say so and everything else works.
 
+## Running the tests
+
 ```bash
-php artisan test        # 310 PHPUnit tests, incl. tests/Feature/Api
+php artisan test        # ~580 PHPUnit tests (tests/Feature, tests/Unit), about 2 minutes
 npm test                # the service worker's routing rules (node --test)
 ```
+
+`phpunit.xml` points the suite at an in-memory SQLite database and switches
+the geofences, the desktop-only guard and staff attendance back on, so the
+results do not depend on your `.env`. Two things will break that:
+
+- **Never run `php artisan config:cache` on a development machine.** A cached
+  config ignores `phpunit.xml`, so the next test run uses your real MySQL
+  database, and `RefreshDatabase` wipes it. If you have run it, run
+  `php artisan config:clear` before testing. Production caches config in
+  `deploy/deploy.sh`, where no tests run.
+- Whenever `public/visitor/css/app.css` or `public/visitor/js/app.js`
+  changes, bump the `?v=` on its tag in `public/visitor/index.html`, or
+  phones keep the old copy.
 
 ## Backups and restore
 
