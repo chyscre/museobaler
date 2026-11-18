@@ -7,7 +7,6 @@ use App\Models\Attendance;
 use App\Models\Exhibit;
 use App\Models\Log;
 use App\Models\Scan;
-use App\Models\Visit;
 use App\Models\Visitor;
 use App\Models\VisitGroup;
 use App\Support\DashboardPeriod;
