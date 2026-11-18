@@ -65,4 +65,11 @@ Visitor::updateOrCreate(
     ]
 );
 
+// Signing in now refuses an address whose 6-digit code was never entered, so
+// both accounts are marked as having proved their inbox. Not fillable on
+// purpose, hence forceFill.
+Visitor::whereIn('email', ['demo.visitor@museobaler.test', 'demo.waiting@museobaler.test'])
+    ->get()
+    ->each(fn (Visitor $v) => $v->forceFill(['email_verified_at' => now()])->save());
+
 echo 'demo visitors ready (fee ' . $fee . ")\n";

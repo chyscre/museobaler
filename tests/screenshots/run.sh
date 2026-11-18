@@ -68,7 +68,22 @@ DEMO_VISITOR_PASSWORD="$PASSWORD" \
     php artisan tinker tests/screenshots/demo-visitors.php >/dev/null
 
 echo "==> Serving it on port ${PORT}"
-php artisan serve --host=127.0.0.1 --port="$PORT" >/dev/null 2>&1 &
+# PHP's own server, not artisan serve, because the throwaway database lives in
+# DB_CONNECTION / DB_DATABASE and both routes to the server can lose them:
+#   - artisan serve (Laravel 11+) passes the server only an allow-list of
+#     variables unless given --no-reload, blanking the database ones;
+#   - even when they arrive, a php.ini whose variables_order lacks "E" (the
+#     common "GPCS") leaves $_ENV empty, Laravel does not see them, and the
+#     immutable .env loader fills them in from .env instead.
+# Either way the server quietly falls back to .env - the real database - and
+# the "demo" screenshots would show real visitors. variables_order=EGPCS puts
+# them in $_ENV, where Laravel looks first. server.php resolves the app from
+# the working directory, hence running it from public/.
+(
+    cd public &&
+    exec php -d variables_order=EGPCS -S "127.0.0.1:${PORT}" \
+        ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php
+) >/dev/null 2>&1 &
 server=$!
 
 for _ in $(seq 1 30); do
