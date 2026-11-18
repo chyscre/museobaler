@@ -119,7 +119,8 @@ CI guarantees before any of it.
 |---|---|
 | Museum staff and the Tourism office — how to do the job | [docs/STAFF_MANUAL.md](docs/STAFF_MANUAL.md) |
 | How the pieces fit: context, request pipeline, deployment, what is generated | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| The database: 24 tables, their keys, and the joins that are missing on purpose | [docs/ERD.md](docs/ERD.md) |
+| The database: 28 tables, their keys, and the joins that are missing on purpose | [docs/ERD.md](docs/ERD.md) |
+| Every column of every table, for drawing diagrams | [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md), [docs/museobaler-erd.dbml](docs/museobaler-erd.dbml) |
 | Whoever holds the keys — accounts, credentials, the backup key, who to call | [docs/OWNERSHIP.md](docs/OWNERSHIP.md) |
 | The person holding the backup drive on a bad morning | [docs/RESTORE.md](docs/RESTORE.md) |
 | Buying the hosting, setting it up from scratch, handing the bill over | [docs/HOSTING.md](docs/HOSTING.md) |
