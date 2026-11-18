@@ -123,8 +123,8 @@ class SelfContainedTest extends TestCase
      * in a comment is worth knowing about - but it is why the illustrative
      * names here are written as App\<Namespace>\<Class> rather than spelled out.
      *
-     * This is the check that App\Support\ExhibitImage and App\Support\DayPage
-     * would have failed. A prefix that names a directory is a namespace, not
+     * This is the check that two Support classes, once used before they were
+     * committed, would have failed. A prefix that names a directory is a namespace, not
      * a class, so only leaves are required to be files.
      */
     public function test_every_first_party_class_reference_is_committed(): void
