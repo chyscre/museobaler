@@ -97,10 +97,18 @@ const SHOTS = [
         describe: 'The floor plan with pins, in edit mode.',
     },
     {
+        // Museum Info is tabbed now; the geofence has its own tab.
         file: 'museum-info.png',
         path: '/museum',
-        scrollTo: '.info-hd-title:has-text("Geofencing")',
-        describe: 'The fee, hours and the Location & Geofence block.',
+        click: '#tab-location',
+        describe: 'The Check-in Location tab: the pin and the geofence radius.',
+    },
+    {
+        file: 'museum-admission.png',
+        path: '/museum',
+        click: '#tab-admission',
+        fullPage: true,
+        describe: 'The Admission tab: the fee, who enters free, discount categories.',
     },
     {
         file: 'front-desk.png',
@@ -147,16 +155,38 @@ const SHOTS = [
         path: '/tours',
         describe: 'Guided tours: starting one and ending it.',
     },
+    // Staff attendance (kiosk, sheet, corrections) is switched off by
+    // STAFF_ATTENDANCE and its pages answer 404, so it is not shot.
     {
-        file: 'attendance-kiosk.png',
-        path: '/attendance/kiosk',
-        describe: 'The staff-room kiosk, whose code rotates every 60 seconds.',
+        file: 'records-details.png',
+        path: '/records',
+        click: 'button[data-details]',
+        wait: 1500,
+        describe: 'View Details on a visit: who, when, what was paid.',
     },
     {
-        file: 'staff-attendance.png',
-        path: '/staff-attendance',
+        file: 'attendance.png',
+        path: '/attendance',
         fullPage: true,
-        describe: 'The attendance sheet, and the way to one person’s DTR.',
+        describe: 'Visitor check-ins recorded by the geofence.',
+    },
+    {
+        file: 'report-menu.png',
+        path: '/dashboard',
+        click: 'button:has-text("Generate Report")',
+        wait: 500,
+        describe: 'Generate Report: the period and the reports offered here.',
+    },
+    {
+        file: 'reports-earnings.png',
+        path: '/reports/earnings',
+        fullPage: true,
+        describe: 'The earnings report: individual and group admission by date.',
+    },
+    {
+        file: 'my-account.png',
+        path: '/my/password',
+        describe: 'My Account: changing your own password.',
     },
     {
         file: 'logs.png',
@@ -193,13 +223,6 @@ const SHOTS = [
         role: 'tourism',
         fullPage: true,
         describe: 'The ARTA survey question bank.',
-    },
-    {
-        file: 'corrections.png',
-        path: '/attendance/corrections',
-        role: 'tourism',
-        fullPage: true,
-        describe: 'Attendance corrections awaiting the office’s approval.',
     },
 ];
 
@@ -308,6 +331,11 @@ async function capture(page, shot) {
         }
     }
 
+    if (shot.wait) {
+        // For a window filled by a fetch, which has no selector to wait on.
+        await page.waitForTimeout(shot.wait);
+    }
+
     if (shot.waitFor) {
         await page.waitForSelector(shot.waitFor, { timeout: 5000 }).catch(() => {
             console.warn(`  ! ${shot.file}: never saw ${shot.waitFor}`);
@@ -396,6 +424,20 @@ async function visitorGoto(page, screen) {
 /** Signs in on the app's own form. */
 async function visitorSignIn(page, email) {
     await page.goto(`${BASE}/visitor/`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(500);
+    // A phone whose storage was cleared meets the rules screen again first.
+    if (await activeScreen(page) === 's-welcome') {
+        await page.click('.welcome-alt');
+        await page.waitForTimeout(500);
+    }
+    // Any other start (a farewell sheet, a leftover screen) - go to the form.
+    if (!await page.locator('#auth-tab-signin').isVisible()) {
+        await page.evaluate(() => {
+            document.querySelectorAll('.open').forEach((el) => el.classList.remove('open'));
+            window.showScreen?.('s-register');
+        });
+        await page.waitForTimeout(500);
+    }
     await page.click('#auth-tab-signin');
     await page.fill('#reg-email', email);
     await page.fill('#reg-password', VISITOR_PASSWORD);
@@ -408,6 +450,10 @@ async function visitorSignIn(page, email) {
 
 async function shootPhone(page, file, describe) {
     await settle(page);
+    // A passing notice ("Welcome to Museo de Baler!") would otherwise sit over
+    // whatever screen happened to be open when it fired.
+    await page.evaluate(() => document.getElementById('toast')?.classList.remove('show'));
+    await page.waitForTimeout(350);
     await page.screenshot({ path: `${OUT}/${file}` });
     console.log(`  ok ${file.padEnd(26)} ${describe}`);
 }
@@ -420,12 +466,65 @@ async function captureVisitorApp(context) {
     const page = await context.newPage();
     let taken = 0;
 
-    // 1. Signed out: the screen the entrance poster leads to.
+    // 1. Signed out: the screen the entrance poster leads to. A first-time
+    //    phone meets the museum rules before the sign-up form.
     await page.goto(`${BASE}/visitor/`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(800);
+
+    if (await activeScreen(page) === 's-welcome') {
+        await shootPhone(page, 'visitor-welcome.png', 'The museum rules a first-time visitor accepts.');
+        taken++;
+        await page.click('.welcome-cta').catch(() => {});
+        await page.waitForTimeout(700);
+    } else {
+        console.warn('  ! visitor-welcome.png: the app did not open on the rules screen');
+    }
+
     await page.click('#auth-tab-signup').catch(() => {});
     await page.waitForTimeout(500);
     await shootPhone(page, 'visitor-register.png', 'Registering on the visitor’s own phone.');
     taken++;
+
+    // Screens a real sign-up passes through but this fixture cannot reach
+    // without a mailbox: the code entry and the details form. Opened directly.
+    // The labels a real sign-up would have filled are given the same made-up
+    // visitor the form's placeholders use, so no screen shows an empty gap.
+    const fillLabels = () => page.evaluate(() => {
+        const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+        set('ve-email-shown', 'pedroacosta@gmail.com');
+        set('vi-name-label', 'Pedro Acosta');
+        set('vi-email-label', 'pedroacosta@gmail.com');
+    });
+
+    for (const [screen, file, describe, prep] of [
+        ['s-verify-email', 'visitor-verify.png', 'Entering the 6-digit code emailed at sign-up.', fillLabels],
+        ['s-visitor-info', 'visitor-info.png', 'The visitor details form, with the free-companions button.',
+            async () => {
+                await fillLabels();
+                await page.click('#form-companions-toggle').catch(() => {});
+                await page.waitForTimeout(400);
+            }],
+    ]) {
+        await page.evaluate((id) => window.showScreen?.(id), screen);
+        await page.waitForTimeout(600);
+        if (prep) await prep();
+        await shootPhone(page, file, describe);
+        taken++;
+    }
+
+    // Forgot password, reached from the sign-in tab's own link.
+    await page.evaluate(() => window.showScreen?.('s-register'));
+    await page.click('#auth-tab-signin').catch(() => {});
+    await page.waitForTimeout(400);
+    const forgot = page.locator('[onclick="openForgot()"]').first();
+    if (await forgot.count() && await forgot.isVisible()) {
+        await forgot.click();
+        await page.waitForTimeout(700);
+        await shootPhone(page, 'visitor-forgot.png', 'Resetting a forgotten password by emailed code.');
+        taken++;
+    } else {
+        console.warn('  ! visitor-forgot.png: no Forgot password link on the sign-in tab');
+    }
 
     // 2. Signed in, not yet cleared: the admission gate, as the visitor sees it.
     await visitorSignIn(page, VISITOR_WAITING);
@@ -518,6 +617,31 @@ async function captureVisitorApp(context) {
         }
     }
 
+    // The farewell card. In use it appears when the geofence sees the phone
+    // leave, which a desk machine cannot do, so the visit it summarises is
+    // staged: an arrival 45 minutes ago on today's date.
+    try {
+        await visitorGoto(page, 's-home');
+        const shown = await page.evaluate(() => {
+            if (typeof showFarewell !== 'function') return false;
+            STATE._attendanceId = 999999;
+            STATE._attendanceDate = _today();
+            STATE._entryTime = Date.now() - 45 * 60000;
+            STATE._farewellFor = null;
+            showFarewell(45);
+            return document.getElementById('farewell-sheet')?.classList.contains('open') ?? false;
+        });
+        if (shown) {
+            await page.waitForTimeout(600);
+            await shootPhone(page, 'visitor-farewell.png', 'The thank-you card shown when a visit ends.');
+            taken++;
+        } else {
+            console.warn('  ! visitor-farewell.png: the card did not open');
+        }
+    } catch (error) {
+        console.error(`  FAILED visitor-farewell.png: ${error.message.split('\n')[0]}`);
+    }
+
     await page.close();
 
     return taken;
@@ -581,9 +705,23 @@ try {
         deviceScaleFactor: SCALE,
         isMobile: true,
         hasTouch: true,
+        // Standing at the museum door. Without a position the app shows a
+        // "Location is off" notice across the bottom of every screen.
+        permissions: ['geolocation'],
+        geolocation: { latitude: 15.7604405, longitude: 121.5616958, accuracy: 10 },
         userAgent:
             'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 ' +
             '(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+    });
+
+    // Passing notices ("Welcome to Museo de Baler!") fire on their own timers
+    // and would land on top of whichever screen is being shot.
+    await phone.addInitScript(() => {
+        document.addEventListener('DOMContentLoaded', () => {
+            const s = document.createElement('style');
+            s.textContent = '#toast { display: none !important; }';
+            document.head.appendChild(s);
+        });
     });
 
     try {
