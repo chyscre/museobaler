@@ -2481,10 +2481,6 @@ function updateStorylineProgress() {
   else { loadExhibits().then(run); }
 }
 
-function getCachedExhibits(lang) {
-  return _exhibitCache;
-}
-
 // ── Live scanner ─────────────────────────────────────────────────────────
 // Each scan screen has a reader container, an idle panel that sits on top of
 // it, and inside that panel a message and a retry button. Which trio a mode
@@ -3335,11 +3331,6 @@ function mapNodes() {
   }).filter(Boolean);
 }
 
-function mapNodeFor(ex) {
-  if (!ex) return null;
-  return mapNodes().find(n => n.ex.id === ex.id || (ex.exhibit_id && n.ex.exhibit_id === ex.exhibit_id)) || null;
-}
-
 function svgEl(tag, attrs, text) {
   const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
   Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
@@ -3514,10 +3505,6 @@ function refreshStorylineMapOverlay() {
       }
     });
   });
-}
-
-function toggleFlash() {
-  showToast('Flashlight toggled');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4599,27 +4586,6 @@ function updateMap() {
   }
 }
 
-function switchMapFloor(floor) {
-  currentFloor = floor;
-  const gndTab = document.getElementById('floor-gnd');
-  const sndTab = document.getElementById('floor-2nd');
-  const isStoryline = STATE.mode === 'storyline';
-  const color = isStoryline ? 'var(--gm)' : 'var(--bd)';
-  if (gndTab) {
-    gndTab.style.color = floor === 'ground' ? color : 'var(--tl)';
-    gndTab.style.borderBottom = floor === 'ground' ? `2px solid ${color}` : 'none';
-    gndTab.style.marginBottom = floor === 'ground' ? '-2px' : '0';
-    gndTab.style.fontWeight = floor === 'ground' ? '700' : '400';
-  }
-  if (sndTab) {
-    sndTab.style.color = floor === 'second' ? color : 'var(--tl)';
-    sndTab.style.borderBottom = floor === 'second' ? `2px solid ${color}` : 'none';
-    sndTab.style.marginBottom = floor === 'second' ? '-2px' : '0';
-    sndTab.style.fontWeight = floor === 'second' ? '700' : '400';
-  }
-  showToast(floor === 'ground' ? 'Ground Floor' : '2nd Floor');
-}
-
 // The header switch. Same path as the Settings picker, so the choice is
 // saved and the theme, pins and path all redraw in place.
 function setMapMode(mode) {
@@ -4685,11 +4651,6 @@ function recenterMap() {
     top: fy * svg.clientHeight - box.clientHeight / 2,
     behavior: 'smooth',
   });
-}
-
-function toggleMapPath() {
-  const overlay = document.getElementById('map-path-overlay');
-  if (overlay) overlay.style.display = overlay.style.display === 'none' ? 'block' : 'none';
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -5433,15 +5394,6 @@ function doLogout() {
   // The next person on this handset starts at the museum rules.
   try { localStorage.removeItem(RULES_ACK_KEY); } catch (e) {}
   showScreen('s-welcome');
-}
-
-// ═══════════════════════════════════════════════════════════
-// NOTIFICATIONS
-// ═══════════════════════════════════════════════════════════
-function loadNotifications() {
-  return apiFetch(`${API_BASE}/notifications`)
-    .then(r => r.json())
-    .catch(() => []);
 }
 
 // ═══════════════════════════════════════════════════════════
